@@ -345,13 +345,17 @@ const CatalogueCard = ({ model, job, canManage, ollamaUp, onDownload }) => {
     if (model.cloudOnly) action = null;
     else if (model.installed) action = <Badge size="xs" color="success">Installed</Badge>;
     else if (busy) action = <Badge size="xs" color="primary">{job.status === 'queued' ? 'Waiting' : `Downloading ${job.percent}%`}</Badge>;
-    else if (!model.fit.fits) action = <Badge size="xs" color="error">Too large</Badge>;
+    // A model that fits only when pooled is downloaded to the computer the pool runs it on, its main computer.
+    else if (!model.fit.fits && !(model.pool && model.pool.here)) action = model.pool?.main
+        ? <Badge size="xs" color="primary" title="A pooled model runs from the file on the main computer. Open the Models page for that computer to download it.">Download on {model.pool.main}</Badge>
+        : <Badge size="xs" color="error">Too large</Badge>;
     else if (!model.fitsDisk) action = <Badge size="xs" color="error">Not enough disk</Badge>;
     else if (canManage) {
+        const forPool = !model.fit.fits;
         action = (
-            <Button size="xs" onClick={() => onDownload(model.tag)} disabled={!ollamaUp} {...guide.tip('models.download')}>
+            <Button size="xs" onClick={() => onDownload(model.tag)} disabled={!ollamaUp} title={forPool ? `Too large for this computer alone. It is kept here and runs in chats placed on your pool, with ${model.pool.names} sharing the work.` : undefined} {...guide.tip('models.download')}>
                 <Icon name="FiDownload" size="xs" />
-                {job?.status === 'paused' || job?.status === 'failed' ? 'Resume' : 'Download'}
+                {job?.status === 'paused' || job?.status === 'failed' ? 'Resume' : forPool ? 'Download for pooling' : 'Download'}
             </Button>
         );
     }

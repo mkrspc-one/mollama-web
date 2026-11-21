@@ -542,7 +542,6 @@ export const chatService = {
     get: (id) => api.get(`/chats/${id}`),
     update: (id, changes) => api.patch(`/chats/${id}`, changes),
     remove: (id) => api.delete(`/chats/${id}`),
-    summarise: (id) => api.post(`/chats/${id}/summary`, {}, { timeout: 0 }),
     exportChat: (id, format) => api.get(`/chats/${id}/export`, { params: { format } }),
 
     attachUpload: (id, file) => api.post(`/chats/${id}/attachments`, file, {

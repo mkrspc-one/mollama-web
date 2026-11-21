@@ -2389,21 +2389,6 @@ const ChatPage = () => {
         }
     };
 
-    const summarise = async () => {
-        setWorking('Writing a summary. This can take a minute…');
-        try {
-            const next = (await chatService.summarise(chat.id)).chat;
-            setChat(next);
-            goTo(next.id);
-            loadChats(search);
-            success('A new chat was started from a summary of the old one.');
-        } catch (error) {
-            notifyError(describeError(error, 'The summary could not be written.'));
-        } finally {
-            setWorking(null);
-        }
-    };
-
     const shown = useMemo(() => {
         const messages = chat?.messages || [];
         if (!live || live.joined) return messages;
@@ -2597,8 +2582,8 @@ const ChatPage = () => {
                                 {chat?.memory && message.index === chat.memoryThrough && (
                                     <Container layout="flex" align="center" gap="xs" padding="none" width="100%" wrap={false}>
                                         <Container padding="none" flexFill><Divider size="xs" /></Container>
-                                        <Button size="xxs" variant="ghost" color="secondary" genieTrigger="click" genie={{ trigger: 'click', width: '420px', padding: 'sm', content: <MemoryView text={chat.memory} /> }} title="The model is sent a memory of the messages above instead of the messages themselves">
-                                            <Icon name="FiArchive" size="xs" />Above: sent to the model as a memory
+                                        <Button size="xs" variant="ghost" color="secondary" genieTrigger="click" genie={{ trigger: 'click', width: '420px', padding: 'sm', content: <MemoryView text={chat.memory} /> }} title="The messages above are still here for you. The model now gets a short memory of them instead, so the chat fits what it can read. Choose to read the memory.">
+                                            <Icon name="FiArchive" size="xs" />Context compressed: the model keeps a memory of the messages above
                                         </Button>
                                         <Container padding="none" flexFill><Divider size="xs" /></Container>
                                     </Container>
@@ -2664,8 +2649,8 @@ const ChatPage = () => {
 
                     {context?.warn && !busy && chat.messages.length > 0 && (
                         <Container layout="flex" align="center" gap="sm" padding="none" role="status">
-                            <Typography size="sm" color="warning">This chat is nearly as long as the model can read ({context.percent}% used). Older messages are being folded into a memory; for a fresh start, begin a new chat from a summary.</Typography>
-                            <Button size="xs" color="primary" disabled={Boolean(working)} onClick={summarise}>New chat from summary</Button>
+                            <Icon name="FiArchive" size="xs" color="warning" />
+                            <Typography size="xs" color="muted">This chat is {context.percent}% full. Older messages are compressed into a memory as you go, so you can keep going here.</Typography>
                         </Container>
                     )}
 
