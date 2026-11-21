@@ -66,7 +66,8 @@ const POOL_GUIDE = {
             'Use a cable, not Wi-Fi: every word crosses the network, and Wi-Fi delay comes and goes. Measured on the owner\'s two computers, a 33B model wrote 7.5 words a second over a direct cable against about 6.5 over Wi-Fi.',
             'A better router helps less than you might think: on a cable the delay is already under a millisecond, and the computers\' own work sets most of the speed. Faster ports (2.5 Gb) mostly shorten the first start, when the model is sent to the other computers. On Wi-Fi, a newer router close to the computers keeps the delay steadier.',
             'Pool only models that do not fit one computer. A model that fits runs fastest on its own.',
-            'Keep lending computers awake and plugged in, and close large programs on them.',
+            'Before you pool, close large apps on every computer in the pool: browsers with many tabs, games, video and design tools. The model is split by each computer\'s memory, and memory other apps hold can make it slower or stop it loading.',
+            'Keep lending computers awake and plugged in while a pooled model runs.',
             'Pool two or three computers, not more: each one adds a step to every word.',
             'The first start sends the model to the other computers and takes minutes; later starts take about a minute.',
             'Turn lending off when you are done.'
@@ -167,10 +168,10 @@ const PoolingCard = ({ pools, onPart }) => {
     return (
         <Card layout="flex-column" gap="sm" padding="md" width="100%" minWidth="0" span="full" hover={false}>
             <Heading icon="FiLayers" title="Pooling computers">
-                <Badge size="xs" color="secondary">Coming soon</Badge>
+                <Badge size="xs" color="secondary" title="Needs the Mollama desktop app 1.0.8 or later on every pooled computer">Preview</Badge>
             </Heading>
             <Typography size="xs" color="muted">
-                Several of your computers can share one model that none of them could hold alone. Mollama checks which of your computers are on the same network. Choose one main computer and let the others lend; running a pooled model in a chat is being built.
+                Several of your computers can share one model that none of them could hold alone. Mollama checks which of your computers are on the same network. Choose one main computer and let the others lend. Once the main computer reaches them, the pool appears in a chat's computer picker, with the main computer's models.
             </Typography>
             {!pools && <Typography size="xs" color="muted">Checking your computers…</Typography>}
             {pools && groups.length === 0 && <Typography size="xs">None of your computers can pool right now.</Typography>}

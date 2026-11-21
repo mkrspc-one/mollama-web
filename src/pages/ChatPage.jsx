@@ -327,6 +327,9 @@ const LocalSwitch = ({ defaultChecked, ...props }) => {
 // A page written in a reply, shown in a sealed frame. With a template, the template is one of a skill's files, and
 // each /*NAME*/ marker in it is filled by the Part of that name: another of the skill's files, or the text inside the
 // Part. Nothing is drawn while the reply is still being written, so the page is built once, from the whole of it.
+// How each kind of place a model can run is marked in the picker: a computer, an online service, or a pool of computers.
+const DEVICE_ICONS = { cloud: 'FiCloud', pool: 'FiLayers' };
+
 const FRAME_PART = /<Part\b([^>]*?)(?:\/>|>([\s\S]*?)<\/Part\s*>)/gi;
 const skillFiles = new Map();
 const loadSkillFile = (address) => {
@@ -2740,7 +2743,7 @@ const ChatPage = () => {
                             </Container>
                             <Pop
                                 label={devices.length > 1 ? `${devices.find((device) => device.id === currentDevice)?.name || 'Pick a computer'} · ${modelLabel}` : modelLabel}
-                                icon={devices.length > 1 ? (devices.find((device) => device.id === currentDevice)?.kind === 'cloud' ? 'FiCloud' : 'FiMonitor') : null}
+                                icon={devices.length > 1 ? DEVICE_ICONS[devices.find((device) => device.id === currentDevice)?.kind] || 'FiMonitor' : null}
                                 endIcon="FiCpu"
                                 size="xs"
                                 open={pop === 'model'}
@@ -2753,7 +2756,7 @@ const ChatPage = () => {
                                         <Container layout="flex-column" gap="none" padding="none" width="50%" minWidth="0">
                                             <Typography size="xxs" color="muted" weight="semibold">Run on</Typography>
                                             {devices.map((device) => (
-                                                <Row key={device.id} icon={device.kind === 'cloud' ? 'FiCloud' : 'FiMonitor'} label={device.name} size="xs" selected={device.id === currentDevice} disabled={!device.online || device.paused} onClick={() => changeDevice(device.id)}>
+                                                <Row key={device.id} icon={DEVICE_ICONS[device.kind] || 'FiMonitor'} label={device.name} size="xs" selected={device.id === currentDevice} disabled={!device.online || device.paused} onClick={() => changeDevice(device.id)}>
                                                     {deviceService.ready(device)
                                                         ? <Icon name="FiCheckCircle" size="xs" color="success" title="Ready to use right now" aria-label="Ready to use right now" />
                                                         : device.online && !device.paused && device.ollama?.available && device.ollama.modelCount > 0
