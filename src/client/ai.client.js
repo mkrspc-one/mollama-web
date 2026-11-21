@@ -287,6 +287,7 @@ export const deviceService = {
 
 // The desktop app's installers are published as releases of a public repository; this reads which ones exist.
 const INSTALLERS = 'mkrspc-one/mollama-installers';
+let shownRelease = null;
 // What the pickers showed last, kept so they can be drawn at once and corrected when the fresh answer arrives.
 const readKept = (key, fallback) => {
     try {
@@ -358,12 +359,18 @@ export const desktopService = {
             ? [{ id: 'staging', name: 'Mollama-Staging', title: 'Mollama Staging', opens: 'Opens staging.mollama.one, for testing' }]
             : [{ id: 'production', name: 'Mollama', title: 'Mollama', opens: 'Opens www.mollama.one' }];
     },
-    address: (file) => `https://github.com/${INSTALLERS}/releases/latest/download/${file}`,
+    // The download links point at the release published() found, or at the latest full release before it has answered.
+    address: (file) => `https://github.com/${INSTALLERS}/releases/${shownRelease ? `download/${shownRelease}` : 'latest/download'}/${file}`,
+    // The released app follows the latest full release. The staging site also offers previews (pre-releases), since the
+    // staging app is where they are tried.
     async published() {
         try {
-            const reply = await fetch(`https://api.github.com/repos/${INSTALLERS}/releases/latest`);
+            const staging = desktopService.channels()[0].id === 'staging';
+            const reply = await fetch(`https://api.github.com/repos/${INSTALLERS}/releases${staging ? '?per_page=10' : '/latest'}`);
             if (!reply.ok) return { version: null, files: ['Mollama-Setup.exe', 'Mollama-Staging-Setup.exe'] };
-            const release = await reply.json();
+            const answer = await reply.json();
+            const release = staging ? (Array.isArray(answer) ? answer : []).find((one) => !one.draft) || {} : answer;
+            shownRelease = release.tag_name || null;
             return { version: String(release.tag_name || '').replace(/^v/, '') || null, files: (release.assets || []).map((asset) => asset.name) };
         } catch {
             return { version: null, files: ['Mollama-Setup.exe', 'Mollama-Staging-Setup.exe'] };
