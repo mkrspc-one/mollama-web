@@ -168,13 +168,19 @@ const PoolGuide = () => {
     );
 };
 
-const PoolingCard = ({ pools, onPart }) => {
+const PoolingCard = ({ pools, onPart, onCheck, checking, checkedAt }) => {
     const groups = pools?.groups || [];
     const left = pools?.left || [];
     return (
         <Card layout="flex-column" gap="sm" padding="md" width="100%" minWidth="0" span="full" hover={false}>
             <Heading icon="FiLayers" title="Pooling computers">
-                <Badge size="xs" color="secondary" title="Needs the Mollama desktop app 1.0.8 or later on every pooled computer">Preview</Badge>
+                <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>
+                    {checkedAt && <Typography size="xxs" color="muted">Checked {checkedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</Typography>}
+                    <Button size="xs" color="secondary" disabled={checking} title="Read every connected computer's network again and check who can pool" onClick={onCheck}>
+                        <Icon name="FiRefreshCw" size="xs" />{checking ? 'Checking…' : 'Check again'}
+                    </Button>
+                    <Badge size="xs" color="secondary" title="Needs the Mollama desktop app 1.0.8 or later on every pooled computer">Preview</Badge>
+                </Container>
             </Heading>
             <Typography size="xs" color="muted">
                 Several of your computers can share one model that none of them could hold alone. Mollama checks which of your computers are on the same network. Choose the computer that runs the model and let the others lend their memory. Once it reaches them, the pool appears in a chat's computer picker, with that computer's models.
@@ -539,6 +545,20 @@ const DevicesPage = () => {
     }, [load]);
 
     // A computer's part in a pool: lending its memory, or running the model with the others' memory.
+    // A network check on demand: every connected computer is read again and checked for who can pool.
+    const [poolCheck, setPoolCheck] = useState({ checking: false, at: null });
+    const checkPools = async () => {
+        setPoolCheck((now) => ({ ...now, checking: true }));
+        try {
+            const result = await deviceService.checkPools();
+            setPools(result);
+            setPoolCheck({ checking: false, at: new Date(result.checkedAt || Date.now()) });
+        } catch (error) {
+            setPoolCheck((now) => ({ ...now, checking: false }));
+            notifyError(describeError(error, 'The network check could not be run.'));
+        }
+    };
+
     const setPoolPart = async (computer, role) => {
         try {
             setPools(await deviceService.setPoolRole(computer.id, role));
@@ -632,7 +652,7 @@ const DevicesPage = () => {
                     </Card>
                 )}
 
-                {view === 'pooling' && devices?.length > 0 && <PoolingCard pools={pools} onPart={setPoolPart} />}
+                {view === 'pooling' && devices?.length > 0 && <PoolingCard pools={pools} onPart={setPoolPart} onCheck={checkPools} checking={poolCheck.checking} checkedAt={poolCheck.at} />}
                 {view === 'pooling' && <PoolGuide />}
 
                 {view === 'computers' && <Container layout="grid" columns={2} gap="sm" padding="none" width="100%">
