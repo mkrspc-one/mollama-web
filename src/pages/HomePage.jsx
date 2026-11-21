@@ -367,7 +367,7 @@ const Calculator = ({ user }) => {
             <SectionHead title="Check your computer" side={<GetStarted />} />
 
             <Card layout="flex-column" gap="sm" padding="md" width="100%" hover={false}>
-                <Container layout="grid" columns="auto" gap="sm" padding="none" width="100%" align="end">
+                <Container layout="grid" columns="auto" gap="sm" padding="none" width="100%" align="start">
                     <Input size="sm" label="System memory (GB)" helpText="For example 16" value={memory} onChange={(event) => setMemory(event.target.value)} width="100%" />
                     <Select size="sm" label="Graphics card" options={GRAPHICS_CARDS.map(({ value, label }) => ({ value, label }))} value={card} onChange={setCard} width="100%" />
                     {card === 'other' && (
