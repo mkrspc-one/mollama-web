@@ -19,7 +19,7 @@ const POOL_GUIDE = {
             'Install the Mollama desktop app on every computer you want to pool, and sign in with this account on each.',
             'Put them on the same home network, by cable if you can, or connect two of them with a direct network cable.',
             'Mollama finds the computers that can pool by itself and lists them here.',
-            'Turn on pooling in the desktop app on each computer. After you agree, it sets up the llama.cpp parts that let that computer be the main computer or a helper.',
+            'Choose each computer\'s part below. The first time, the desktop app on that computer asks before it sets pooling up.',
             'Pick the main computer: the one with the largest graphics card, and room on its disk for the model.',
             'Download the model on the main computer only, then choose the pool in a chat.'
         ]
@@ -44,7 +44,7 @@ const POOL_GUIDE = {
         items: [
             'Runs models no single computer of yours can hold, using the memory of all of them.',
             'Puts memory to work that sits idle on your other computers.',
-            'Only the main computer downloads the model: the helpers lend their memory through the desktop app and keep no copy of their own.',
+            'Only the main computer downloads the model. The others lend their memory and keep no copy of it.',
             'Measured on two of the owner\'s computers over Wi-Fi: a 33B model wrote about 2.8 times faster pooled than on one computer alone.'
         ]
     },
@@ -52,7 +52,7 @@ const POOL_GUIDE = {
         label: 'Risks',
         figure: 'gate',
         items: [
-            'Pool only at home, or on a network you trust. The computers pass the model\'s work to each other with no password and no encryption, so on public or shared Wi-Fi someone else nearby could reach it. Mollama never pools on a network Windows marks Public, and a lending computer lets in only your main computer.',
+            'Pool only at home, or on a network you trust. Pooled computers talk to each other openly, so on public or shared Wi-Fi someone nearby could listen in. Mollama never pools on a network Windows marks Public, and a lending computer answers only your main computer.',
             'Every computer in the pool has to stay on: if one sleeps, loses its network or is turned off, the reply stops.',
             'Pooling a model that fits one computer makes it slower, not faster: a small model wrote 11 words a second pooled against 52 on one computer.',
             'A lending computer is busy and warm while a pooled model runs.'
@@ -64,11 +64,11 @@ const POOL_GUIDE = {
         items: [
             'Which cable: an Ethernet network cable, Cat 6 or Cat 5e, with clear square plugs at both ends. A laptop with no network port also needs a USB-C network adapter (USB 3, 1 Gb or 2.5 Gb). The Wiring tab shows every way to connect.',
             'Use a cable, not Wi-Fi: every word crosses the network, and Wi-Fi delay comes and goes. Measured on the owner\'s two computers, a 33B model wrote 7.5 words a second over a direct cable against about 6.5 over Wi-Fi.',
-            'A better router helps less than you might think: on a cable the delay is already under a millisecond, and the computers\' own work sets most of the speed. Faster ports (2.5 Gb) mostly shorten the first start, when the model is sent to the helpers. On Wi-Fi, a newer router close to the computers keeps the delay steadier.',
+            'A better router helps less than you might think: on a cable the delay is already under a millisecond, and the computers\' own work sets most of the speed. Faster ports (2.5 Gb) mostly shorten the first start, when the model is sent to the other computers. On Wi-Fi, a newer router close to the computers keeps the delay steadier.',
             'Pool only models that do not fit one computer. A model that fits runs fastest on its own.',
             'Keep lending computers awake and plugged in, and close large programs on them.',
             'Pool two or three computers, not more: each one adds a step to every word.',
-            'The first start sends the model to the helpers and takes minutes; later starts use their cache and take about a minute.',
+            'The first start sends the model to the other computers and takes minutes; later starts take about a minute.',
             'Turn lending off when you are done.'
         ]
     }
@@ -80,7 +80,7 @@ const poolStatus = (one, hasMain) => {
     if (one.role === 'off') return null;
     if (!one.known) return ['Its desktop app cannot pool yet: pooling comes with the next Mollama desktop app release.', 'warning'];
     if (one.setup === 'asking') return ['Waiting for you to agree on that computer to set up pooling.', 'warning'];
-    if (one.setup === 'downloading') return [`Downloading llama.cpp${one.progress ? `, ${Math.round(one.progress * 100)}%` : ''}…`, 'secondary'];
+    if (one.setup === 'downloading') return [`Setting up pooling${one.progress ? `, ${Math.round(one.progress * 100)}%` : ''}…`, 'secondary'];
     if (['declined', 'failed', 'unsupported'].includes(one.setup) || (one.detail && !one.lending)) return [one.detail || 'Pooling could not be set up on it.', 'error'];
     if (one.role === 'main') return ['Main computer: it holds the model and runs it.', 'primary'];
     if (!hasMain) return ['Ready to lend. Choose a main computer on this network.', 'secondary'];
@@ -181,7 +181,7 @@ const PoolingCard = ({ pools, onPart }) => {
                         <Typography size="xs" weight="semibold">{group.computers.map((one) => one.name).join(' + ')}</Typography>
                         <Badge size="xs" color="secondary">{group.via === 'cable' ? 'Direct cable' : group.wired ? 'Home network, cable' : 'Home network, Wi-Fi'}</Badge>
                         {group.computers.some((one) => one.role === 'main') && group.computers.some((one) => one.role === 'lend') && group.computers.filter((one) => one.role === 'lend').every((one) => one.reachable === true)
-                            ? <Badge size="xs" color="success" title="The main computer reached every lending computer through its gate.">Checked</Badge>
+                            ? <Badge size="xs" color="success" title="The main computer reached every lending computer.">Checked</Badge>
                             : <Badge size="xs" color="warning" title="Checked once a main computer reaches a lending computer.">Not yet checked</Badge>}
                     </Container>
                     {group.computers.map((one) => {
@@ -520,7 +520,7 @@ const DevicesPage = () => {
     const setPoolPart = async (computer, role) => {
         try {
             setPools(await deviceService.setPoolRole(computer.id, role));
-            if (role === 'lend') success(`${computer.name} will lend. If pooling is not set up on it yet, it asks there before downloading llama.cpp.`);
+            if (role === 'lend') success(`${computer.name} will lend. If pooling is not set up on it yet, it asks on that computer first.`);
             if (role === 'main') success(`${computer.name} is now your main computer.`);
         } catch (error) {
             notifyError(describeError(error, 'The computer could not be changed.'));
