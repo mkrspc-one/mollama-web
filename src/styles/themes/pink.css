@@ -41,6 +41,19 @@
   --text-color: #6B0A2F;
   --text-contrast-color: #FDE8F0;
 
+  /* Readable colours (4.5:1, WCAG AA), worked out from the colours above */
+  --text-muted: #8E3F5D;
+  --primary-text-color: #B40C43;
+  --secondary-text-color: #3A6631;
+  --tertiary-text-color: #7244AE;
+  --primary-contrast-color: #FDE8F0;
+  --secondary-contrast-color: #FFFFFF;
+  --tertiary-contrast-color: #111111;
+  --success-contrast-color: #FFFFFF;
+  --warning-contrast-color: #111111;
+  --error-contrast-color: #FDE8F0;
+  --focus-ring-color: #B40C43;
+
   /* Shadow System - Pink theme uses subtle pink-tinted shadows */
   --shadow-color: rgba(204, 12, 73, 0.2);
   --shadow-color-hover: rgba(204, 12, 73, 0.35);

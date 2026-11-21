@@ -42,6 +42,19 @@
   --text-color: #BF3100;
   --text-contrast-color: #FFF5CC;
 
+  /* Readable colours (4.5:1, WCAG AA), worked out from the colours above */
+  --text-muted: #BF3100;
+  --primary-text-color: #BF3100;
+  --secondary-text-color: #BF3100;
+  --tertiary-text-color: #BF3100;
+  --primary-contrast-color: #FFF5CC;
+  --secondary-contrast-color: #FFF5CC;
+  --tertiary-contrast-color: #111111;
+  --success-contrast-color: #111111;
+  --warning-contrast-color: #111111;
+  --error-contrast-color: #FFF5CC;
+  --focus-ring-color: #BF3100;
+
   /* Overlay and Backdrop Colors */
   --backdrop-color: rgba(191, 49, 0, 0.55);
     

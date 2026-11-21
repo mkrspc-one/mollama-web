@@ -42,6 +42,19 @@
     --text-color: #EAF5FF;
     --text-contrast-color: #0C2240;
 
+    /* Readable colours (4.5:1, WCAG AA), worked out from the colours above */
+    --text-muted: #91A1B3;
+    --primary-text-color: #A5D8FF;
+    --secondary-text-color: #FB773B;
+    --tertiary-text-color: #FFFFFF;
+    --primary-contrast-color: #0C2240;
+    --secondary-contrast-color: #0C2240;
+    --tertiary-contrast-color: #0C2240;
+    --success-contrast-color: #0C2240;
+    --warning-contrast-color: #0C2240;
+    --error-contrast-color: #0C2240;
+    --focus-ring-color: #A5D8FF;
+
     /* Overlay and Backdrop Colors */
     --backdrop-color: rgba(6, 18, 36, 0.8);
     

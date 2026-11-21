@@ -2,6 +2,7 @@ import React, { createContext, forwardRef, useContext, useEffect, useMemo, useRe
 import { createPortal } from 'react-dom';
 import { useTheme } from '@contexts/ThemeContext';
 import { useGeniePortal } from './Genie';
+import Icon from './Icon';
 
 const BUTTON_COLOR_TOKENS = {
     primary: 'var(--primary-color)',
@@ -14,6 +15,10 @@ const BUTTON_COLOR_TOKENS = {
 
 // Context for ButtonGroup to manage selection
 export const ButtonGroupContext = createContext(null);
+
+// Whether a button shows words of its own: then they name it, and its title stays a hover tip.
+const hasText = (children) => React.Children.toArray(children).some((child) => typeof child === 'string' || typeof child === 'number'
+    || (React.isValidElement(child) && child.type !== Icon && hasText(child.props?.children)));
 
 // Context for Button to share state with children (like Icon)
 export const ButtonContext = createContext(null);
@@ -250,7 +255,7 @@ export const Button = forwardRef(({
                 data-theme={buttonTheme}
                 data-theme-source={theme ? 'local' : 'inherited'}
                 data-genie-position={genieConfig?.position || 'auto'}
-                aria-label={title || undefined}
+                aria-label={title && !hasText(children) ? title : undefined}
                 {...props}
                 {...combinedProps}
                 style={{ ...getMarginStyle(), ...(variantColorValue ? { '--button-variant-color': variantColorValue } : {}) }}
