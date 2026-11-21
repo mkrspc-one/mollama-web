@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input } from '@components/Components';
+import { useSearchParams } from 'react-router-dom';
 import { useNotification } from '@contexts/NotificationContext';
 import { deviceService, desktopService, describeError, formatGb, useGuide } from '../client/ai.client';
 
@@ -57,7 +58,7 @@ const POOL_PARTS = [['off', 'Off'], ['lend', 'Lend'], ['main', 'Main']];
 // What a computer in a pool is doing now, in a few words, and the colour of its badge.
 const poolStatus = (one, hasMain) => {
     if (one.role === 'off') return null;
-    if (!one.known) return ['Its desktop app is too old to pool. Update the Mollama desktop app on it.', 'warning'];
+    if (!one.known) return ['Its desktop app cannot pool yet: pooling comes with the next Mollama desktop app release.', 'warning'];
     if (one.setup === 'asking') return ['Waiting for you to agree on that computer to set up pooling.', 'warning'];
     if (one.setup === 'downloading') return [`Downloading llama.cpp${one.progress ? `, ${Math.round(one.progress * 100)}%` : ''}…`, 'secondary'];
     if (['declined', 'failed', 'unsupported'].includes(one.setup) || (one.detail && !one.lending)) return [one.detail || 'Pooling could not be set up on it.', 'error'];
@@ -414,6 +415,9 @@ const DevicesPage = () => {
     const [canManage, setCanManage] = useState(false);
     const [failed, setFailed] = useState(false);
     const [pools, setPools] = useState(null);
+    // Two views: the computers themselves, and pooling them. The address says which, so other pages can link to pooling.
+    const [params, setParams] = useSearchParams();
+    const view = params.get('view') === 'pooling' ? 'pooling' : 'computers';
 
     const load = useCallback(async () => {
         try {
@@ -499,6 +503,11 @@ const DevicesPage = () => {
                         {devices && !canManage && " Only an admin or owner can correct a device's details."}
                     </Typography>
                 </Container>
+                <ButtonGroup size="xs" justify="start" selectable={false}>
+                    {[['computers', 'Computers', 'FiMonitor'], ['pooling', 'Pooling', 'FiLayers']].map(([id, label, icon]) => (
+                        <Button key={id} size="xs" color={view === id ? 'primary' : 'secondary'} selected={view === id} onClick={() => setParams(id === 'pooling' ? { view: id } : {}, { replace: true })}><Icon name={icon} size="xs" />{label}</Button>
+                    ))}
+                </ButtonGroup>
 
             </Container>
             <Container layout="flex" justify="center" padding="none" width="100%" flexFill minHeight="0" overflow="auto">
@@ -523,8 +532,9 @@ const DevicesPage = () => {
                     </Card>
                 )}
 
-                <Container layout="grid" columns={2} gap="sm" padding="none" width="100%">
-                    {devices?.length > 0 && <PoolingCard pools={pools} onPart={setPoolPart} />}
+                {view === 'pooling' && devices?.length > 0 && <PoolingCard pools={pools} onPart={setPoolPart} />}
+
+                {view === 'computers' && <Container layout="grid" columns={2} gap="sm" padding="none" width="100%">
                     {devices?.map((device) => (
                         <DeviceCard key={device.id} device={device} canManage={canManage} onChanged={replaceDevice} onRemove={removeDevice} onPause={pauseDevice} here={device.id === here} onSetUp={setUpOllama} />
                     ))}
@@ -544,7 +554,7 @@ const DevicesPage = () => {
                         </Container>
                         <DesktopDownloads vertical />
                     </Card>
-                </Container>
+                </Container>}
             </Container>
             </Container>
             </Container>
