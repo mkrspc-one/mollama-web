@@ -1528,16 +1528,28 @@ const MODEL_SETTINGS = [
 ];
 const emptySetup = { instructions: [], skills: null, tools: [], ...Object.fromEntries(MODEL_SETTINGS.map((setting) => [setting.key, ''])) };
 
+// Chats seen on this visit, per account and in memory only, so coming back to the page or to a chat shows it at once
+// while it is read again. Never another chat's content: a chat not seen yet shows a loading line until it arrives.
+const seenChats = { owner: null, list: null, opened: new Map() };
+const seenBy = (owner) => {
+    if (seenChats.owner !== owner) Object.assign(seenChats, { owner, list: null, opened: new Map() });
+    return seenChats;
+};
+
 const ChatPage = () => {
     const { id: routeId } = useParams();
     const navigate = useNavigate();
     const { success, error: notifyError, confirm } = useNotification();
-
-    const [chats, setChats] = useState([]);
-    const [search, setSearch] = useState('');
-    const [chat, setChat] = useState(null);
     const { user: signedIn } = useAuth();
     pickerMemory.as(signedIn?.id || signedIn?._id);
+    const seen = seenBy(String(signedIn?.id || signedIn?._id || ''));
+
+    const [chats, setChats] = useState(() => seen.list || []);
+    const [chatsRead, setChatsRead] = useState(() => Boolean(seen.list));
+    const [search, setSearch] = useState('');
+    const [chat, setChat] = useState(() => (routeId && seen.opened.get(routeId)) || null);
+    // A chat named in the address that has not arrived yet.
+    const opening = Boolean(routeId) && chat?.id !== routeId;
     // The pickers open with what they showed last, so a name is there at once; the fresh answer then corrects it.
     const preferDevice = (list, current) => {
         const computers = list.filter((device) => device.kind !== 'cloud');
@@ -1640,7 +1652,10 @@ const ChatPage = () => {
 
     const loadChats = useCallback(async (term = '') => {
         try {
-            setChats((await chatService.list(term)).chats);
+            const { chats: found } = await chatService.list(term);
+            setChats(found);
+            setChatsRead(true);
+            if (!term) seen.list = found;
         } catch (error) {
             notifyError(describeError(error, 'Your chats could not be loaded.'));
         }
@@ -1725,12 +1740,15 @@ const ChatPage = () => {
             return;
         }
         if (chat?.id === routeId) return undefined;
+        // A chat seen on this visit shows at once and is read again behind it; anything done to it meanwhile is kept.
+        const kept = seen.opened.get(routeId) || null;
+        setChat(kept);
         // Only the chat still asked for is opened, so a slow answer for one clicked earlier is dropped.
         let wanted = true;
         chatService.get(routeId)
             .then((result) => {
                 if (!wanted) return;
-                setChat(result.chat);
+                setChat((now) => (now && now.id === result.chat.id && now !== kept ? now : result.chat));
                 if (result.chat.replying) joinReply(result.chat);
             })
             .catch((error) => {
@@ -1742,6 +1760,13 @@ const ChatPage = () => {
             wanted = false;
         };
     }, [routeId]);
+
+    useEffect(() => {
+        if (!chat?.id) return;
+        seen.opened.delete(chat.id);
+        seen.opened.set(chat.id, chat);
+        if (seen.opened.size > 20) seen.opened.delete(seen.opened.keys().next().value);
+    }, [chat]);
 
     useEffect(() => {
         if (!chat) return;
@@ -2185,7 +2210,7 @@ const ChatPage = () => {
 
     const sendText = async (content) => {
         const trimmed = content.trim();
-        if (!trimmed) return;
+        if (!trimmed || opening) return;
         if (busy) {
             if (!chat) return;
             setText('');
@@ -2317,6 +2342,7 @@ const ChatPage = () => {
         if (!(await confirm(`Delete "${chat.title}"? Its messages and attached documents are removed for good.`, { confirmLabel: 'Delete', color: 'error' }))) return;
         try {
             await chatService.remove(chat.id);
+            seen.opened.delete(chat.id);
             setChat(null);
             navigate('/chat', { replace: true });
             loadChats(search);
@@ -2411,7 +2437,7 @@ const ChatPage = () => {
             {(chats.length > 6 || search) && (
                 <Input type="search" placeholder="Search by title" value={search} onChange={(event) => setSearch(event.target.value)} width="100%" size="sm" />
             )}
-            {chats.length === 0 && <Typography size="sm" color="muted">{search ? 'No chat has that title.' : 'Your chats appear here.'}</Typography>}
+            {chatsRead && chats.length === 0 && <Typography size="sm" color="muted">{search ? 'No chat has that title.' : 'Your chats appear here.'}</Typography>}
             <Container layout="flex-column" gap="none" padding="none" width="100%">
                 {chats.map((item) => (
                     <Button
@@ -2469,7 +2495,7 @@ const ChatPage = () => {
                 <Centered>
                     <Container layout="flex" align="center" gap="xs" padding="none" width="100%">
                         <Container padding="none" flexFill minWidth="120px">
-                            <Typography as="h1" size="md" weight="semibold" color="secondary" truncate>{chat?.title || 'New chat'}</Typography>
+                            <Typography as="h1" size="md" weight="semibold" color="secondary" truncate>{opening ? (chats.find((one) => one.id === routeId)?.title || '') : chat?.title || 'New chat'}</Typography>
                         </Container>
 
                         {!wide && (
@@ -2547,7 +2573,8 @@ const ChatPage = () => {
                                 <Markdown text={chat.summary} />
                             </Container>
                         )}
-                        {shown.length === 0 && !busy && (
+                        {opening && <Typography size="sm" color="muted">Opening this chat…</Typography>}
+                        {shown.length === 0 && !busy && !opening && (
                             <Container layout="flex-column" gap="sm" padding="none" marginTop="xl">
                                 <Typography size="lg" weight="semibold">What would you like to work on?</Typography>
                                 {unreachable ? (
