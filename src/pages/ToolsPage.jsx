@@ -268,17 +268,18 @@ const ServerCard = ({ server, icon, where, busy, onCheck, onSignIn, onRemove }) 
             {!ready && health.needs.map((need) => <Typography key={need} size="xxs">{need}</Typography>)}
             {!ready && health.detail && <Typography size="xxs" color="muted">Reported: {health.detail}</Typography>}
 
-            <Container layout="flex" align="center" justify="between" gap="xs" padding="none" width="100%" wrap={false}>
+            {/* The buttons go under the tools line when the card is too narrow for both. */}
+            <Container layout="flex" align="center" justify="between" gap="xs" padding="none" width="100%">
                 {server.tools.length > 0 ? (
                     <Button size="xs" color="secondary" flat onClick={() => setShowTools((shown) => !shown)}>
                         <Icon name={showTools ? 'FiChevronDown' : 'FiChevronRight'} size="xs" />
                         {server.tools.length === 1 ? '1 tool' : `${server.tools.length} tools`}
                     </Button>
-                ) : <Typography size="xxs" color="muted">No tools yet</Typography>}
-                <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>
+                ) : <Typography size="xxs" color="muted" truncate>No tools yet</Typography>}
+                <Container layout="flex" align="center" justify="end" gap="xs" padding="none">
                     {canSignIn && <Button size="xs" color="primary" disabled={busy} title="Opens the app's sign-in page in a new tab" onClick={() => onSignIn(server)}><Icon name="FiLogIn" size="xs" />Sign in</Button>}
                     <Button size="xs" color="secondary" disabled={busy} onClick={() => onCheck(server)}><Icon name="FiRefreshCw" size="xs" />{busy ? 'Checking…' : 'Check'}</Button>
-                    <Button size="xs" color="error" disabled={busy} onClick={() => onRemove(server)}><Icon name="FiTrash2" size="xs" />Remove</Button>
+                    <Button size="xs" color="error" disabled={busy} title={`Remove ${server.name}`} onClick={() => onRemove(server)}><Icon name="FiTrash2" size="xs" /></Button>
                 </Container>
             </Container>
 
