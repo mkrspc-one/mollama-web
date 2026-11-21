@@ -361,15 +361,15 @@ export const desktopService = {
     },
     // The download links point at the release published() found, or at the latest full release before it has answered.
     address: (file) => `https://github.com/${INSTALLERS}/releases/${shownRelease ? `download/${shownRelease}` : 'latest/download'}/${file}`,
-    // The released app follows the latest full release. The staging site also offers previews (pre-releases), since the
-    // staging app is where they are tried.
+    // The live site follows the latest full release. Everywhere else (staging, a computer's own copy) also offers
+    // previews (pre-releases), since that is where they are tried.
     async published() {
         try {
-            const staging = desktopService.channels()[0].id === 'staging';
-            const reply = await fetch(`https://api.github.com/repos/${INSTALLERS}/releases${staging ? '?per_page=10' : '/latest'}`);
+            const previews = !/^(www\.)?mollama\.one$/.test(window.location.hostname);
+            const reply = await fetch(`https://api.github.com/repos/${INSTALLERS}/releases${previews ? '?per_page=10' : '/latest'}`);
             if (!reply.ok) return { version: null, files: ['Mollama-Setup.exe', 'Mollama-Staging-Setup.exe'] };
             const answer = await reply.json();
-            const release = staging ? (Array.isArray(answer) ? answer : []).find((one) => !one.draft) || {} : answer;
+            const release = previews ? (Array.isArray(answer) ? answer : []).find((one) => !one.draft) || {} : answer;
             shownRelease = release.tag_name || null;
             return { version: String(release.tag_name || '').replace(/^v/, '') || null, files: (release.assets || []).map((asset) => asset.name) };
         } catch {
