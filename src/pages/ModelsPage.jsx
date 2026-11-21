@@ -370,7 +370,8 @@ const CatalogueCard = ({ model, job, canManage, ollamaUp, onDownload }) => {
             <Typography size="xs" color="muted">{model.description}</Typography>
             <Container layout="flex" gap="xs" padding="none" align="center">
                 <Badge size="xs" color={FIT_COLORS[model.fit.verdict]}>{model.fit.label}</Badge>
-                {model.pool && <Badge size="xs" color="primary" title={`Too large for this computer alone, but together these computers can give it ${gb(model.pool.memoryMb)}. A pooled model writes more slowly than one on a single computer.`}>Fits if you pool {model.pool.names}</Badge>}
+                {model.pool && !model.pool.off && <Badge size="xs" color="primary" title={`Too large for this computer alone, but together these computers can give it ${gb(model.pool.memoryMb)}. A pooled model writes more slowly than one on a single computer.`}>Fits if you pool {model.pool.names}</Badge>}
+                {model.pool?.off && <Badge size="xs" color="warning" title={`It fits when ${model.pool.names} pool, but the pool is off right now. ${model.pool.off}`}>Fits pooled, pool off now</Badge>}
                 {model.pool && model.moe && <Badge size="xs" color="success" title="Only a small part of this model works on each word, so far less crosses between your computers: it writes much faster pooled than a model of the same size that is not a mixture of experts.">Faster when pooled</Badge>}
                 {model.pool && <Typography size="xxs" href="/devices?view=pooling">How to pool</Typography>}
                 {cannotChat(model) && <NoChatBadge />}

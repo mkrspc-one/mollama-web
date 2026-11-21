@@ -28,6 +28,7 @@ const POOL_GUIDE = {
         label: 'Wiring',
         figure: 'wired',
         items: [
+            'Most reliable: plug the computers into a small router or network switch, even an old one with no internet. Each gets a proper address and Windows remembers the network as Private, so it stays pooled after a replug. A cable straight between two computers is an "unidentified network" that Windows sets back to Public each time it is plugged in.',
             'The cable: an Ethernet network cable, Cat 6 or Cat 5e, the kind with clear square plugs that goes into a router. One to three metres is plenty. Plugged straight into both computers\' network ports, it works for any mix of computers; no special crossover cable is needed.',
             'A laptop without a network port needs a USB-C network adapter. An adapter with a USB-A plug fits a USB-C laptop through a small USB-C to USB-A adapter, not a USB-A to USB-C cable.',
             'Choose a USB 3 adapter, 1 Gb or 2.5 Gb. A USB 2 adapter is no faster than good Wi-Fi.',
@@ -176,19 +177,45 @@ const PRIVATE_STEPS = [
     'Under Network profile type, choose Private network.',
     'Come back here and press Check again.'
 ];
-const MakePrivate = ({ name }) => (
-    <Container layout="flex-column" gap="xs" padding="none" width="100%">
-        <Typography size="xs" weight="semibold">{`Set ${name}'s network to Private`}</Typography>
-        {PRIVATE_STEPS.map((step, index) => (
-            <Container key={step} layout="flex" align="start" gap="xs" padding="none" wrap={false}>
-                <Badge size="xs" color={index === 0 ? 'warning' : 'primary'} width="20px" minWidth="20px" height="20px">{index === 0 ? <Icon name="FiAlertTriangle" size="xs" color="contrast" /> : index}</Badge>
-                <Typography size="xs" color="muted">{step}</Typography>
-            </Container>
-        ))}
-        <Typography size="xxs" color="muted">Or in PowerShell, run as administrator, with the connection's own name in place of Wi-Fi (Settings lists it under Network & internet, Advanced network settings):</Typography>
-        <Typography size="xxs" as="code">Set-NetConnectionProfile -InterfaceAlias "Wi-Fi" -NetworkCategory Private</Typography>
-    </Container>
-);
+// One line for an ordinary PowerShell window: it opens an administrator one (Windows asks first) to make that connection Private.
+const privateCommand = (network) => `Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -Command Set-NetConnectionProfile -InterfaceAlias ''${network.replace(/'/g, "''''")}'' -NetworkCategory Private'`;
+const MakePrivate = ({ name, networks = [] }) => {
+    const [copied, setCopied] = useState(null);
+    const copy = async (network) => {
+        try {
+            await navigator.clipboard.writeText(privateCommand(network));
+            setCopied(network);
+        } catch {
+            setCopied(null);
+        }
+    };
+    return (
+        <Container layout="flex-column" gap="xs" padding="none" width="100%">
+            <Typography size="xs" weight="semibold">{`Set ${name}'s network to Private`}</Typography>
+            {networks.length > 0 && (
+                <>
+                    <Typography size="xxs" color="muted">{`The quickest way, on ${name}: paste this into PowerShell and allow it when Windows asks.`}</Typography>
+                    {networks.map((network) => (
+                        <Container key={network} layout="flex" align="center" gap="xs" padding="none" width="100%" wrap={false}>
+                            <Container padding="none" flexFill minWidth="0">
+                                <Typography size="xxs" as="code" truncate title={privateCommand(network)}>{privateCommand(network)}</Typography>
+                            </Container>
+                            <Button size="xs" color="secondary" onClick={() => copy(network)}><Icon name={copied === network ? 'FiCheck' : 'FiCopy'} size="xs" />{copied === network ? 'Copied' : 'Copy'}</Button>
+                        </Container>
+                    ))}
+                    <Typography size="xxs" color="muted">Or in Windows settings:</Typography>
+                </>
+            )}
+            {PRIVATE_STEPS.map((step, index) => (
+                <Container key={step} layout="flex" align="start" gap="xs" padding="none" wrap={false}>
+                    <Badge size="xs" color={index === 0 ? 'warning' : 'primary'} width="20px" minWidth="20px" height="20px">{index === 0 ? <Icon name="FiAlertTriangle" size="xs" color="contrast" /> : index}</Badge>
+                    <Typography size="xs" color="muted">{step}</Typography>
+                </Container>
+            ))}
+            <Typography size="xxs" color="muted">Then press Check again on this card.</Typography>
+        </Container>
+    );
+};
 
 // What usually stops the computer that runs the model from reaching a lending one, and what to do, most likely first.
 const UNREACHABLE_CHECKS = [
@@ -288,7 +315,7 @@ const PoolingCard = ({ pools, onPart, onCheck, checking, checkedAt }) => {
                         <Container key={one.id} layout="flex" align="center" gap="xs" padding="none" width="100%">
                             <Typography size="xxs" color="muted">{`${one.name}: ${one.message}`}</Typography>
                             {one.reason === 'public' && (
-                                <Button size="xxs" color="secondary" genieTrigger="click" genie={{ trigger: 'click', width: '420px', padding: 'sm', content: <MakePrivate name={one.name} /> }}>
+                                <Button size="xs" color="warning" genieTrigger="click" genie={{ trigger: 'click', width: '460px', padding: 'sm', content: <MakePrivate name={one.name} networks={one.publicNetworks} /> }}>
                                     <Icon name="FiShield" size="xs" />How to make it Private
                                 </Button>
                             )}
