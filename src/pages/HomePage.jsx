@@ -343,6 +343,7 @@ const Calculator = ({ user }) => {
                 <Container padding="none" flexFill />
                 <Container layout="flex" align="center" gap="xs" padding="none">
                     <Badge size="xs" color={VERDICT_COLORS[model.fit.verdict]}>{model.fit.label}</Badge>
+                    {model.pool?.copies && <Badge size="xs" color="primary" title="Mollama can pool several of your computers on the same home network into one, more slowly than a single computer.">{`Fits on ${model.pool.copies} computers like this, pooled`}</Badge>}
                     {model.moe && <Badge size="xs" color="secondary">Mixture of experts</Badge>}
                 </Container>
                 <Container layout="flex" justify="between" align="center" gap="sm" padding="none" width="100%" wrap={false}>

@@ -366,6 +366,8 @@ const CatalogueCard = ({ model, job, canManage, ollamaUp, onDownload }) => {
             <Typography size="xs" color="muted">{model.description}</Typography>
             <Container layout="flex" gap="xs" padding="none" align="center">
                 <Badge size="xs" color={FIT_COLORS[model.fit.verdict]}>{model.fit.label}</Badge>
+                {model.pool && <Badge size="xs" color="primary" title={`Too large for this computer alone, but together these computers can give it ${gb(model.pool.memoryMb)}. A pooled model writes more slowly than one on a single computer.`}>Fits if you pool {model.pool.names}</Badge>}
+                {model.pool && <Typography size="xxs" href="/devices?view=pooling">How to pool</Typography>}
                 {cannotChat(model) && <NoChatBadge />}
                 {abilities(model).map((ability) => <Badge key={ability} size="xs" color="secondary" title={ABILITY_NOTES[ability]}>{ability}</Badge>)}
             </Container>
