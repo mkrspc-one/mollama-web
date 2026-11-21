@@ -77,15 +77,27 @@ const Check = ({ ok, children, action }) => (
 // What this computer has for local tool servers, read by the desktop app: found programs, with an install page for
 // each missing one, and Check again after installing.
 const ComputerScan = ({ scan, scanning, onScan }) => (
-    <Card layout="flex" align="center" gap="xs" padding="sm" width="100%" hover={false}>
-        <Icon name="FiCpu" size="sm" color="primary" />
-        <Typography size="xs" weight="semibold">This computer has</Typography>
-        {!scan && <Typography size="xs" color="muted">{scanning ? 'Looking…' : 'Not checked yet.'}</Typography>}
-        {scan && Object.entries(PROGRAM_INFO).map(([id, info]) => (scan.programs?.[id]?.found
-            ? <Badge key={id} size="xs" color="success" title={`${info.name} is installed`}>{info.name} {scan.programs[id].version || ''}</Badge>
-            : <Button key={id} size="xxs" color="secondary" title={`${info.name} was not found. Opens its download page.`} onClick={() => openPage(info.page)}><Icon name="FiDownload" size="xs" />Install {info.name}</Button>))}
-        <Container padding="none" flexFill />
-        <Button size="xxs" color="secondary" disabled={scanning} title="Look again, after installing something" onClick={onScan}><Icon name="FiRefreshCw" size="xs" />{scanning ? 'Checking…' : 'Check again'}</Button>
+    <Card layout="flex-column" gap="xs" padding="sm" width="100%" hover={false}>
+        <Container layout="flex" align="center" justify="between" gap="xs" padding="none" width="100%" wrap={false}>
+            <Container layout="flex" align="center" gap="xs" padding="none" wrap={false} minWidth="0">
+                <Icon name="FiCpu" size="sm" color="primary" />
+                <Typography size="sm" weight="semibold">This computer has</Typography>
+                {!scan && <Typography size="xs" color="muted">{scanning ? 'Looking…' : 'Not checked yet.'}</Typography>}
+            </Container>
+            <Button size="xs" color="secondary" disabled={scanning} title="Look again, after installing something" onClick={onScan}><Icon name="FiRefreshCw" size="xs" />{scanning ? 'Checking…' : 'Check again'}</Button>
+        </Container>
+        {scan && (
+            <Container layout="grid" columns={5} gap="xs" padding="none" width="100%">
+                {Object.entries(PROGRAM_INFO).map(([id, info]) => {
+                    const found = scan.programs?.[id]?.found;
+                    return (
+                        <Check key={id} ok={found} action={!found && <Button size="xs" variant="ghost" title={`Opens the ${info.name} download page`} onClick={() => openPage(info.page)}>Install</Button>}>
+                            {found ? `${info.name} ${scan.programs[id].version || ''}` : info.name}
+                        </Check>
+                    );
+                })}
+            </Container>
+        )}
     </Card>
 );
 
@@ -107,7 +119,7 @@ const LocalSetup = ({ entry, scan, bridge, adding, onAdd }) => {
             <Typography size="xxs" color="muted">{MADE_BY[entry.by]}</Typography>
             {state.unavailable && <Typography size="xs" color="warning">{entry.name} works on {entry.only} only.</Typography>}
             {program && program !== 'xcode' && (
-                <Check ok={programFound(scan, program)} action={!programFound(scan, program) && PROGRAM_INFO[program] && <Button size="xxs" color="secondary" onClick={() => openPage(PROGRAM_INFO[program].page)}><Icon name="FiDownload" size="xs" />Install</Button>}>
+                <Check ok={programFound(scan, program)} action={!programFound(scan, program) && PROGRAM_INFO[program] && <Button size="xs" color="secondary" onClick={() => openPage(PROGRAM_INFO[program].page)}><Icon name="FiDownload" size="xs" />Install</Button>}>
                     {programFound(scan, program) ? `${PROGRAM_INFO[program]?.name} is installed` : `${PROGRAM_INFO[program]?.name || program} is needed`}
                 </Check>
             )}
@@ -214,7 +226,7 @@ const RemoteAdd = ({ entry = null, adding, onAdd }) => {
                 <>
                     <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>
                         <Typography size="xxs" color="muted">{entry.key.cost}</Typography>
-                        <Button size="xxs" color="secondary" title="Opens in a new tab" onClick={() => openPage(entry.key.page)}><Icon name="FiExternalLink" size="xs" />Open the key page</Button>
+                        <Button size="xs" color="secondary" title="Opens in a new tab" onClick={() => openPage(entry.key.page)}><Icon name="FiExternalLink" size="xs" />Open the key page</Button>
                     </Container>
                     {entry.key.steps.map((step, index) => <Typography key={step} size="xs">{index + 1}. {step}</Typography>)}
                 </>
@@ -258,15 +270,15 @@ const ServerCard = ({ server, icon, where, busy, onCheck, onSignIn, onRemove }) 
 
             <Container layout="flex" align="center" justify="between" gap="xs" padding="none" width="100%" wrap={false}>
                 {server.tools.length > 0 ? (
-                    <Button size="xxs" color="secondary" flat onClick={() => setShowTools((shown) => !shown)}>
+                    <Button size="xs" color="secondary" flat onClick={() => setShowTools((shown) => !shown)}>
                         <Icon name={showTools ? 'FiChevronDown' : 'FiChevronRight'} size="xs" />
                         {server.tools.length === 1 ? '1 tool' : `${server.tools.length} tools`}
                     </Button>
-                ) : <Icon name="MdLinkOff" size="xs" color="error" title="No tools yet" aria-label="No tools yet" />}
+                ) : <Typography size="xxs" color="muted">No tools yet</Typography>}
                 <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>
-                    {canSignIn && <Button size="xxs" color="primary" disabled={busy} title="Opens the app's sign-in page in a new tab" onClick={() => onSignIn(server)}><Icon name="FiLogIn" size="xs" />Sign in</Button>}
-                    <Button size="xxs" color="secondary" disabled={busy} onClick={() => onCheck(server)}><Icon name="FiRefreshCw" size="xs" />{busy ? 'Checking…' : 'Check'}</Button>
-                    <Button size="xxs" color="error" disabled={busy} onClick={() => onRemove(server)}><Icon name="FiTrash2" size="xs" />Remove</Button>
+                    {canSignIn && <Button size="xs" color="primary" disabled={busy} title="Opens the app's sign-in page in a new tab" onClick={() => onSignIn(server)}><Icon name="FiLogIn" size="xs" />Sign in</Button>}
+                    <Button size="xs" color="secondary" disabled={busy} onClick={() => onCheck(server)}><Icon name="FiRefreshCw" size="xs" />{busy ? 'Checking…' : 'Check'}</Button>
+                    <Button size="xs" color="error" disabled={busy} onClick={() => onRemove(server)}><Icon name="FiTrash2" size="xs" />Remove</Button>
                 </Container>
             </Container>
 
@@ -321,11 +333,11 @@ const SkillCard = ({ skill, onView, children }) => (
             </Container>
             <Typography size="xxs" color="muted" truncate title={skill.description}>{skill.description || 'No description.'}</Typography>
             <Container layout="flex" wrap={false} align="center" justify="between" gap="xs" padding="none" width="100%">
-                {skill.needs?.length > 0 ? <Badge size="xxs" color="warning" title={partly(skill)}>Guidance only</Badge>
-                    : skill.toolServers?.some((tool) => !tool.ready) ? <Badge size="xxs" color="warning" title="It uses tool servers that are not connected and ready on your account. Connect them on the Remote tab.">Needs {skill.toolServers.filter((tool) => !tool.ready).map((tool) => tool.name).join(', ')}</Badge>
+                {skill.needs?.length > 0 ? <Badge size="xs" color="warning" title={partly(skill)}>Guidance only</Badge>
+                    : skill.toolServers?.some((tool) => !tool.ready) ? <Badge size="xs" color="warning" title="It uses tool servers that are not connected and ready on your account. Connect them on the Remote tab.">Needs {skill.toolServers.filter((tool) => !tool.ready).map((tool) => tool.name).join(', ')}</Badge>
                     : <Container padding="none" />}
-                <ButtonGroup size="xxs" selectable={false} wrap={false} justify="end">
-                    <Button size="xxs" variant="ghost" onClick={(event) => onView(skill, event.currentTarget)}>View</Button>
+                <ButtonGroup size="xs" selectable={false} wrap={false} justify="end">
+                    <Button size="xs" variant="ghost" onClick={(event) => onView(skill, event.currentTarget)}>View</Button>
                     {children}
                 </ButtonGroup>
             </Container>
@@ -466,8 +478,8 @@ const SkillsView = () => {
                     {mine.length === 0 && <Typography size="xs" color="muted">You have not added any skills yet. Once you add one it appears here, and you can turn it on in a chat.</Typography>}
                     {mine.map((skill) => (
                         <SkillCard key={skill.id} skill={skill} onView={viewSkill}>
-                            <Button size="xxs" variant="ghost" title="Read the skill again from its address" onClick={() => readAgain(skill)}>Read again</Button>
-                            <Button size="xxs" variant="ghost" color="error" onClick={() => remove(skill)}>Remove</Button>
+                            <Button size="xs" variant="ghost" title="Read the skill again from its address" onClick={() => readAgain(skill)}>Read again</Button>
+                            <Button size="xs" variant="ghost" color="error" onClick={() => remove(skill)}>Remove</Button>
                         </SkillCard>
                     ))}
                     <Typography size="xxs" color="muted">A skill becomes instructions your models follow, so add only skills from people you trust, and read one before you use it.</Typography>
@@ -747,10 +759,10 @@ const ToolsPage = () => {
                                         {shownApps.length === 0 && <Typography size="xs" color="muted">{words ? 'No listed app matches. It can still be added by its address below.' : 'Every listed app is added.'}</Typography>}
                                         <Container layout="grid" columns={3} gap="sm" padding="none" width="100%">
                                             {shownApps.map((entry) => (
-                                                <Card key={entry.address} layout="flex-column" gap="xs" padding="md" width="100%" minWidth="0" hover={false} shadow={false}>
+                                                <Card key={entry.address} layout="flex-column" gap="xs" padding="sm" width="100%" minWidth="0" hover={false} shadow={false}>
                                                     <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%" wrap={false}>
-                                                        <Container layout="flex" align="center" gap="sm" padding="none" wrap={false} minWidth="0">
-                                                            <Icon name={APP_ICONS[entry.name] || 'FiGlobe'} size="md" color="primary" />
+                                                        <Container layout="flex" align="center" gap="xs" padding="none" wrap={false} minWidth="0">
+                                                            <Icon name={APP_ICONS[entry.name] || 'FiGlobe'} size="sm" color="primary" />
                                                             <Typography size="sm" weight="semibold" truncate>{entry.name}</Typography>
                                                         </Container>
                                                         {entry.keyNeeded ? (
@@ -806,10 +818,10 @@ const ToolsPage = () => {
                                         </Section>
                                         <Container layout="grid" columns={3} gap="sm" padding="none" width="100%">
                                             {shownLocal.map(({ entry, state }) => (
-                                                <Card key={entry.name} layout="flex-column" gap="xs" padding="md" width="100%" minWidth="0" hover={false} shadow={false}>
+                                                <Card key={entry.name} layout="flex-column" gap="xs" padding="sm" width="100%" minWidth="0" hover={false} shadow={false}>
                                                     <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%" wrap={false}>
-                                                        <Container layout="flex" align="center" gap="sm" padding="none" wrap={false} minWidth="0">
-                                                            <Icon name={APP_ICONS[entry.name] || 'FiMonitor'} size="md" color="primary" />
+                                                        <Container layout="flex" align="center" gap="xs" padding="none" wrap={false} minWidth="0">
+                                                            <Icon name={APP_ICONS[entry.name] || 'FiMonitor'} size="sm" color="primary" />
                                                             <Typography size="sm" weight="semibold" truncate>{entry.name}</Typography>
                                                         </Container>
                                                         <Button size="xs" color={state.ready ? 'primary' : 'secondary'} disabled={!canAddLocal} title={canAddLocal ? undefined : 'Open this page in the Mollama desktop app on that computer'} genieTrigger="click" genie={canAddLocal ? { trigger: 'click', width: '400px', padding: 'sm', content: <LocalSetup entry={entry} scan={scan} bridge={localBridge} adding={adding === entry.name} onAdd={addLocal} /> } : null}>
@@ -817,11 +829,15 @@ const ToolsPage = () => {
                                                         </Button>
                                                     </Container>
                                                     <Typography size="xs">{entry.does}.</Typography>
-                                                    {state.unavailable
-                                                        ? <Typography size="xxs" color="muted">{entry.only} only</Typography>
-                                                        : state.known && (state.ready
-                                                            ? <Typography size="xxs" color="success">Everything it needs is here</Typography>
-                                                            : <Typography size="xxs" color="warning">Needs {state.missing.join(' and ')}</Typography>)}
+                                                    {(state.unavailable || state.known) && (
+                                                        <Container layout="flex" padding="none">
+                                                            {state.unavailable
+                                                                ? <Badge size="xs" color="secondary">{entry.only} only</Badge>
+                                                                : state.ready
+                                                                    ? <Badge size="xs" color="success">Everything it needs is here</Badge>
+                                                                    : <Badge size="xs" color="warning">Needs {state.missing.join(' and ')}</Badge>}
+                                                        </Container>
+                                                    )}
                                                 </Card>
                                             ))}
                                         </Container>
@@ -833,7 +849,7 @@ const ToolsPage = () => {
                                 <Container layout="flex-column" gap="sm" padding="none" width="340px" minWidth="340px">
                                     <Section title="Connected" note="Tool servers on your computers. Anything not ready says what it needs." />
                                     {locals.length === 0 && <Typography size="xs" color="muted">Nothing connected yet.</Typography>}
-                                    {locals.map((server) => <ServerCard key={server.id} server={server} icon="FiMonitor" where={`On ${computerName(server.device)}`} busy={Boolean(busy[server.id])} {...cardProps} />)}
+                                    {locals.map((server) => <ServerCard key={server.id} server={server} icon={APP_ICONS[server.name] || 'FiMonitor'} where={`On ${computerName(server.device)}`} busy={Boolean(busy[server.id])} {...cardProps} />)}
                                 </Container>
                             </Container>
                             </Container>
