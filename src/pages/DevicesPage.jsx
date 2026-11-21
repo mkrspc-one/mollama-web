@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input } from '@components/Components';
+import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Frame } from '@components/Components';
 import { useSearchParams } from 'react-router-dom';
 import { useNotification } from '@contexts/NotificationContext';
-import { deviceService, desktopService, describeError, formatGb, useGuide } from '../client/ai.client';
+import { deviceService, desktopService, skillService, describeError, formatGb, useGuide } from '../client/ai.client';
 
 const ADD_STEPS = [
     'Download the Mollama desktop app on the computer you want to add.',
@@ -14,6 +14,7 @@ const ADD_STEPS = [
 const POOL_GUIDE = {
     steps: {
         label: 'How to pool',
+        figure: 'setup',
         items: [
             'Install the Mollama desktop app on every computer you want to pool, and sign in with this account on each.',
             'Put them on the same home network, by cable if you can, or connect two of them with a direct network cable.',
@@ -23,8 +24,23 @@ const POOL_GUIDE = {
             'Download the model on the main computer only, then choose the pool in a chat.'
         ]
     },
+    wiring: {
+        label: 'Wiring',
+        figure: 'wired',
+        items: [
+            'The cable: an Ethernet network cable, Cat 6 or Cat 5e, the kind with clear square plugs that goes into a router. One to three metres is plenty. Plugged straight into both computers\' network ports, it works for any mix of computers; no special crossover cable is needed.',
+            'A laptop without a network port needs a USB-C network adapter. An adapter with a USB-A plug fits a USB-C laptop through a small USB-C to USB-A adapter, not a USB-A to USB-C cable.',
+            'Choose a USB 3 adapter, 1 Gb or 2.5 Gb. A USB 2 adapter is no faster than good Wi-Fi.',
+            'Two cables can be joined with a small inline coupler, or both plugged into your router or a network switch.',
+            'Two Macs can use one Thunderbolt cable: a real Thunderbolt or 40 Gb USB4 cable, not a charging cable. Between a Mac and a PC, use network adapters.',
+            'A plain USB-C cable between two computers is not a network and does not work.',
+            'A small personal or travel router makes a private network of your own with no subscription: plug the computers into it. Each computer still needs the internet to reach Mollama, so keep them on your Wi-Fi too, or let the small router share an internet connection.',
+            'On a direct cable Windows may call the new network Public. The computers can still pool, but set it to Private in Windows settings if that PC is to lend.'
+        ]
+    },
     benefits: {
         label: 'Benefits',
+        figure: 'shelf',
         items: [
             'Runs models no single computer of yours can hold, using the memory of all of them.',
             'Puts memory to work that sits idle on your other computers.',
@@ -34,17 +50,21 @@ const POOL_GUIDE = {
     },
     risks: {
         label: 'Risks',
+        figure: 'gate',
         items: [
-            'Pooling has no password and no encryption between computers. Only pool on a home network you trust, never on public or shared Wi-Fi.',
-            'Replies are slower than on one computer whenever the model would fit on one: on that same test a small model wrote 11 words a second pooled against 52 alone.',
-            'If a computer in the pool sleeps, loses its network or is turned off, the reply stops.',
+            'Pool only at home, or on a network you trust. The computers pass the model\'s work to each other with no password and no encryption, so on public or shared Wi-Fi someone else nearby could reach it. Mollama never pools on a network Windows marks Public, and a lending computer lets in only your main computer.',
+            'Every computer in the pool has to stay on: if one sleeps, loses its network or is turned off, the reply stops.',
+            'Pooling a model that fits one computer makes it slower, not faster: a small model wrote 11 words a second pooled against 52 on one computer.',
             'A lending computer is busy and warm while a pooled model runs.'
         ]
     },
     tips: {
         label: 'Tips',
+        figure: 'wire',
         items: [
-            'Use a cable, not Wi-Fi: every word crosses the network, and Wi-Fi delay comes and goes.',
+            'Which cable: an Ethernet network cable, Cat 6 or Cat 5e, with clear square plugs at both ends. A laptop with no network port also needs a USB-C network adapter (USB 3, 1 Gb or 2.5 Gb). The Wiring tab shows every way to connect.',
+            'Use a cable, not Wi-Fi: every word crosses the network, and Wi-Fi delay comes and goes. Measured on the owner\'s two computers, a 33B model wrote 7.5 words a second over a direct cable against about 6.5 over Wi-Fi.',
+            'A better router helps less than you might think: on a cable the delay is already under a millisecond, and the computers\' own work sets most of the speed. Faster ports (2.5 Gb) mostly shorten the first start, when the model is sent to the helpers. On Wi-Fi, a newer router close to the computers keeps the delay steadier.',
             'Pool only models that do not fit one computer. A model that fits runs fastest on its own.',
             'Keep lending computers awake and plugged in, and close large programs on them.',
             'Pool two or three computers, not more: each one adds a step to every word.',
@@ -69,8 +89,79 @@ const poolStatus = (one, hasMain) => {
     return [one.lending ? 'Lending: being checked by the main computer…' : 'Setting up…', 'secondary'];
 };
 
-const PoolingCard = ({ pools, onPart }) => {
+// A Hairline figure: the kit's bench page with its engine and the figure's code put in, drawn in the app's colours.
+const FIGURE_PALETTE = {
+    ground: 'var(--app-background)',
+    ink: 'var(--app-text)',
+    muted: 'color-mix(in srgb, var(--app-text) 65%, transparent)',
+    line: 'var(--app-border)',
+    'hairline-plate': 'var(--app-background)',
+    'hairline-hi': 'var(--app-text)',
+    'hairline-edge': 'color-mix(in srgb, var(--app-text) 55%, transparent)',
+    'hairline-mid': 'color-mix(in srgb, var(--app-text) 32%, transparent)',
+    'hairline-lo': 'var(--app-border)'
+};
+const kitFiles = new Map();
+const kitFile = (path) => {
+    if (!kitFiles.has(path)) {
+        const request = skillService.file('hairline-hairline-create', path).then((result) => result.text);
+        kitFiles.set(path, request);
+        request.catch(() => kitFiles.delete(path));
+    }
+    return kitFiles.get(path);
+};
+const PoolFigure = ({ name, title }) => {
+    const [page, setPage] = useState({});
+    useEffect(() => {
+        let live = true;
+        setPage({});
+        const figure = fetch(`/pooling/${name}.js`).then((reply) => {
+            if (!reply.ok) throw new Error('missing');
+            return reply.text();
+        });
+        Promise.all([kitFile('bench.html'), kitFile('kernel.js'), figure]).then(
+            ([bench, kernel, code]) => { if (live) setPage({ html: bench.replace('/*KERNEL*/', () => `\n${kernel}\n`).replace('/*FIGURE*/', () => `\n${code}\n`) }); },
+            () => { if (live) setPage({ failed: true }); }
+        );
+        return () => { live = false; };
+    }, [name]);
+    if (page.failed) return <Typography size="xxs" color="muted">The drawing could not be loaded.</Typography>;
+    if (!page.html) return <Typography size="xxs" color="muted">Drawing…</Typography>;
+    return <Frame html={page.html} title={title} width="100%" height="440px" maxHeight="760px" variables={FIGURE_PALETTE} dressed fit />;
+};
+
+// Every list is marked the same way: a small badge, numbered for the steps and with the part's own mark otherwise.
+const POOL_MARK = { wiring: 'FiLink', benefits: 'FiCheck', risks: 'FiAlertTriangle', tips: 'FiInfo' };
+
+const PoolGuide = () => {
     const [tab, setTab] = useState('steps');
+    const part = POOL_GUIDE[tab];
+    return (
+        <Card layout="flex-column" gap="sm" padding="md" width="100%" minWidth="0" hover={false}>
+            <Heading icon="FiBookOpen" title="Pooling, step by step" />
+            <ButtonGroup size="xs" justify="start" selectable={false}>
+                {Object.entries(POOL_GUIDE).map(([key, one]) => (
+                    <Button key={key} size="xs" color={tab === key ? 'primary' : 'secondary'} selected={tab === key} onClick={() => setTab(key)}>{one.label}</Button>
+                ))}
+            </ButtonGroup>
+            <Container layout="grid" columns={2} gap="md" padding="none" width="100%">
+                <Container layout="flex-column" gap="none" padding="none" width="100%" minWidth="0">
+                    <PoolFigure key={part.figure} name={part.figure} title={part.label} />
+                </Container>
+                <Container layout="flex-column" gap="xs" padding="none" width="100%" minWidth="0">
+                    {part.items.map((item, index) => (
+                        <Container key={item} layout="flex" align="start" gap="xs" padding="none" wrap={false}>
+                            <Badge size="xs" color={tab === 'risks' ? 'warning' : 'primary'} width="20px" minWidth="20px" height="20px">{tab === 'steps' ? index + 1 : <Icon name={POOL_MARK[tab]} size="xs" color="contrast" />}</Badge>
+                            <Typography size="xs" color="muted">{item}</Typography>
+                        </Container>
+                    ))}
+                </Container>
+            </Container>
+        </Card>
+    );
+};
+
+const PoolingCard = ({ pools, onPart }) => {
     const groups = pools?.groups || [];
     const left = pools?.left || [];
     return (
@@ -120,19 +211,6 @@ const PoolingCard = ({ pools, onPart }) => {
                     ))}
                 </Container>
             )}
-            <ButtonGroup size="xs" justify="start" selectable={false}>
-                {Object.entries(POOL_GUIDE).map(([key, part]) => (
-                    <Button key={key} size="xs" color={tab === key ? 'primary' : 'secondary'} selected={tab === key} onClick={() => setTab(key)}>{part.label}</Button>
-                ))}
-            </ButtonGroup>
-            <Container layout="flex-column" gap="xs" padding="none" width="100%">
-                {POOL_GUIDE[tab].items.map((item, index) => (
-                    <Container key={item} layout="flex" align="start" gap="xs" padding="none" wrap={false}>
-                        {tab === 'steps' ? <Badge size="xs" color="primary">{index + 1}</Badge> : <Icon name={tab === 'risks' ? 'FiAlertTriangle' : tab === 'benefits' ? 'FiCheck' : 'FiInfo'} size="xs" color={tab === 'risks' ? 'warning' : 'secondary'} />}
-                        <Typography size="xs" color="muted">{item}</Typography>
-                    </Container>
-                ))}
-            </Container>
         </Card>
     );
 };
@@ -533,6 +611,7 @@ const DevicesPage = () => {
                 )}
 
                 {view === 'pooling' && devices?.length > 0 && <PoolingCard pools={pools} onPart={setPoolPart} />}
+                {view === 'pooling' && <PoolGuide />}
 
                 {view === 'computers' && <Container layout="grid" columns={2} gap="sm" padding="none" width="100%">
                     {devices?.map((device) => (
