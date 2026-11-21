@@ -2393,7 +2393,15 @@ const ChatPage = () => {
 
     const context = chat?.context;
     const pending = live ? [] : chat?.pendingAttachments || [];
-    const noModels = modelsLoaded && models.length === 0;
+    // A list that could not be read is not an empty one: the computer did not answer, and the page says why.
+    const modelsFailed = modelState.device === currentDevice && Boolean(modelState.failed);
+    const noModels = modelsLoaded && models.length === 0 && !modelsFailed;
+    const unreachable = modelsFailed && models.length === 0;
+    const placeNow = devices.find((device) => device.id === currentDevice);
+    const unreachableText = !placeNow ? 'This computer is no longer on your account. Pick another.'
+        : placeNow.kind === 'cloud' ? 'This online service needs attention. Open Online on the Models page.'
+        : !placeNow.online ? 'This computer is offline. Open the Mollama app on it, or pick another.'
+        : 'This computer did not answer just now. Trying again…';
     const modelLabel = models.find((model) => model.name === currentModel)?.displayName || (!modelsLoaded ? 'Loading models…' : 'Choose a model');
     const articles = draftSetup.instructions;
     const articlesFull = articles.length >= MAX_ARTICLES;
@@ -2542,7 +2550,9 @@ const ChatPage = () => {
                         {shown.length === 0 && !busy && (
                             <Container layout="flex-column" gap="sm" padding="none" marginTop="xl">
                                 <Typography size="lg" weight="semibold">What would you like to work on?</Typography>
-                                {noModels ? (
+                                {unreachable ? (
+                                    <Typography size="sm" color="muted">{unreachableText}</Typography>
+                                ) : noModels ? (
                                     <>
                                         <Typography size="sm" color="muted">No model is installed on this device yet. Download one first.</Typography>
                                         <Button size="sm" color="primary" onClick={() => navigate('/models')}>Open Models</Button>
@@ -2588,10 +2598,17 @@ const ChatPage = () => {
                                         <Typography size="xxs" color="muted" font="monospace">{live.permission.input}</Typography>
                                         <ButtonGroup size="xs" spaced selectable={false} justify="start">
                                             {[['once', 'Allow once', 'primary'], ['always', 'Always in this chat', 'secondary'], ['no', 'Refuse', 'error']].map(([answer, label, color]) => (
-                                                <Button key={answer} size="xs" color={color} onClick={() => {
+                                                <Button key={answer} size="xs" color={color} disabled={Boolean(live.permission.sending)} onClick={() => {
                                                     const question = live.permission.id;
-                                                    setLive((now) => now && { ...now, permission: null });
-                                                    chatService.answerPermission(chat.id, question, answer).catch(() => {});
+                                                    const same = (now) => now?.permission?.id === question;
+                                                    setLive((now) => (same(now) ? { ...now, permission: { ...now.permission, sending: true } } : now));
+                                                    chatService.answerPermission(chat.id, question, answer).then(
+                                                        () => setLive((now) => (same(now) ? { ...now, permission: null } : now)),
+                                                        (error) => {
+                                                            setLive((now) => (same(now) ? { ...now, permission: { ...now.permission, sending: false } } : now));
+                                                            notifyError(describeError(error, 'Your answer could not be sent. Try again.'));
+                                                        }
+                                                    );
                                                 }}>{label}</Button>
                                             ))}
                                         </ButtonGroup>
@@ -2653,9 +2670,9 @@ const ChatPage = () => {
                             width="100%"
                             variant="underline"
                             backgroundColor="background"
-                            placeholder={noModels ? 'Download a model on the Models page first' : 'Write a message. Enter sends, Shift+Enter starts a new line.'}
+                            placeholder={unreachable ? unreachableText : noModels ? 'Download a model on the Models page first' : 'Write a message. Enter sends, Shift+Enter starts a new line.'}
                             value={text}
-                            disabled={noModels}
+                            disabled={noModels || unreachable}
                             onChange={(event) => setText(event.target.value)}
                             onKeyDown={(event) => {
                                 if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -2674,7 +2691,7 @@ const ChatPage = () => {
                                 open={pop === 'attach'}
                                 onOpen={() => openPop('attach')}
                                 onClose={closePop}
-                                disabled={busy || Boolean(working) || noModels}
+                                disabled={busy || Boolean(working) || noModels || unreachable}
                                 width={view === 'files' ? '440px' : '240px'}
                             >
                                 {view === 'files' ? (
@@ -2792,7 +2809,7 @@ const ChatPage = () => {
                                 </Container>
                             </Pop>
                             {busy && !live?.stopping && <Button size="xs" color="error" title="Stop" aria-label="Stop" onClick={stopReply}><Icon name="FiSquare" size="xs" /></Button>}
-                            <Button size="xs" color="primary" title={busy ? 'Send when this reply is finished' : 'Send'} aria-label="Send" disabled={!text.trim() || noModels} onClick={() => sendText(text)} {...guide.tip('chat.send')}><Icon name="FiArrowUp" size="xs" /></Button>
+                            <Button size="xs" color="primary" title={busy ? 'Send when this reply is finished' : 'Send'} aria-label="Send" disabled={!text.trim() || noModels || unreachable} onClick={() => sendText(text)} {...guide.tip('chat.send')}><Icon name="FiArrowUp" size="xs" /></Button>
                         </Container>
                     </Card>
                 </Centered>

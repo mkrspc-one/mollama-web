@@ -67,7 +67,7 @@ const EditUserForm = ({ user, onSave, onCancel }) => {
                 ]}
             />
             <Container layout="flex" align="center" gap="sm" padding="none">
-                <Switch checked={formData.active} onChange={val => set('active', val)} size="sm" />
+                <Switch checked={formData.active} onChange={(change) => set('active', typeof change === 'boolean' ? change : Boolean(change?.target?.checked))} size="sm" />
                 <Typography size="sm">Active account</Typography>
             </Container>
             <Container layout="grid" columns="2" gap="md">
@@ -170,6 +170,52 @@ const EmptyState = ({ icon, message }) => (
 );
 
 // ─── Admin Page ───────────────────────────────────────────────────────────────
+
+// Approving or rejecting a role request, each confirmed in place: approving names the role being given, rejecting
+// takes an optional reason, and going back changes nothing.
+const RoleRequestActions = ({ item, onApprove, onReject }) => {
+    const [step, setStep] = useState('choose');
+    const [reason, setReason] = useState('');
+    const [busy, setBusy] = useState(false);
+    const role = Array.isArray(item.pendingRoles) ? item.pendingRoles[0] : item.pendingRoles;
+    const act = async (work) => {
+        setBusy(true);
+        try {
+            await work();
+        } finally {
+            setBusy(false);
+        }
+    };
+    if (step === 'approve') {
+        return (
+            <Container layout="flex-column" gap="xs" padding="xs">
+                <Typography size="sm">{`Give ${item.username} the ${role} role?`}</Typography>
+                <Container layout="flex" gap="xs" padding="none">
+                    <Button size="sm" disabled={busy} onClick={() => act(() => onApprove(item))}><Icon name="FiCheck" size="xs" />Give role</Button>
+                    <Button size="sm" color="secondary" disabled={busy} onClick={() => setStep('choose')}>Back</Button>
+                </Container>
+            </Container>
+        );
+    }
+    if (step === 'reject') {
+        return (
+            <Container layout="flex-column" gap="xs" padding="xs">
+                <Input size="sm" label="Reason (optional)" value={reason} onChange={(event) => setReason(event.target.value)} />
+                <Container layout="flex" gap="xs" padding="none">
+                    <Button size="sm" color="error" disabled={busy} onClick={() => act(() => onReject(item, reason.trim()))}><Icon name="FiX" size="xs" />Reject request</Button>
+                    <Button size="sm" color="secondary" disabled={busy} onClick={() => setStep('choose')}>Back</Button>
+                </Container>
+            </Container>
+        );
+    }
+    return (
+        <Container layout="flex-column" gap="xs" padding="xs">
+            <Typography size="sm" weight="semibold">Actions</Typography>
+            <Button size="sm" onClick={() => setStep('approve')}><Icon name="FiCheck" size="xs" />Approve</Button>
+            <Button size="sm" color="error" onClick={() => setStep('reject')}><Icon name="FiX" size="xs" />Reject</Button>
+        </Container>
+    );
+};
 
 const AdminPage = () => {
     const navigate = useNavigate();
@@ -779,11 +825,11 @@ const AdminPage = () => {
                                             }}
                                             width="100%"
                                             genie={{ trigger: 'contextmenu', variant: 'menu', content: (item) => item?.roleApprovalStatus === 'PENDING' ? (
-                                                <Container layout="flex-column" gap="xs" padding="xs">
-                                                    <Typography size="sm" weight="semibold">Actions</Typography>
-                                                    <Button size="sm" onClick={async () => { try { await authService.approveRoleRequest(item._id || item.id, {}); showSuccess('Role request approved'); await loadSectionData('role-requests', true); } catch { showError('Failed to approve'); } }}><Icon name="FiCheck" size="xs" /> Approve</Button>
-                                                    <Button size="sm" color="error" onClick={async () => { try { const reason = window.prompt('Enter rejection reason (optional):') || ''; await authService.rejectRoleRequest(item._id || item.id, reason); showSuccess('Role request rejected'); await loadSectionData('role-requests', true); } catch { showError('Failed to reject'); } }}><Icon name="FiX" size="xs" /> Reject</Button>
-                                                </Container>
+                                                <RoleRequestActions
+                                                    item={item}
+                                                    onApprove={async (request) => { try { await authService.approveRoleRequest(request._id || request.id, {}); showSuccess('Role request approved'); await loadSectionData('role-requests', true); } catch { showError('Failed to approve'); } }}
+                                                    onReject={async (request, reason) => { try { await authService.rejectRoleRequest(request._id || request.id, reason); showSuccess('Role request rejected'); await loadSectionData('role-requests', true); } catch { showError('Failed to reject'); } }}
+                                                />
                                             ) : <Container padding="xs"><Typography size="xs" color="muted">Already processed</Typography></Container>
                                             }}
                                         />

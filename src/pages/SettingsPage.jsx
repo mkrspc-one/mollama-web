@@ -285,13 +285,17 @@ const SecurityTab = () => {
     const [backupCodes, setBackupCodes] = useState(null);
     const [devices, setDevices] = useState(null);
     const settingUp = useRef(false);
+    // A status that could not be read is shown as unknown, never as off: someone who has it on must not be told it is off.
+    const [statusFailed, setStatusFailed] = useState(false);
 
     const loadStatus = useCallback(async () => {
         setLoadingStatus(true);
         try {
             setStatus(await authService.get2FAStatus());
+            setStatusFailed(false);
         } catch {
             setStatus(null);
+            setStatusFailed(true);
         } finally {
             setLoadingStatus(false);
         }
@@ -417,10 +421,14 @@ const SecurityTab = () => {
         <Container layout="flex-column" gap="md" padding="none" width="100%">
             <Section
                 title="Two-step sign-in"
-                note={enabled
-                    ? 'On. You need your authenticator app each time you sign in.'
-                    : 'Adds a code from an authenticator app when you sign in.'}
-                action={loadingStatus ? <CircularProgress size="xs" /> : (
+                note={statusFailed
+                    ? 'Two-step sign-in status could not be loaded.'
+                    : enabled
+                        ? 'On. You need your authenticator app each time you sign in.'
+                        : 'Adds a code from an authenticator app when you sign in.'}
+                action={loadingStatus ? <CircularProgress size="xs" /> : statusFailed ? (
+                    <Button size="sm" color="secondary" onClick={loadStatus}><Icon name="FiRefreshCw" size="xs" />Try again</Button>
+                ) : (
                     <Container layout="flex" align="center" gap="xs" padding="none">
                         <Badge size="xs" color={enabled ? 'success' : 'secondary'}>{enabled ? 'On' : 'Off'}</Badge>
                         {!enabled && (

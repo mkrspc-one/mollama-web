@@ -368,10 +368,10 @@ const Calculator = ({ user }) => {
 
             <Card layout="flex-column" gap="sm" padding="md" width="100%" hover={false}>
                 <Container layout="grid" columns="auto" gap="sm" padding="none" width="100%" align="end">
-                    <Input size="sm" label="System memory (GB)" placeholder="16" value={memory} onChange={(event) => setMemory(event.target.value)} width="100%" />
+                    <Input size="sm" label="System memory (GB)" helpText="For example 16" value={memory} onChange={(event) => setMemory(event.target.value)} width="100%" />
                     <Select size="sm" label="Graphics card" options={GRAPHICS_CARDS.map(({ value, label }) => ({ value, label }))} value={card} onChange={setCard} width="100%" />
                     {card === 'other' && (
-                        <Input size="sm" label="Graphics memory (GB)" placeholder="10" value={cardMemory} onChange={(event) => setCardMemory(event.target.value)} width="100%" />
+                        <Input size="sm" label="Graphics memory (GB)" helpText="For example 10" value={cardMemory} onChange={(event) => setCardMemory(event.target.value)} width="100%" />
                     )}
                 </Container>
                 <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%">
@@ -382,7 +382,7 @@ const Calculator = ({ user }) => {
                         <Button size="sm" variant="ghost" title="Clear" aria-label="Clear" disabled={busy || (!memory && !cardMemory && !result && !problem)} onClick={clear}>
                             <Icon name="FiX" size="xs" />
                         </Button>
-                        <Button size="sm" color="primary" disabled={busy || !memory.trim()} onClick={submit}>
+                        <Button size="sm" color="primary" disabled={busy || !memory.trim()} title={!memory.trim() ? 'Enter your system memory first' : undefined} onClick={submit}>
                             <Icon name="FiCpu" size="xs" />{busy ? 'Working it out…' : 'Show what fits'}
                         </Button>
                     </Container>
