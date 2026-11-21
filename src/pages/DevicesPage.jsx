@@ -53,7 +53,22 @@ const POOL_GUIDE = {
     }
 };
 
-const PoolingCard = ({ pools }) => {
+const POOL_PARTS = [['off', 'Off'], ['lend', 'Lend'], ['main', 'Main']];
+// What a computer in a pool is doing now, in a few words, and the colour of its badge.
+const poolStatus = (one, hasMain) => {
+    if (one.role === 'off') return null;
+    if (!one.known) return ['Its desktop app is too old to pool. Update the Mollama desktop app on it.', 'warning'];
+    if (one.setup === 'asking') return ['Waiting for you to agree on that computer to set up pooling.', 'warning'];
+    if (one.setup === 'downloading') return [`Downloading llama.cpp${one.progress ? `, ${Math.round(one.progress * 100)}%` : ''}…`, 'secondary'];
+    if (['declined', 'failed', 'unsupported'].includes(one.setup) || (one.detail && !one.lending)) return [one.detail || 'Pooling could not be set up on it.', 'error'];
+    if (one.role === 'main') return ['Main computer: it holds the model and runs it.', 'primary'];
+    if (!hasMain) return ['Ready to lend. Choose a main computer on this network.', 'secondary'];
+    if (one.reachable === false) return [one.detail || 'The main computer cannot reach it.', 'error'];
+    if (one.reachable === true) return ['Lending: the main computer reaches it.', 'success'];
+    return [one.lending ? 'Lending: being checked by the main computer…' : 'Setting up…', 'secondary'];
+};
+
+const PoolingCard = ({ pools, onPart }) => {
     const [tab, setTab] = useState('steps');
     const groups = pools?.groups || [];
     const left = pools?.left || [];
@@ -63,7 +78,7 @@ const PoolingCard = ({ pools }) => {
                 <Badge size="xs" color="secondary">Coming soon</Badge>
             </Heading>
             <Typography size="xs" color="muted">
-                Several of your computers can share one model that none of them could hold alone. Mollama checks which of your computers are on the same network; lending a computer and running a pooled model are being built.
+                Several of your computers can share one model that none of them could hold alone. Mollama checks which of your computers are on the same network. Choose one main computer and let the others lend; running a pooled model in a chat is being built.
             </Typography>
             {!pools && <Typography size="xs" color="muted">Checking your computers…</Typography>}
             {pools && groups.length === 0 && <Typography size="xs">None of your computers can pool right now.</Typography>}
@@ -73,8 +88,25 @@ const PoolingCard = ({ pools }) => {
                         <Icon name={group.via === 'cable' || group.wired ? 'FiLink' : 'FiWifi'} size="xs" color="primary" />
                         <Typography size="xs" weight="semibold">{group.computers.map((one) => one.name).join(' + ')}</Typography>
                         <Badge size="xs" color="secondary">{group.via === 'cable' ? 'Direct cable' : group.wired ? 'Home network, cable' : 'Home network, Wi-Fi'}</Badge>
-                        <Badge size="xs" color="warning" title="The main computer has not yet reached the others; that check comes with lending.">Not yet checked</Badge>
+                        {group.computers.some((one) => one.role === 'main') && group.computers.some((one) => one.role === 'lend') && group.computers.filter((one) => one.role === 'lend').every((one) => one.reachable === true)
+                            ? <Badge size="xs" color="success" title="The main computer reached every lending computer through its gate.">Checked</Badge>
+                            : <Badge size="xs" color="warning" title="Checked once a main computer reaches a lending computer.">Not yet checked</Badge>}
                     </Container>
+                    {group.computers.map((one) => {
+                        const status = poolStatus(one, group.computers.some((other) => other.id === pools.main));
+                        return (
+                            <Container key={one.id} layout="flex" align="center" gap="xs" padding="none" width="100%">
+                                <Typography size="xs" weight="semibold">{one.name}</Typography>
+                                <Typography size="xxs" color="muted">{one.address}</Typography>
+                                <ButtonGroup size="xs" justify="start" selectable={false}>
+                                    {POOL_PARTS.map(([role, label]) => (
+                                        <Button key={role} size="xs" color={one.role === role ? 'primary' : 'secondary'} selected={one.role === role} onClick={() => one.role !== role && onPart(one, role)}>{label}</Button>
+                                    ))}
+                                </ButtonGroup>
+                                {status && <Badge size="xs" color={status[1]}>{status[0]}</Badge>}
+                            </Container>
+                        );
+                    })}
                     <Typography size="xxs" color="muted">
                         Between them: {formatGb(group.combined.gpuMemoryMb)} of graphics memory and {formatGb(group.combined.memoryMb)} of system memory, on {group.network}.
                     </Typography>
@@ -402,6 +434,17 @@ const DevicesPage = () => {
         return () => window.removeEventListener('ollama-availability-changed', load);
     }, [load]);
 
+    // A computer's part in a pool: lending its memory, or the main computer that runs the model.
+    const setPoolPart = async (computer, role) => {
+        try {
+            setPools(await deviceService.setPoolRole(computer.id, role));
+            if (role === 'lend') success(`${computer.name} will lend. If pooling is not set up on it yet, it asks there before downloading llama.cpp.`);
+            if (role === 'main') success(`${computer.name} is now your main computer.`);
+        } catch (error) {
+            notifyError(describeError(error, 'The computer could not be changed.'));
+        }
+    };
+
     // A paused computer stays connected but is given no work, and its loaded models are taken out of memory.
     const pauseDevice = async (device) => {
         try {
@@ -481,7 +524,7 @@ const DevicesPage = () => {
                 )}
 
                 <Container layout="grid" columns={2} gap="sm" padding="none" width="100%">
-                    {devices?.length > 0 && <PoolingCard pools={pools} />}
+                    {devices?.length > 0 && <PoolingCard pools={pools} onPart={setPoolPart} />}
                     {devices?.map((device) => (
                         <DeviceCard key={device.id} device={device} canManage={canManage} onChanged={replaceDevice} onRemove={removeDevice} onPause={pauseDevice} here={device.id === here} onSetUp={setUpOllama} />
                     ))}
