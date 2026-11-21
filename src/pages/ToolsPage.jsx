@@ -19,7 +19,7 @@ const APP_ICONS = {
     'Date and time': 'FiClock', 'Step-by-step thinking': 'FiList'
 };
 const MADE_BY = { maker: 'Made by the app\'s own maker', standard: 'Made by the group behind the tool-server standard', community: 'Made by the community' };
-const HEALTH_COLORS = { healthy: 'success', unchecked: 'default', signin: 'warning', empty: 'warning', busy: 'warning', offline: 'default' };
+const HEALTH_COLORS = { healthy: 'success', unchecked: 'default', signin: 'warning', empty: 'warning', busy: 'warning', offline: 'default', waiting: 'warning' };
 
 // A sign-in page opens in a tab of its own. The tab is opened at the click, before anything is asked of the server,
 // because browsers block a tab opened later. Inside the desktop app the link is handed to the person's browser instead.
@@ -139,19 +139,64 @@ const LocalSetup = ({ entry, scan, bridge, adding, onAdd }) => {
     );
 };
 
+// What an app's MCP setup instructions give, read into a name, a program and what to pass to it: a JSON block
+// ({"mcpServers": {"blender": {"command": "uvx", "args": ["blender-mcp"]}}} or one server alone), a line that adds it
+// to another app (claude mcp add blender -- uvx blender-mcp), or the command line itself.
+const quoteArg = (arg) => (/\s/.test(arg) ? `"${arg}"` : arg);
+const readSnippet = (text) => {
+    const raw = String(text || '').trim();
+    if (!raw) return null;
+    try {
+        const json = JSON.parse(raw.startsWith('"') ? `{${raw}}` : raw);
+        const holder = json.mcpServers || json.servers || json.mcp?.servers || json;
+        const [name, server] = holder.command ? ['', holder] : Object.entries(holder).find(([, one]) => one && typeof one === 'object' && one.command) || [];
+        if (server?.command) return { name: name || '', command: String(server.command), args: (server.args || []).map((arg) => quoteArg(String(arg))).join(' '), env: Object.keys(server.env || {}) };
+    } catch {
+        // Not JSON: a command line.
+    }
+    const words = raw.replace(/\\\n/g, ' ').match(/"[^"]*"|'[^']*'|\S+/g) || [];
+    const add = words.findIndex((word, at) => word === 'add' && words[at - 1] === 'mcp');
+    if (add >= 0 && words.includes('--')) {
+        const name = words.slice(add + 1, words.indexOf('--')).filter((word, at, list) => !word.startsWith('-') && !(list[at - 1] || '').startsWith('-')).pop() || '';
+        const [command, ...args] = words.slice(words.indexOf('--') + 1);
+        return command ? { name, command, args: args.join(' '), env: [] } : null;
+    }
+    const [command, ...args] = words;
+    return command ? { name: '', command, args: args.join(' '), env: [] } : null;
+};
+
 // Adding a local tool server by hand, from an app's own MCP instructions, inside the Genie of its button.
 const LocalOwn = ({ adding, onAdd }) => {
     const [form, setForm] = useState({ name: '', command: '', args: '' });
+    const [pasted, setPasted] = useState('');
+    const [needsEnv, setNeedsEnv] = useState([]);
+    const fillFrom = (text) => {
+        setPasted(text);
+        const read = readSnippet(text);
+        if (!read) return;
+        setForm((now) => ({ name: now.name || (read.name ? read.name.charAt(0).toUpperCase() + read.name.slice(1) : ''), command: read.command, args: read.args }));
+        setNeedsEnv(read.env);
+    };
+    const runs = [form.command.trim(), form.args.trim()].filter(Boolean).join(' ');
     return (
         <Container layout="flex-column" gap="xs" padding="none" width="100%">
             <Typography size="sm" weight="semibold">Add your own app on this computer</Typography>
-            <Typography size="xs" color="muted">The program and what to pass to it come from the app's MCP setup instructions. They are kept on this computer only.</Typography>
-            <Input size="sm" label="Name" value={form.name} onChange={(e) => setForm((now) => ({ ...now, name: e.target.value }))} width="100%" />
-            <Input size="sm" label="Program that starts its tool server" helpText="For example uvx or npx" value={form.command} onChange={(e) => setForm((now) => ({ ...now, command: e.target.value }))} width="100%" />
-            <Input size="sm" label="What to pass to it" value={form.args} onChange={(e) => setForm((now) => ({ ...now, args: e.target.value }))} width="100%" />
+            <Typography size="xs" color="muted">For an app that is not in the list. Its maker's MCP setup instructions say how to start its tool server: paste what they give, or fill in the three boxes yourself. What you enter stays on this computer.</Typography>
+            <Input size="sm" multiline rows={3} label="Paste from the app's instructions (optional)" helpText='A JSON block with "command" and "args", a line like claude mcp add blender -- uvx blender-mcp, or the command itself. The boxes below fill in.' value={pasted} onChange={(e) => fillFrom(e.target.value)} width="100%" />
+            <Input size="sm" label="Name" helpText="What it is called in Mollama, for example Blender" value={form.name} onChange={(e) => setForm((now) => ({ ...now, name: e.target.value }))} width="100%" />
+            <Input size="sm" label="Program that starts its tool server" helpText="Usually uvx (needs uv) or npx (needs Node.js), sometimes docker or the app's own program" value={form.command} onChange={(e) => setForm((now) => ({ ...now, command: e.target.value }))} width="100%" />
+            <Input size="sm" label="What to pass to it" helpText="Everything after the program, for example blender-mcp, or -y @playwright/mcp@latest" value={form.args} onChange={(e) => setForm((now) => ({ ...now, args: e.target.value }))} width="100%" />
+            {runs && <Typography size="xxs" color="muted">It will run: <Typography as="span" size="xxs" font="monospace">{runs}</Typography></Typography>}
+            {/<[^>]*>/.test(form.args) && <Typography size="xs" color="warning">Replace the part in angle brackets with your own value first, such as a folder.</Typography>}
+            {needsEnv.length > 0 && (
+                <Container layout="flex" align="start" gap="xs" padding="none" wrap={false}>
+                    <Icon name="FiAlertTriangle" size="xs" color="warning" />
+                    <Typography size="xs">Its instructions also set {needsEnv.join(', ')}. Mollama cannot pass settings like these yet, so it may not start; set them on this computer first if its maker allows.</Typography>
+                </Container>
+            )}
             <Container layout="flex" justify="end" padding="none" width="100%">
-                <Button size="sm" color="primary" disabled={adding || !form.name.trim() || !form.command.trim() || /<[^>]*>/.test(form.args)} onClick={async () => { if (await onAdd(form)) setForm({ name: '', command: '', args: '' }); }}>
-                    <Icon name="FiPlus" size="xs" />{adding ? 'Adding…' : 'Add'}
+                <Button size="sm" color="primary" disabled={adding || !form.name.trim() || !form.command.trim() || /<[^>]*>/.test(form.args)} title={!form.name.trim() || !form.command.trim() ? 'Give it a name and the program first' : undefined} onClick={async () => { if (await onAdd(form)) { setForm({ name: '', command: '', args: '' }); setPasted(''); setNeedsEnv([]); } }}>
+                    <Icon name="FiPlus" size="xs" />{adding ? 'Adding…' : 'Add and check it'}
                 </Button>
             </Container>
         </Container>
@@ -276,7 +321,9 @@ const SkillCard = ({ skill, onView, children }) => (
             </Container>
             <Typography size="xxs" color="muted" truncate title={skill.description}>{skill.description || 'No description.'}</Typography>
             <Container layout="flex" wrap={false} align="center" justify="between" gap="xs" padding="none" width="100%">
-                {skill.needs?.length > 0 ? <Badge size="xxs" color="warning" title={partly(skill)}>Guidance only</Badge> : <Container padding="none" />}
+                {skill.needs?.length > 0 ? <Badge size="xxs" color="warning" title={partly(skill)}>Guidance only</Badge>
+                    : skill.toolServers?.some((tool) => !tool.ready) ? <Badge size="xxs" color="warning" title="It uses tool servers that are not connected and ready on your account. Connect them on the Remote tab.">Needs {skill.toolServers.filter((tool) => !tool.ready).map((tool) => tool.name).join(', ')}</Badge>
+                    : <Container padding="none" />}
                 <ButtonGroup size="xxs" selectable={false} wrap={false} justify="end">
                     <Button size="xxs" variant="ghost" onClick={(event) => onView(skill, event.currentTarget)}>View</Button>
                     {children}
@@ -437,6 +484,13 @@ const SkillsView = () => {
                         {open.description && <Typography size="xs" color="muted">{open.description}</Typography>}
                         {open.credit && <Typography size="xxs" color="muted">{`From ${open.credit}`}</Typography>}
                         {open.needs?.length > 0 && <Typography size="xxs" color="warning">{partly(open)}</Typography>}
+                        {(open.toolServers || []).map((tool) => (
+                            <Container key={tool.name} layout="flex" align="center" gap="xs" padding="none" wrap={false}>
+                                <Icon name={tool.ready ? 'FiCheckCircle' : 'FiCircle'} size="xs" color={tool.ready ? 'success' : 'warning'} />
+                                <Typography size="xxs">{tool.ready ? `Uses the ${tool.name} tool server, which is connected and ready.` : `Uses the ${tool.name} tool server, which is not connected and ready on your account yet.`}</Typography>
+                                {!tool.ready && <Typography size="xxs" href="/tools">Connect it</Typography>}
+                            </Container>
+                        ))}
                         {open.setup && <Typography as="div" size="xxs" color="muted"><ReactMarkdown remarkPlugins={[remarkGfm]}>{localSteps(open)}</ReactMarkdown></Typography>}
                         <Divider margin="xs" />
                         {open.text === null
