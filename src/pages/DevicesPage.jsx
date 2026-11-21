@@ -20,8 +20,8 @@ const POOL_GUIDE = {
             'Put them on the same home network, by cable if you can, or connect two of them with a direct network cable.',
             'Mollama finds the computers that can pool by itself and lists them here.',
             'Choose each computer\'s part below. The first time, the desktop app on that computer asks before it sets pooling up.',
-            'Pick the main computer: the one with the largest graphics card, and room on its disk for the model.',
-            'Download the model on the main computer only, then choose the pool in a chat.'
+            'Choose the computer that runs the model: the one with the largest graphics card, and room on its disk for the model. Set the others to lend their memory.',
+            'Download the model on the computer that runs it, then choose the pool in a chat.'
         ]
     },
     wiring: {
@@ -44,7 +44,7 @@ const POOL_GUIDE = {
         items: [
             'Runs models no single computer of yours can hold, using the memory of all of them.',
             'Puts memory to work that sits idle on your other computers.',
-            'Only the main computer downloads the model. The others lend their memory and keep no copy of it.',
+            'Only the computer that runs the model downloads it. The others lend their memory and keep no copy of it.',
             'Measured on two of the owner\'s computers over Wi-Fi: a 33B model wrote about 2.8 times faster pooled than on one computer alone.'
         ]
     },
@@ -52,7 +52,7 @@ const POOL_GUIDE = {
         label: 'Risks',
         figure: 'gate',
         items: [
-            'Pool only at home, or on a network you trust. Pooled computers talk to each other openly, so on public or shared Wi-Fi someone nearby could listen in. Mollama never pools on a network Windows marks Public, and a lending computer answers only your main computer.',
+            'Pool only at home, or on a network you trust. Pooled computers talk to each other openly, so on public or shared Wi-Fi someone nearby could listen in. Mollama never pools on a network Windows marks Public, and a computer that lends its memory answers only the computer that runs the model.',
             'Every computer in the pool has to stay on: if one sleeps, loses its network or is turned off, the reply stops.',
             'Pooling a model that fits one computer makes it slower, not faster: a small model wrote 11 words a second pooled against 52 on one computer.',
             'A lending computer is busy and warm while a pooled model runs.'
@@ -75,7 +75,13 @@ const POOL_GUIDE = {
     }
 };
 
-const POOL_PARTS = [['off', 'Off'], ['lend', 'Lend'], ['main', 'Main']];
+// The part each computer plays, in plain words: left out, lending its memory, or running the model with the others' memory.
+const POOL_PARTS = [
+    { role: 'off', label: 'Not pooled', icon: 'FiMinusCircle', hint: 'This computer is not part of the pool.' },
+    { role: 'lend', label: 'Lends memory', icon: 'FiShare2', hint: 'Its memory helps the computer that runs the model. It needs no copy of the model.' },
+    { role: 'main', label: 'Runs the model', icon: 'FiCpu', hint: 'It holds the model and runs it, using the memory the others lend. Choose the one with the largest graphics card.' }
+];
+const STATUS_ICONS = { warning: 'FiAlertTriangle', error: 'FiXCircle', success: 'FiCheckCircle', primary: 'FiCpu', secondary: 'FiClock' };
 // What a computer in a pool is doing now, in a few words, and the colour of its badge.
 const poolStatus = (one, hasMain) => {
     if (one.role === 'off') return null;
@@ -83,11 +89,11 @@ const poolStatus = (one, hasMain) => {
     if (one.setup === 'asking') return ['Waiting for you to agree on that computer to set up pooling.', 'warning'];
     if (one.setup === 'downloading') return [`Setting up pooling${one.progress ? `, ${Math.round(one.progress * 100)}%` : ''}…`, 'secondary'];
     if (['declined', 'failed', 'unsupported'].includes(one.setup) || (one.detail && !one.lending)) return [one.detail || 'Pooling could not be set up on it.', 'error'];
-    if (one.role === 'main') return ['Main computer: it holds the model and runs it.', 'primary'];
-    if (!hasMain) return ['Ready to lend. Choose a main computer on this network.', 'secondary'];
-    if (one.reachable === false) return [one.detail || 'The main computer cannot reach it.', 'error'];
-    if (one.reachable === true) return ['Lending: the main computer reaches it.', 'success'];
-    return [one.lending ? 'Lending: being checked by the main computer…' : 'Setting up…', 'secondary'];
+    if (one.role === 'main') return ['Runs the model with the memory the others lend.', 'primary'];
+    if (!hasMain) return ['Ready to lend. Choose which computer on this network runs the model.', 'secondary'];
+    if (one.reachable === false) return [one.detail || 'The computer that runs the model cannot reach it.', 'error'];
+    if (one.reachable === true) return ['Lending its memory. The computer that runs the model reaches it.', 'success'];
+    return [one.lending ? 'Lending its memory. Checking that it can be reached…' : 'Setting up…', 'secondary'];
 };
 
 // A Hairline figure: the kit's bench page with its engine and the figure's code put in, drawn in the app's colours.
@@ -171,38 +177,53 @@ const PoolingCard = ({ pools, onPart }) => {
                 <Badge size="xs" color="secondary" title="Needs the Mollama desktop app 1.0.8 or later on every pooled computer">Preview</Badge>
             </Heading>
             <Typography size="xs" color="muted">
-                Several of your computers can share one model that none of them could hold alone. Mollama checks which of your computers are on the same network. Choose one main computer and let the others lend. Once the main computer reaches them, the pool appears in a chat's computer picker, with the main computer's models.
+                Several of your computers can share one model that none of them could hold alone. Mollama checks which of your computers are on the same network. Choose the computer that runs the model and let the others lend their memory. Once it reaches them, the pool appears in a chat's computer picker, with that computer's models.
             </Typography>
             {!pools && <Typography size="xs" color="muted">Checking your computers…</Typography>}
             {pools && groups.length === 0 && <Typography size="xs">None of your computers can pool right now.</Typography>}
             {groups.map((group) => (
                 <Container key={group.network} layout="flex-column" gap="xs" padding="sm" width="100%" backgroundColor="surface-alt">
-                    <Container layout="flex" align="center" gap="xs" padding="none" width="100%">
-                        <Icon name={group.via === 'cable' || group.wired ? 'FiLink' : 'FiWifi'} size="xs" color="primary" />
-                        <Typography size="xs" weight="semibold">{group.computers.map((one) => one.name).join(' + ')}</Typography>
-                        <Badge size="xs" color="secondary">{group.via === 'cable' ? 'Direct cable' : group.wired ? 'Home network, cable' : 'Home network, Wi-Fi'}</Badge>
+                    <Container layout="flex" justify="between" align="center" gap="xs" padding="none" width="100%">
+                        <Container layout="flex" align="center" gap="xs" padding="none" minWidth="0">
+                            <Icon name={group.via === 'cable' || group.wired ? 'FiLink' : 'FiWifi'} size="sm" color="primary" />
+                            <Typography size="sm" weight="semibold">{group.via === 'cable' ? 'Joined by a direct cable' : group.wired ? 'On your home network, by cable' : 'On your home network, by Wi-Fi'}</Typography>
+                        </Container>
                         {group.computers.some((one) => one.role === 'main') && group.computers.some((one) => one.role === 'lend') && group.computers.filter((one) => one.role === 'lend').every((one) => one.reachable === true)
-                            ? <Badge size="xs" color="success" title="The main computer reached every lending computer.">Checked</Badge>
-                            : <Badge size="xs" color="warning" title="Checked once a main computer reaches a lending computer.">Not yet checked</Badge>}
+                            ? <Badge size="xs" color="success" title="The computer that runs the model reached every computer lending its memory.">Ready to pool</Badge>
+                            : <Badge size="xs" color="warning" title="Ready once the computer that runs the model reaches a computer lending its memory.">Not ready yet</Badge>}
                     </Container>
-                    {group.computers.map((one) => {
-                        const status = poolStatus(one, group.computers.some((other) => other.id === pools.main));
-                        return (
-                            <Container key={one.id} layout="flex" align="center" gap="xs" padding="none" width="100%">
-                                <Typography size="xs" weight="semibold">{one.name}</Typography>
-                                <Typography size="xxs" color="muted">{one.address}</Typography>
-                                <ButtonGroup size="xs" justify="start" selectable={false}>
-                                    {POOL_PARTS.map(([role, label]) => (
-                                        <Button key={role} size="xs" color={one.role === role ? 'primary' : 'secondary'} selected={one.role === role} onClick={() => one.role !== role && onPart(one, role)}>{label}</Button>
-                                    ))}
-                                </ButtonGroup>
-                                {status && <Badge size="xs" color={status[1]}>{status[0]}</Badge>}
-                            </Container>
-                        );
-                    })}
-                    <Typography size="xxs" color="muted">
-                        Between them: {formatGb(group.combined.gpuMemoryMb)} of graphics memory and {formatGb(group.combined.memoryMb)} of system memory, on {group.network}.
-                    </Typography>
+                    <Container layout="grid" columns={2} gap="sm" padding="none" width="100%">
+                        {group.computers.map((one) => {
+                            const status = poolStatus(one, group.computers.some((other) => other.id === pools.main));
+                            const part = POOL_PARTS.find((entry) => entry.role === one.role) || POOL_PARTS[0];
+                            return (
+                                <Container key={one.id} layout="flex-column" gap="sm" padding="sm" width="100%" minWidth="0" backgroundColor="surface">
+                                    <Container layout="flex" align="center" gap="xs" padding="none" width="100%" wrap={false}>
+                                        <Icon name="FiMonitor" size="sm" color="primary" />
+                                        <Container layout="flex-column" gap="none" padding="none" minWidth="0">
+                                            <Typography size="sm" weight="semibold" truncate>{one.name}</Typography>
+                                            <Typography size="xxs" color="muted">{[one.gpuMemoryMb ? `${formatGb(one.gpuMemoryMb)} graphics` : null, `${formatGb(one.memoryMb)} memory`].filter(Boolean).join(' · ')}</Typography>
+                                        </Container>
+                                    </Container>
+                                    <ButtonGroup size="xs" justify="start" selectable={false}>
+                                        {POOL_PARTS.map((entry) => (
+                                            <Button key={entry.role} size="xs" color={one.role === entry.role ? 'primary' : 'secondary'} selected={one.role === entry.role} title={entry.hint} onClick={() => one.role !== entry.role && onPart(one, entry.role)}>
+                                                <Icon name={entry.icon} size="xs" />{entry.label}
+                                            </Button>
+                                        ))}
+                                    </ButtonGroup>
+                                    <Container layout="flex" align="start" gap="xs" padding="none" width="100%" wrap={false}>
+                                        <Icon name={status ? STATUS_ICONS[status[1]] : 'FiInfo'} size="xs" color={status ? status[1] : 'secondary'} />
+                                        <Typography size="xs" color="muted">{status ? status[0] : part.hint}</Typography>
+                                    </Container>
+                                </Container>
+                            );
+                        })}
+                    </Container>
+                    <Container layout="grid" columns={2} gap="sm" padding="none" width="100%">
+                        <Tile icon="FiZap" label="Graphics memory together" value={formatGb(group.combined.gpuMemoryMb)} />
+                        <Tile icon="FiLayers" label="System memory together" value={formatGb(group.combined.memoryMb)} />
+                    </Container>
                 </Container>
             ))}
             {left.length > 0 && (
@@ -517,12 +538,12 @@ const DevicesPage = () => {
         return () => window.removeEventListener('ollama-availability-changed', load);
     }, [load]);
 
-    // A computer's part in a pool: lending its memory, or the main computer that runs the model.
+    // A computer's part in a pool: lending its memory, or running the model with the others' memory.
     const setPoolPart = async (computer, role) => {
         try {
             setPools(await deviceService.setPoolRole(computer.id, role));
-            if (role === 'lend') success(`${computer.name} will lend. If pooling is not set up on it yet, it asks on that computer first.`);
-            if (role === 'main') success(`${computer.name} is now your main computer.`);
+            if (role === 'lend') success(`${computer.name} will lend its memory. If pooling is not set up on it yet, it asks on that computer first.`);
+            if (role === 'main') success(`${computer.name} now runs the model for the pool.`);
         } catch (error) {
             notifyError(describeError(error, 'The computer could not be changed.'));
         }
