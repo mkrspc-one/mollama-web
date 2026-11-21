@@ -190,6 +190,29 @@ const MakePrivate = ({ name }) => (
     </Container>
 );
 
+// What usually stops the computer that runs the model from reaching a lending one, and what to do, most likely first.
+const UNREACHABLE_CHECKS = [
+    ['FiShield', 'On a Mac that runs the model', 'macOS asks before an app may reach other computers on your network. Open System Settings, Privacy & Security, Local Network, and turn on Mollama.'],
+    ['FiLock', 'A firewall on the lending computer', 'On Windows, allow Mollama when Windows asks, or in Windows Security, Firewall & network protection, Allow an app through firewall, tick Mollama for the network you are on. On a Mac, System Settings, Network, Firewall, Options, allow Mollama.'],
+    ['FiLink', 'The cable or the Wi-Fi', 'Both computers must be on the same network: the same Wi-Fi, or the cable plugged in at both ends with its lights on. A guest Wi-Fi often keeps devices apart.'],
+    ['FiPower', 'Both apps open and awake', 'The Mollama app must be open on both computers, and neither asleep. Reopening the app on the lending computer opens its gate again.'],
+    ['FiRefreshCw', 'Then check again', 'Press Check again at the top of this card. The line under the computer says what was found.']
+];
+const WhyUnreachable = () => (
+    <Container layout="flex-column" gap="xs" padding="none" width="100%">
+        <Typography size="xs" weight="semibold">Why the computer that runs the model cannot reach it</Typography>
+        {UNREACHABLE_CHECKS.map(([icon, title, text]) => (
+            <Container key={title} layout="flex" align="start" gap="xs" padding="none" wrap={false}>
+                <Badge size="xs" color="primary" width="20px" minWidth="20px" height="20px"><Icon name={icon} size="xs" color="contrast" /></Badge>
+                <Container layout="flex-column" gap="none" padding="none" minWidth="0">
+                    <Typography size="xs" weight="semibold">{title}</Typography>
+                    <Typography size="xs" color="muted">{text}</Typography>
+                </Container>
+            </Container>
+        ))}
+    </Container>
+);
+
 const PoolingCard = ({ pools, onPart, onCheck, checking, checkedAt }) => {
     const groups = pools?.groups || [];
     const left = pools?.left || [];
@@ -244,6 +267,11 @@ const PoolingCard = ({ pools, onPart, onCheck, checking, checkedAt }) => {
                                         <Icon name={status ? STATUS_ICONS[status[1]] : 'FiInfo'} size="xs" color={status ? status[1] : 'secondary'} />
                                         <Typography size="xs" color="muted">{status ? status[0] : part.hint}</Typography>
                                     </Container>
+                                    {one.reachable === false && (
+                                        <Button size="xxs" color="secondary" genieTrigger="click" genie={{ trigger: 'click', width: '440px', padding: 'sm', content: <WhyUnreachable /> }}>
+                                            <Icon name="FiHelpCircle" size="xs" />Why can't it be reached?
+                                        </Button>
+                                    )}
                                 </Container>
                             );
                         })}
