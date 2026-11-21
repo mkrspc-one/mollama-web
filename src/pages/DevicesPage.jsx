@@ -168,6 +168,28 @@ const PoolGuide = () => {
     );
 };
 
+// Windows marks a network Public until told otherwise, and Mollama never pools on one. This is how a person changes it.
+const PRIVATE_STEPS = [
+    'Do this only on a network you own and trust, such as your home Wi-Fi. Private lets other devices on that network see the computer.',
+    'On that computer, open Settings, then Network & internet.',
+    'Choose Wi-Fi (or Ethernet, for a cable), then the network it is connected to.',
+    'Under Network profile type, choose Private network.',
+    'Come back here and press Check again.'
+];
+const MakePrivate = ({ name }) => (
+    <Container layout="flex-column" gap="xs" padding="none" width="100%">
+        <Typography size="xs" weight="semibold">{`Set ${name}'s network to Private`}</Typography>
+        {PRIVATE_STEPS.map((step, index) => (
+            <Container key={step} layout="flex" align="start" gap="xs" padding="none" wrap={false}>
+                <Badge size="xs" color={index === 0 ? 'warning' : 'primary'} width="20px" minWidth="20px" height="20px">{index === 0 ? <Icon name="FiAlertTriangle" size="xs" color="contrast" /> : index}</Badge>
+                <Typography size="xs" color="muted">{step}</Typography>
+            </Container>
+        ))}
+        <Typography size="xxs" color="muted">Or in PowerShell, run as administrator, with the connection's own name in place of Wi-Fi (Settings lists it under Network & internet, Advanced network settings):</Typography>
+        <Typography size="xxs" as="code">Set-NetConnectionProfile -InterfaceAlias "Wi-Fi" -NetworkCategory Private</Typography>
+    </Container>
+);
+
 const PoolingCard = ({ pools, onPart, onCheck, checking, checkedAt }) => {
     const groups = pools?.groups || [];
     const left = pools?.left || [];
@@ -233,9 +255,16 @@ const PoolingCard = ({ pools, onPart, onCheck, checking, checkedAt }) => {
                 </Container>
             ))}
             {left.length > 0 && (
-                <Container layout="flex-column" gap="none" padding="none" width="100%">
+                <Container layout="flex-column" gap="xs" padding="none" width="100%">
                     {left.map((one) => (
-                        <Typography key={one.id} size="xxs" color="muted">{`${one.name}: ${one.message}`}</Typography>
+                        <Container key={one.id} layout="flex" align="center" gap="xs" padding="none" width="100%">
+                            <Typography size="xxs" color="muted">{`${one.name}: ${one.message}`}</Typography>
+                            {one.reason === 'public' && (
+                                <Button size="xxs" color="secondary" genieTrigger="click" genie={{ trigger: 'click', width: '420px', padding: 'sm', content: <MakePrivate name={one.name} /> }}>
+                                    <Icon name="FiShield" size="xs" />How to make it Private
+                                </Button>
+                            )}
+                        </Container>
                     ))}
                 </Container>
             )}
