@@ -518,7 +518,8 @@ const SkillsView = () => {
 const ToolsPage = () => {
     const { success, error: showError, confirm } = useNotification();
     const [params, setParams] = useSearchParams();
-    const [view, setView] = useState(['local', 'skills'].includes(params.get('view')) ? params.get('view') : 'remote');
+    // The view is in the address, left out on the first one, so Back returns to the previous tab.
+    const view = ['local', 'skills'].includes(params.get('view')) ? params.get('view') : 'remote';
     const [servers, setServers] = useState(null);
     const [devices, setDevices] = useState([]);
     const [apps, setApps] = useState([]);
@@ -689,8 +690,7 @@ const ToolsPage = () => {
     };
 
     const pick = (next) => {
-        setView(next);
-        setParams(next === 'remote' ? {} : { view: next }, { replace: true });
+        if (next !== view) setParams(next === 'remote' ? {} : { view: next });
     };
     const computerName = (id) => devices.find((device) => device.id === id)?.name || 'a computer that is no longer linked';
     const remotes = (servers || []).filter((server) => server.kind === 'remote');

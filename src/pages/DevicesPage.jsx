@@ -682,7 +682,7 @@ const DevicesPage = () => {
                 </Container>
                 <ButtonGroup size="xs" justify="start" selectable={false}>
                     {[['computers', 'Computers', 'FiMonitor'], ['pooling', 'Pooling', 'FiLayers']].map(([id, label, icon]) => (
-                        <Button key={id} size="xs" color={view === id ? 'primary' : 'secondary'} selected={view === id} onClick={() => setParams(id === 'pooling' ? { view: id } : {}, { replace: true })}><Icon name={icon} size="xs" />{label}</Button>
+                        <Button key={id} size="xs" color={view === id ? 'primary' : 'secondary'} selected={view === id} onClick={() => id !== view && setParams(id === 'pooling' ? { view: id } : {})}><Icon name={icon} size="xs" />{label}</Button>
                     ))}
                 </ButtonGroup>
 
