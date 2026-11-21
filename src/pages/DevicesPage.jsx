@@ -17,7 +17,7 @@ const POOL_GUIDE = {
             'Install the Mollama desktop app on every computer you want to pool, and sign in with this account on each.',
             'Put them on the same home network, by cable if you can, or connect two of them with a direct network cable.',
             'Mollama finds the computers that can pool by itself and lists them here.',
-            'On each computer that lends, turn on lending. The desktop app downloads the llama.cpp build for that computer, after you agree.',
+            'Turn on pooling in the desktop app on each computer. After you agree, it sets up the llama.cpp parts that let that computer be the main computer or a helper.',
             'Pick the main computer: the one with the largest graphics card, and room on its disk for the model.',
             'Download the model on the main computer only, then choose the pool in a chat.'
         ]
@@ -27,7 +27,7 @@ const POOL_GUIDE = {
         items: [
             'Runs models no single computer of yours can hold, using the memory of all of them.',
             'Puts memory to work that sits idle on your other computers.',
-            'The model lives on one computer: helpers need no copy and no Ollama.',
+            'Only the main computer downloads the model: the helpers lend their memory through the desktop app and keep no copy of their own.',
             'Measured on two of the owner\'s computers over Wi-Fi: a 33B model wrote about 2.8 times faster pooled than on one computer alone.'
         ]
     },
