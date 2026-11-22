@@ -10,7 +10,7 @@ const DROPDOWN_MIN_HEIGHT = 80;
 const VIEWPORT_MARGIN = 8;
 
 const SELECT_VALIDATION_STATES = new Set(['default', 'success', 'warning', 'error']);
-const SELECT_COLOR_OPTIONS = ['primary', 'secondary', 'tertiary'];
+const SELECT_COLOR_OPTIONS = ['primary', 'secondary', 'tertiary', 'error'];
 
 const sanitizeValidationState = (state) => (SELECT_VALIDATION_STATES.has(state) ? state : 'default');
 
@@ -24,7 +24,7 @@ const sanitizeValidationState = (state) => (SELECT_VALIDATION_STATES.has(state) 
 export const Select = ({
     className = '',
     variant = 'default', // 'default', 'outline', 'filled', 'underline'
-    color = 'primary', // 'primary', 'secondary', 'tertiary'
+    color = 'primary', // 'primary', 'secondary', 'tertiary', 'error'; an option may carry its own `color`
     size = 'md', // 'xxs', 'xs', 'sm', 'md', 'lg', 'xl'
     multiSelect = false, // Enable multi-select mode with badges
     menu = true, // false: no dropdown; a multi-select then only shows its badges, which can still be removed
@@ -732,7 +732,7 @@ export const Select = ({
                                     <div
                                         key={`${selectId}-option-${index}`}
                                         id={`${selectId}-option-${index}`}
-                                        className={`select-option ${getSizeClass().replace('select-', 'select-option-')} ${index === focusedIndex ? 'select-option-focused' : ''} ${option.disabled ? 'select-option-disabled' : ''} ${isSelected ? 'select-option-selected' : ''}`}
+                                        className={`select-option ${getSizeClass().replace('select-', 'select-option-')} ${index === focusedIndex ? 'select-option-focused' : ''} ${option.disabled ? 'select-option-disabled' : ''} ${isSelected ? 'select-option-selected' : ''} ${SELECT_COLOR_OPTIONS.includes(option.color) ? `select-option-colored select-color-${option.color}` : ''}`}
                                         style={option.style}
                                         role="option"
                                         aria-selected={isSelected}

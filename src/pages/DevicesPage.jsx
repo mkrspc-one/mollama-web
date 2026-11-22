@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Frame } from '@components/Components';
+import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Frame, Select } from '@components/Components';
 import { useSearchParams } from 'react-router-dom';
 import { useNotification } from '@contexts/NotificationContext';
 import { deviceService, desktopService, skillService, describeError, formatGb, useGuide } from '../client/ai.client';
@@ -10,7 +10,8 @@ const ADD_STEPS = [
     'The computer appears on this page by itself, and its models can be used from any of your Mollama apps.'
 ];
 
-// Pooling: what a person should know before lending computers to one model.
+// Pooling: what a person should know before pooling computers for one model. The primary computer runs the model;
+// secondary computers lend it their memory.
 const POOL_GUIDE = {
     steps: {
         label: 'How to pool',
@@ -20,14 +21,17 @@ const POOL_GUIDE = {
             'Put them on the same home network, by cable if you can, or connect two of them with a direct network cable.',
             'Mollama finds the computers that can pool by itself and lists them here.',
             'Choose each computer\'s part below. The first time, the desktop app on that computer asks before it sets pooling up.',
-            'Choose the computer that runs the model: the one with the largest graphics card, and room on its disk for the model. Set the others to lend their memory.',
-            'Download the model on the computer that runs it, then choose the pool in a chat.'
+            'Choose the primary computer, which holds the model and runs it: the one with the largest graphics card, and room on its disk for the model. Set the others as secondary computers, which lend it their memory.',
+            'Download the model on the primary computer, then choose the pool in a chat.'
         ]
     },
     wiring: {
         label: 'Wiring',
         figure: 'wired',
         items: [
+            'Wi-Fi works too, with nothing to buy: put the computers on the same home Wi-Fi, close to the router and on its 5 GHz or 6 GHz band. Mollama lists them here the same way.',
+            'What Wi-Fi costs: its delay comes and goes, so replies are slower and less even (about 6.5 words a second against 7.5 on a cable, measured on the owner\'s two computers), and the first start sends the whole model through the air, which can take much longer.',
+            'What Wi-Fi risks: a weak signal, or a laptop that sleeps or moves to another access point, drops the pool and stops the reply. A guest network or some mesh systems keep devices apart, so the computers never find each other. Pooled computers talk openly, so use only Wi-Fi you own that has a password, never shared or public Wi-Fi.',
             'Most reliable: plug the computers into a small router or network switch, even an old one with no internet. Each gets a proper address and Windows remembers the network as Private, so it stays pooled after a replug. A cable straight between two computers is an "unidentified network" that Windows sets back to Public each time it is plugged in.',
             'The cable: an Ethernet network cable, Cat 6 or Cat 5e, the kind with clear square plugs that goes into a router. One to three metres is plenty. Plugged straight into both computers\' network ports, it works for any mix of computers; no special crossover cable is needed.',
             'A laptop without a network port needs a USB-C network adapter. An adapter with a USB-A plug fits a USB-C laptop through a small USB-C to USB-A adapter, not a USB-A to USB-C cable.',
@@ -36,7 +40,7 @@ const POOL_GUIDE = {
             'Two Macs can use one Thunderbolt cable: a real Thunderbolt or 40 Gb USB4 cable, not a charging cable. Between a Mac and a PC, use network adapters.',
             'A plain USB-C cable between two computers is not a network and does not work.',
             'A small personal or travel router makes a private network of your own with no subscription: plug the computers into it. Each computer still needs the internet to reach Mollama, so keep them on your Wi-Fi too, or let the small router share an internet connection.',
-            'On a direct cable Windows may call the new network Public. The computers can still pool, but set it to Private in Windows settings if that PC is to lend.'
+            'On a direct cable Windows may call the new network Public. The computers can still pool, but set it to Private in Windows settings if that PC is to be a secondary computer.'
         ]
     },
     benefits: {
@@ -45,7 +49,7 @@ const POOL_GUIDE = {
         items: [
             'Runs models no single computer of yours can hold, using the memory of all of them.',
             'Puts memory to work that sits idle on your other computers.',
-            'Only the computer that runs the model downloads it. The others lend their memory and keep no copy of it.',
+            'Only the primary computer downloads the model. The secondary computers lend their memory and keep no copy of it.',
             'Measured on two of the owner\'s computers over Wi-Fi: a 33B model wrote about 2.8 times faster pooled than on one computer alone.'
         ]
     },
@@ -53,10 +57,10 @@ const POOL_GUIDE = {
         label: 'Risks',
         figure: 'gate',
         items: [
-            'Pool only at home, or on a network you trust. Pooled computers talk to each other openly, so on public or shared Wi-Fi someone nearby could listen in. Mollama never pools on a network Windows marks Public, and a computer that lends its memory answers only the computer that runs the model.',
+            'Pool only at home, or on a network you trust. Pooled computers talk to each other openly, so on public or shared Wi-Fi someone nearby could listen in. Mollama never pools on a network Windows marks Public, and a secondary computer answers only the primary computer.',
             'Every computer in the pool has to stay on: if one sleeps, loses its network or is turned off, the reply stops.',
             'Pooling a model that fits one computer makes it slower, not faster: a small model wrote 11 words a second pooled against 52 on one computer.',
-            'A lending computer is busy and warm while a pooled model runs.'
+            'A secondary computer is busy and warm while a pooled model runs.'
         ]
     },
     tips: {
@@ -68,19 +72,19 @@ const POOL_GUIDE = {
             'A better router helps less than you might think: on a cable the delay is already under a millisecond, and the computers\' own work sets most of the speed. Faster ports (2.5 Gb) mostly shorten the first start, when the model is sent to the other computers. On Wi-Fi, a newer router close to the computers keeps the delay steadier.',
             'Pool only models that do not fit one computer. A model that fits runs fastest on its own.',
             'Before you pool, close large apps on every computer in the pool: browsers with many tabs, games, video and design tools. The model is split by each computer\'s memory, and memory other apps hold can make it slower or stop it loading.',
-            'Keep lending computers awake and plugged in while a pooled model runs.',
+            'Keep every pooled computer plugged in while a pooled model runs. The desktop app keeps it awake.',
             'Pool two or three computers, not more: each one adds a step to every word.',
             'The first start sends the model to the other computers and takes minutes; later starts take about a minute.',
-            'Turn lending off when you are done.'
+            'Set the computers to Not pooled when you are done.'
         ]
     }
 };
 
-// The part each computer plays, in plain words: left out, lending its memory, or running the model with the others' memory.
+// The part each computer plays: primary (holds the model and runs it), secondary (lends its memory) or left out.
 const POOL_PARTS = [
-    { role: 'off', label: 'Not pooled', icon: 'FiMinusCircle', hint: 'This computer is not part of the pool.' },
-    { role: 'lend', label: 'Lends memory', icon: 'FiShare2', hint: 'Its memory helps the computer that runs the model. It needs no copy of the model.' },
-    { role: 'main', label: 'Runs the model', icon: 'FiCpu', hint: 'It holds the model and runs it, using the memory the others lend. Choose the one with the largest graphics card.' }
+    { role: 'main', label: 'Primary computer', color: 'primary', hint: 'It holds the model and runs it, using the memory the secondary computers lend. Choose the one with the largest graphics card.' },
+    { role: 'lend', label: 'Secondary computer', color: 'secondary', hint: 'Its memory helps the primary computer. It needs no copy of the model.' },
+    { role: 'off', label: 'Not pooled', color: 'error', hint: 'This computer is not part of the pool.' }
 ];
 const STATUS_ICONS = { warning: 'FiAlertTriangle', error: 'FiXCircle', success: 'FiCheckCircle', primary: 'FiCpu', secondary: 'FiClock' };
 // What a computer in a pool is doing now, in a few words, and the colour of its badge.
@@ -90,10 +94,10 @@ const poolStatus = (one, hasMain) => {
     if (one.setup === 'asking') return ['Waiting for you to agree on that computer to set up pooling.', 'warning'];
     if (one.setup === 'downloading') return [`Setting up pooling${one.progress ? `, ${Math.round(one.progress * 100)}%` : ''}…`, 'secondary'];
     if (['declined', 'failed', 'unsupported'].includes(one.setup) || (one.detail && !one.lending)) return [one.detail || 'Pooling could not be set up on it.', 'error'];
-    if (one.role === 'main') return ['Runs the model with the memory the others lend.', 'primary'];
-    if (!hasMain) return ['Ready to lend. Choose which computer on this network runs the model.', 'secondary'];
-    if (one.reachable === false) return [one.detail || 'The computer that runs the model cannot reach it.', 'error'];
-    if (one.reachable === true) return ['Lending its memory. The computer that runs the model reaches it.', 'success'];
+    if (one.role === 'main') return ['Holds the model and runs it, with the memory the secondary computers lend.', 'primary'];
+    if (!hasMain) return ['Ready to lend its memory. Choose which computer on this network is the primary one.', 'secondary'];
+    if (one.reachable === false) return [one.detail || 'The primary computer cannot reach it.', 'error'];
+    if (one.reachable === true) return ['Lending its memory. The primary computer reaches it.', 'success'];
     return [one.lending ? 'Lending its memory. Checking that it can be reached…' : 'Setting up…', 'secondary'];
 };
 
@@ -217,17 +221,17 @@ const MakePrivate = ({ name, networks = [] }) => {
     );
 };
 
-// What usually stops the computer that runs the model from reaching a lending one, and what to do, most likely first.
+// What usually stops the primary computer from reaching a secondary one, and what to do, most likely first.
 const UNREACHABLE_CHECKS = [
-    ['FiShield', 'On a Mac that runs the model', 'macOS asks before an app may reach other computers on your network. Open System Settings, Privacy & Security, Local Network, and turn on Mollama.'],
-    ['FiLock', 'A firewall on the lending computer', 'On Windows, allow Mollama when Windows asks, or in Windows Security, Firewall & network protection, Allow an app through firewall, tick Mollama for the network you are on. On a Mac, System Settings, Network, Firewall, Options, allow Mollama.'],
+    ['FiShield', 'On a Mac that is the primary computer', 'macOS asks before an app may reach other computers on your network. Open System Settings, Privacy & Security, Local Network, and turn on Mollama.'],
+    ['FiLock', 'A firewall on the secondary computer', 'On Windows, allow Mollama when Windows asks, or in Windows Security, Firewall & network protection, Allow an app through firewall, tick Mollama for the network you are on. On a Mac, System Settings, Network, Firewall, Options, allow Mollama.'],
     ['FiLink', 'The cable or the Wi-Fi', 'Both computers must be on the same network: the same Wi-Fi, or the cable plugged in at both ends with its lights on. A guest Wi-Fi often keeps devices apart.'],
-    ['FiPower', 'Both apps open and awake', 'The Mollama app must be open on both computers, and neither asleep. Reopening the app on the lending computer opens its gate again.'],
+    ['FiPower', 'Both apps open and awake', 'The Mollama app must be open on both computers, and neither asleep. Reopening the app on the secondary computer opens its gate again.'],
     ['FiRefreshCw', 'Then check again', 'Press Check again at the top of this card. The line under the computer says what was found.']
 ];
 const WhyUnreachable = () => (
     <Container layout="flex-column" gap="xs" padding="none" width="100%">
-        <Typography size="xs" weight="semibold">Why the computer that runs the model cannot reach it</Typography>
+        <Typography size="xs" weight="semibold">Why the primary computer cannot reach it</Typography>
         {UNREACHABLE_CHECKS.map(([icon, title, text]) => (
             <Container key={title} layout="flex" align="start" gap="xs" padding="none" wrap={false}>
                 <Badge size="xs" color="primary" width="20px" minWidth="20px" height="20px"><Icon name={icon} size="xs" color="contrast" /></Badge>
@@ -255,7 +259,7 @@ const PoolingCard = ({ pools, onPart, onCheck, checking, checkedAt }) => {
                 </Container>
             </Heading>
             <Typography size="xs" color="muted">
-                Several of your computers can share one model that none of them could hold alone. Mollama checks which of your computers are on the same network. Choose the computer that runs the model and let the others lend their memory. Once it reaches them, the pool appears in a chat's computer picker, with that computer's models.
+                Several of your computers can share one model that none of them could hold alone. Mollama checks which of your computers are on the same network. Choose a primary computer, which holds the model and runs it, and set the others as secondary computers, which lend it their memory. Once it reaches them, the pool appears in a chat's computer picker, with that computer's models.
             </Typography>
             {!pools && <Typography size="xs" color="muted">Checking your computers…</Typography>}
             {pools && groups.length === 0 && <Typography size="xs">None of your computers can pool right now.</Typography>}
@@ -267,8 +271,8 @@ const PoolingCard = ({ pools, onPart, onCheck, checking, checkedAt }) => {
                             <Typography size="sm" weight="semibold">{group.via === 'cable' ? 'Joined by a direct cable' : group.wired ? 'On your home network, by cable' : 'On your home network, by Wi-Fi'}</Typography>
                         </Container>
                         {group.computers.some((one) => one.role === 'main') && group.computers.some((one) => one.role === 'lend') && group.computers.filter((one) => one.role === 'lend').every((one) => one.reachable === true)
-                            ? <Badge size="xs" color="success" title="The computer that runs the model reached every computer lending its memory.">Ready to pool</Badge>
-                            : <Badge size="xs" color="warning" title="Ready once the computer that runs the model reaches a computer lending its memory.">Not ready yet</Badge>}
+                            ? <Badge size="xs" color="success" title="The primary computer reached every secondary computer.">Ready to pool</Badge>
+                            : <Badge size="xs" color="warning" title="Ready once the primary computer reaches a secondary computer.">Not ready yet</Badge>}
                     </Container>
                     <Container layout="grid" columns={2} gap="sm" padding="none" width="100%">
                         {group.computers.map((one) => {
@@ -283,13 +287,26 @@ const PoolingCard = ({ pools, onPart, onCheck, checking, checkedAt }) => {
                                             <Typography size="xxs" color="muted">{[one.gpuMemoryMb ? `${formatGb(one.gpuMemoryMb)} graphics` : null, `${formatGb(one.memoryMb)} memory`].filter(Boolean).join(' · ')}</Typography>
                                         </Container>
                                     </Container>
-                                    <ButtonGroup size="xs" justify="start" selectable={false}>
-                                        {POOL_PARTS.map((entry) => (
-                                            <Button key={entry.role} size="xs" color={one.role === entry.role ? 'primary' : 'secondary'} selected={one.role === entry.role} title={entry.hint} onClick={() => one.role !== entry.role && onPart(one, entry.role)}>
-                                                <Icon name={entry.icon} size="xs" />{entry.label}
-                                            </Button>
-                                        ))}
-                                    </ButtonGroup>
+                                    <Container layout="flex" align="center" gap="xs" padding="none" width="100%">
+                                        <Container padding="none" flexFill minWidth="0">
+                                            <Select
+                                                size="xs"
+                                                variant="outline"
+                                                color={part.color}
+                                                width="100%"
+                                                aria-label={`${one.name}'s part in the pool`}
+                                                value={one.role}
+                                                options={POOL_PARTS.map((entry) => {
+                                                    const taken = entry.role === 'main' && pools.main && pools.main !== one.id;
+                                                    return { value: entry.role, label: taken ? `${entry.label} (another computer is)` : entry.label, color: entry.color, disabled: Boolean(taken) };
+                                                })}
+                                                onChange={(role) => role && role !== one.role && onPart(one, role)}
+                                            />
+                                        </Container>
+                                        <Button size="xs" color="secondary" disabled={checking} title={checking ? 'Checking the pool…' : 'Try the pool connection again'} onClick={onCheck}>
+                                            <Icon name="FiRefreshCw" size="xs" />
+                                        </Button>
+                                    </Container>
                                     <Container layout="flex" align="start" gap="xs" padding="none" width="100%" wrap={false}>
                                         <Icon name={status ? STATUS_ICONS[status[1]] : 'FiInfo'} size="xs" color={status ? status[1] : 'secondary'} />
                                         <Typography size="xs" color="muted">{status ? status[0] : part.hint}</Typography>
@@ -628,7 +645,7 @@ const DevicesPage = () => {
         return () => window.removeEventListener('ollama-availability-changed', load);
     }, [load]);
 
-    // A computer's part in a pool: lending its memory, or running the model with the others' memory.
+    // A computer's part in a pool: secondary (lends its memory) or primary (runs the model with the others' memory).
     // A network check on demand: every connected computer is read again and checked for who can pool.
     const [poolCheck, setPoolCheck] = useState({ checking: false, at: null });
     const checkPools = async () => {
@@ -646,8 +663,8 @@ const DevicesPage = () => {
     const setPoolPart = async (computer, role) => {
         try {
             setPools(await deviceService.setPoolRole(computer.id, role));
-            if (role === 'lend') success(`${computer.name} will lend its memory. If pooling is not set up on it yet, it asks on that computer first.`);
-            if (role === 'main') success(`${computer.name} now runs the model for the pool.`);
+            if (role === 'lend') success(`${computer.name} is now a secondary computer and will lend its memory. If pooling is not set up on it yet, it asks on that computer first.`);
+            if (role === 'main') success(`${computer.name} is now the primary computer: it runs the model for the pool.`);
         } catch (error) {
             notifyError(describeError(error, 'The computer could not be changed.'));
         }

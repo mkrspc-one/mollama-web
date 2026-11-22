@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@contexts/AuthContext';
 import { useNotification } from '@contexts/NotificationContext';
 import { appService } from '@/client/app.client';
@@ -153,6 +154,12 @@ export const NotificationsCard = ({ subscribe = null }) => {
     );
 };
 
+// Where a notice points: the page it names, which is only ever a page of this app, or the Models page for a download.
+const whereOf = (notice) => {
+    if (typeof notice.path === 'string' && /^\/(?!\/)/.test(notice.path)) return notice.path;
+    return String(notice.type || '').startsWith('download:') ? '/models' : null;
+};
+
 /**
  * Notices inside the navigation menu: the newest few, with Mark read and Clear all.
  * Clear all also dismisses the notices showing on screen.
@@ -160,6 +167,7 @@ export const NotificationsCard = ({ subscribe = null }) => {
 export const NotificationsMenu = () => {
     const { user } = useAuth();
     const { notifications: showing = [], clearAllNotifications } = useNotification();
+    const navigate = useNavigate();
     const [list, setList] = useState(null);
     const [unread, setUnread] = useState(0);
     const userId = user?.id || user?._id;
@@ -206,13 +214,22 @@ export const NotificationsMenu = () => {
                         <Container padding="none" flexFill minWidth="0">
                             <Typography size="xs" weight={notice.read ? 'normal' : 'semibold'} truncate>{notice.message}</Typography>
                         </Container>
+                        {whereOf(notice) && (
+                            <Button size="xs" color="secondary" title="Open what this is about" aria-label={`Open: ${notice.message}`} onClick={() => { if (!notice.read) act(appService.markNotificationsRead(notice.id)); navigate(whereOf(notice)); }}>
+                                <Icon name="FiArrowRight" size="xs" />Open
+                            </Button>
+                        )}
                         <Button size="xxs" variant="ghost" color="error" title="Clear" aria-label="Clear" onClick={() => act(appService.clearNotifications(notice.id))}>
                             <Icon name="FiX" />
                         </Button>
                     </Container>
                 );
             })}
-            {notices.length > 3 && <Typography size="xxs" color="muted">{notices.length - 3} more on the dashboard</Typography>}
+            {notices.length > 3 && (
+                <Button size="xs" variant="ghost" title="See every notification on the dashboard" onClick={() => navigate('/dashboard')}>
+                    {notices.length - 3} more on the dashboard<Icon name="FiArrowRight" size="xs" />
+                </Button>
+            )}
         </Container>
     );
 };

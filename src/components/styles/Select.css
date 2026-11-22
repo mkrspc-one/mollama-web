@@ -63,6 +63,14 @@
     --select-accent-color: var(--tertiary-color);
 }
 
+.select-color-error {
+    --select-accent-color: var(--error-color);
+}
+
+.select-option-colored:not(.select-option-disabled) {
+    color: var(--select-accent-color);
+}
+
 .select-container {
     position: relative;
     border-radius: var(--input-radius, var(--border-radius-md));

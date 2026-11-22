@@ -1,7 +1,7 @@
 /**
  * Yard: a home as a round yard walled all round. Inside, a tower and a laptop share one model; words run
  * between them as beads. Strangers' phones stand outside. Public Wi-Fi sinks the wall, lifts the cable into
- * a dashed arc and lets the nearest stranger's line reach it; sleep closes the laptop and the words stop.
+ * a dashed arc and lets every stranger's line reach it, each at its own place; sleep closes the laptop and the words stop.
  */
 const {
   Cam, circ, clamp, rad, facing, fit, lerp, open, physics, poly, prism, proj, put, rings, rrect, seg, unproj,
@@ -12,7 +12,7 @@ const GR = 92, R = 56, WT = 3.5, WH = 9, PB = 4, NR = 64, SR = 78, PH = 20, TH =
 const SA = [45, 105, -35, 160, -110].map(rad);
 const ST = SA.map((a) => [SR * Math.cos(a), SR * Math.sin(a)]);
 const TX = -20, TY = 20, HX = 6, CAB = [[-11, 18], [4, 22], [10, 6], [16, 1]];
-const A0 = [-20, 20, TH - 3], A1 = [1, -15, 3 + LH], ARC = 14;
+const A0 = [-20, 20, TH - 3], A1 = [1, -15, 3 + LH], ARC = 14, TAP = [0.5, 0.34, 0.66, 0.2, 0.8];
 
 /** A point on the link at t (tower to laptop): along the ground at m 0, an arc through the air at m 1. */
 function linkPt(t, m) {
@@ -94,8 +94,8 @@ function mount({ stage, svg, read, controls = {} }, value) {
     }
   }
 
-  // The stranger's reach: a dashed line from the nearest phone to the middle of the arc.
-  const reach = mk("path", { class: "nf dash" }, g), rt = tween(pub ? 1 : 0), mode = tween(pub ? 1 : 0);
+  // The strangers' reach: a dashed line from each phone that stands to its own place on the arc.
+  const reach = mk("g", {}, g), taps = S.map(() => mk("path", { class: "nf dash" }, reach)), rt = tween(pub ? 1 : 0), mode = tween(pub ? 1 : 0);
   let air = null, linkKey = "", reachKey = ""; for (const s of S) (s.x + s.y < 0 ? yard : reach).before(s.g);
 
   function drawStranger(s, now) {
@@ -121,10 +121,13 @@ function mount({ stage, svg, read, controls = {} }, value) {
       setD(cab, open(Array.from({ length: 33 }, (_, j) => P(...linkPt(j / 32, m))))); cab.classList.toggle("dash", m > 0.5);
     }
     beads.forEach((b, k) => { const q = linkPt((phase + k / 3) % 1, m); place(b, P(q[0], q[1], q[2] + 1.2 * (1 - m))); });
-    const f = tval(rt, now), rk = f.toFixed(3) + m.toFixed(3);
+    const f = tval(rt, now), hs = S.map((s) => tval(s.h, now)), rk = f.toFixed(3) + m.toFixed(3) + hs.map((h) => h.toFixed(2)).join();
     if (rk !== reachKey) {
-      reachKey = rk; const a = P(ST[0][0], ST[0][1], PH + 2), b = P(...linkPt(0.5, m));
-      setD(reach, f < 0.01 ? "" : open([a, [lerp(a[0], b[0], f), lerp(a[1], b[1], f)]]));
+      reachKey = rk;
+      S.forEach((s, i) => {
+        const e = f * hs[i], a = P(s.x, s.y, PH * hs[i] + 2), b = P(...linkPt(TAP[i], m));
+        setD(taps[i], e < 0.01 ? "" : open([a, [lerp(a[0], b[0], e), lerp(a[1], b[1], e)]]));
+      });
     }
     return true;
   });
@@ -133,7 +136,7 @@ function mount({ stage, svg, read, controls = {} }, value) {
   /** One bright place: what the pointer picked, else the closed laptop, else the stranger's reach, else the rim. */
   function marks() {
     const sleeping = sleepAt >= 0, on = sleeping ? "laptop" : pick || (pub ? "reach" : "wall");
-    [[rim, "wall"], [reach, "reach"], [tw.sil, "tower"], [cab, "cable"], [face, "laptop"], [bs.sil, "laptop"], ...S.map((s) => [s.s.sil, "s" + s.i])]
+    [[rim, "wall"], [taps[0], "reach"], [tw.sil, "tower"], [cab, "cable"], [face, "laptop"], [bs.sil, "laptop"], ...S.map((s) => [s.s.sil, "s" + s.i])]
       .forEach(([el, id]) => el.classList.toggle("hi", on === id));
     beads.forEach((b) => b.setAttribute("class", sleeping ? "dot off" : "dot m"));
     read.textContent = sleeping ? "stopped" : pick ? (pick === "wall" ? "home" : pick[0] === "s" ? "stranger" : "pool") : pub ? "public" : "rest";
@@ -184,7 +187,7 @@ function mount({ stage, svg, read, controls = {} }, value) {
 
 hairline({
   name: "yard",
-  means: "Two of your computers share a model inside a walled yard; on public Wi-Fi the wall drops and strangers can reach the link.",
+  means: "Two of your computers share a model inside a walled yard; on public Wi-Fi the wall drops and every stranger nearby reaches the link.",
   rules: [1, 2, 4, 7, 9],
   range: [1, 3, 5],
   label: "strangers",
