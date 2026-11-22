@@ -1444,6 +1444,7 @@ const Message = ({ message, isLast, busy, onRegenerate, onEdit }) => {
                 </Container>
             ) : mine ? <PlainText text={message.content} /> : message.content && <UnverifiedAddresses.Provider value={(address) => (message.unverified || []).includes(address)}><Markdown text={message.content} /></UnverifiedAddresses.Provider>}
             {message.error && <Typography size="sm" color="error">{message.error.message} {message.error.action}</Typography>}
+            {message.error?.detail && <Typography size="xs" color="muted">What the computer said: {message.error.detail}</Typography>}
             {message.stopped && <Typography size="sm" color="muted">Stopped before it finished.</Typography>}
         </>
     );
