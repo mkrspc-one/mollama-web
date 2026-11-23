@@ -69,6 +69,18 @@ const gb = (megabytes) => {
     return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} GB`;
 };
 const gbFromBytes = (bytes) => gb(bytes / (1024 * 1024));
+// Where a model's memory goes once it runs, and what that leaves of each memory before other apps take their part.
+const placeWords = (place) => [
+    [place.gpuMb > 0 ? `${gb(place.gpuMb)} graphics` : null, place.ramMb > 0 ? `${gb(place.ramMb)} system` : null].filter(Boolean).join(' + '),
+    `leaves ${[place.gpuLeftMb !== null ? `${gb(place.gpuLeftMb)} graphics` : null, place.ramLeftMb !== null ? `${gb(place.ramLeftMb)} system` : null].filter(Boolean).join(', ')}`
+].join(', ');
+const PLACE_NOTE = 'An estimate of the memory the model takes while it runs, and what is left of each memory in total. Other open apps use some of what is left.';
+const Placement = ({ model }) => (
+    <>
+        {model.fit?.place && <Typography size="xs" color="muted" margin="none" title={PLACE_NOTE}>This computer: {placeWords(model.fit.place)}</Typography>}
+        {model.pooled?.place && <Typography size="xs" color="muted" margin="none" title={`${PLACE_NOTE} Graphics memory is every pooled computer's together; system memory is the primary computer's.`}>Pooled ({model.pooled.names}): {placeWords(model.pooled.place)}</Typography>}
+    </>
+);
 
 const speedWords = (range) => {
     if (!range) return null;
@@ -378,19 +390,18 @@ const CatalogueCard = ({ model, job, canManage, ollamaUp, onDownload }) => {
                 {abilities(model).map((ability) => <Badge key={ability} size="xs" color="secondary" title={ABILITY_NOTES[ability]}>{ability}</Badge>)}
             </Container>
             <Container padding="none" flexFill />
-            <Row>
-                <Container padding="none" flexFill minWidth="0">
-                    <Typography size="xxs" color="muted" truncate={!model.cloudOnly}>
-                        {model.cloudOnly
-                            ? 'Too large to download. Runs on Ollama with your own key.'
-                            : [`${gb(model.sizeMb)}`, model.fit.tokensPerSecond ? speedWords(model.fit.tokensPerSecond) : null].filter(Boolean).join(' · ')}
-                    </Typography>
-                </Container>
-                <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>
+            <Typography size="xs" margin="none">
+                {model.cloudOnly
+                    ? 'Too large to download. Runs on Ollama with your own key.'
+                    : [`${gb(model.sizeMb)} download`, model.fit.memoryNeededMb ? `needs ${gb(model.fit.memoryNeededMb)} to run` : null, model.fit.tokensPerSecond ? speedWords(model.fit.tokensPerSecond) : null].filter(Boolean).join(' · ')}
+            </Typography>
+            {!model.cloudOnly && <Placement model={model} />}
+            {(useOnline || action) && (
+                <Container layout="flex" align="center" justify="end" gap="xs" padding="none" width="100%">
                     {useOnline}
                     {action}
                 </Container>
-            </Row>
+            )}
         </Card>
     );
 };
@@ -437,7 +448,7 @@ const perPage = () => {
     const kept = Number(localStorage.getItem('mollama-models-per-page'));
     return PAGE_SIZES.includes(kept) ? kept : 12;
 };
-const DiscoverTab = ({ catalogue, find, jobs, canManage, ollamaUp, onDownload, onFind, onPage, onSort, loading }) => {
+const DiscoverTab = ({ catalogue, recommended, find, jobs, canManage, ollamaUp, onDownload, onFind, onPage, onSort, loading }) => {
     const top = useRef(null);
     const [customName, setCustomName] = useState('');
     const [query, setQuery] = useState(find.q);
@@ -477,8 +488,7 @@ const DiscoverTab = ({ catalogue, find, jobs, canManage, ollamaUp, onDownload, o
     ].filter(Boolean).join(' · ');
 
     const jobFor = (tag) => jobs.find((job) => job.model === tag && job.status !== 'completed' && job.status !== 'cancelled');
-    const recommended = catalogue.picks || [];
-    const others = catalogue.models.filter((model) => !model.pick);
+    const others = catalogue.models;
     const card = (model) => (
         <CatalogueCard
             key={model.tag}
@@ -525,8 +535,20 @@ const DiscoverTab = ({ catalogue, find, jobs, canManage, ollamaUp, onDownload, o
     );
 
     return (
-        <Container ref={top} layout="flex-column" gap="md" padding="none" width="100%">
-            <Container layout="flex-column" gap="xs" padding="none" width="100%">
+        <Container layout="flex-column" gap="md" padding="none" width="100%">
+            {recommended?.length > 0 && (
+                <>
+                    <SectionTitle icon="FiStar" title="Recommended for this device" count={recommended.length} />
+                    <Container layout="grid" columns="auto-lg" gap="sm" padding="none" width="100%" align="stretch">{recommended.map(card)}</Container>
+                </>
+            )}
+            {recommended?.length === 0 && (
+                <Typography size="xs" color="muted">
+                    No model is a comfortable fit for this device. Smaller ones may still run slowly.
+                </Typography>
+            )}
+
+            <Container ref={top} layout="flex-column" gap="xs" padding="none" width="100%">
                 <Container layout="flex" gap="xs" padding="none" align="center" width="100%">
                     <Input
                         size="sm"
@@ -563,28 +585,15 @@ const DiscoverTab = ({ catalogue, find, jobs, canManage, ollamaUp, onDownload, o
                 {!canManage && <Typography size="xxs" color="muted">Only an admin or owner can download models.</Typography>}
             </Container>
 
-            {recommended.length > 0 && (
-                <>
-                    <SectionTitle icon="FiStar" title="Recommended for this device" count={recommended.length} />
-                    <Container layout="grid" columns="auto-lg" gap="sm" padding="none" width="100%" align="stretch">{recommended.map(card)}</Container>
-                </>
-            )}
-
             {catalogue.models.length === 0 && (
                 <Typography size="xs" color="muted">
                     {catalogue.unavailable ? 'The list could not be loaded from ollama.com. You can still add a model by its name below.' : 'No model in the ollama.com library matched. Try other words or fewer filters, or add a model by its name below.'}
                 </Typography>
             )}
 
-            {catalogue.models.length > 0 && (catalogue.picks || []).length === 0 && (
-                <Typography size="xs" color="muted">
-                    None of the listed models is a comfortable fit for this device. Smaller ones may still run slowly.
-                </Typography>
-            )}
-
             {others.length > 0 && (
                 <>
-                    <SectionTitle icon="FiGrid" title="All models" count={others.length} />
+                    <SectionTitle icon="FiGrid" title="All models" count={catalogue.total ?? others.length} />
                     <Container layout="grid" columns="auto-lg" gap="sm" padding="none" width="100%" align="stretch">{others.map(card)}</Container>
                 </>
             )}
@@ -662,11 +671,13 @@ const InstalledTab = ({ installed, canManage, onDelete, elsewhere = {} }) => {
                     <Typography size="xxs" color="muted">
                         {[
                             `${gbFromBytes(model.sizeBytes)} on disk`,
+                            model.fit?.memoryNeededMb ? `needs ${gb(model.fit.memoryNeededMb)} to run` : null,
                             model.parameterSize,
                             model.quantization,
                             model.contextLength ? `reads ${model.contextLength.toLocaleString()} tokens` : null
                         ].filter(Boolean).join(' · ')}
                     </Typography>
+                    <Placement model={model} />
                 </Card>
             ))}
         </Container>
@@ -982,6 +993,15 @@ const ModelsPage = () => {
     const [find, setFind] = useState(EVERYTHING);
     const finding = useRef(EVERYTHING);
     const asking = useRef(0);
+    const viewing = useRef(null);
+    // The recommended models are read on their own, so no search, filter or page of the list changes them.
+    const [recommended, setRecommended] = useState(null);
+    const loadRecommended = useCallback(async (deviceId) => {
+        try {
+            const result = await modelService.getDeviceRecommended(deviceId);
+            setRecommended((now) => (viewing.current === deviceId ? result.models : now));
+        } catch { /* the list below still shows every model */ }
+    }, []);
     const loadCatalogue = useCallback(async (deviceId, { page = 1, size = perPage(), sort = sortChoice(), all = false, ...changes } = {}) => {
         const wanted = { ...finding.current, ...changes };
         finding.current = wanted;
@@ -1008,7 +1028,7 @@ const ModelsPage = () => {
             // An answer overtaken by a newer search is dropped.
             if (mine !== asking.current) return;
             result.size = result.size || 48;
-            setCatalogue((now) => ({ ...result, picks: page === 1 ? result.models.filter((model) => model.pick) : (now?.picks || []) }));
+            setCatalogue(result);
         } catch (error) {
             if (mine !== asking.current) return;
             notifyError(describeError(error, 'The model list could not be loaded.'));
@@ -1044,9 +1064,9 @@ const ModelsPage = () => {
     const refresh = useCallback(async () => {
         setRefreshing(true);
         await loadDevices();
-        if (device?.online) await Promise.all([loadInstalled(), loadCatalogue(device.id), loadRunning()]);
+        if (device?.online) await Promise.all([loadInstalled(), loadCatalogue(device.id), loadRecommended(device.id), loadRunning()]);
         setRefreshing(false);
-    }, [device, loadDevices, loadInstalled, loadCatalogue, loadRunning]);
+    }, [device, loadDevices, loadInstalled, loadCatalogue, loadRecommended, loadRunning]);
 
     useEffect(() => {
         return onReturn(() => refreshRef.current());
@@ -1062,15 +1082,18 @@ const ModelsPage = () => {
     const deviceOnline = Boolean(device?.online);
     useEffect(() => {
         modelService.view(deviceId);
+        viewing.current = deviceId;
         statuses.current = new Map();
         setInstalled(null);
         setCatalogue(null);
+        setRecommended(null);
         setRunning(null);
         setJobs([]);
         if (!deviceId || !deviceOnline) return;
         loadInstalled();
         loadCatalogue(deviceId);
-    }, [deviceId, deviceOnline, loadInstalled, loadCatalogue]);
+        loadRecommended(deviceId);
+    }, [deviceId, deviceOnline, loadInstalled, loadCatalogue, loadRecommended]);
 
     // Which of this computer's models are also on the person's other computers.
     useEffect(() => {
@@ -1280,6 +1303,7 @@ const ModelsPage = () => {
                 {device?.online && tab === 'discover' && (
                     <DiscoverTab
                         catalogue={catalogue}
+                        recommended={recommended}
                         jobs={jobs}
                         canManage={canManage}
                         ollamaUp={ollamaUp}

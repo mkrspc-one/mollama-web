@@ -458,6 +458,7 @@ export const modelService = {
     updateModel: (request) => api.post('/models/update', request, onViewed()),
 
     getDeviceCatalogue: (deviceId, query = {}) => api.get(`/devices/${deviceId}/catalogue`, { params: query }),
+    getDeviceRecommended: (deviceId) => api.get(`/devices/${deviceId}/recommended`),
     // A server that is one version behind does not know "sample" yet; it is then asked the older way and the page trims the list itself.
     getPublicCatalogue: (memoryMb, gpuMemoryMb, shared = false) => api.get('/catalogue', { params: { memoryMb, gpuMemoryMb, sample: true, ...(shared ? { shared: true } : {}) } })
         .catch((error) => (error?.response?.status === 400 ? api.get('/catalogue', { params: { memoryMb, gpuMemoryMb } }) : Promise.reject(error))),
