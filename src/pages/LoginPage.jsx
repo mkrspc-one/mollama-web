@@ -12,6 +12,26 @@ import {
   Icon 
 } from '@components/Components';
 
+// The one frame of the sign-in, sign-up and password pages: the name, what this step is, the form, then the way out.
+export const AuthCard = ({ title, lead = null, maxWidth = '440px', footer = null, children, ...form }) => (
+  <Page layout="flex" align="center" justify="center" background="dots" backgroundFade="radial">
+    <Card layout="flex-column" padding="xl" gap="lg" width="100%" maxWidth={maxWidth} wrap={false}>
+      <Container layout="flex-column" gap="sm" padding="none" width="100%" wrap={false}>
+        <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>
+          <Icon name="FiCpu" size="md" color="primary" />
+          <Typography size="md" weight="bold" font="secondary">Mollama</Typography>
+        </Container>
+        <Typography as="h1" size="lg" weight="semibold" font="secondary">{title}</Typography>
+        {lead && <Typography as="p" size="xs" color="muted" margin="none">{lead}</Typography>}
+      </Container>
+      <Container as="form" layout="flex-column" gap="md" padding="none" width="100%" wrap={false} {...form}>
+        {children}
+      </Container>
+      {footer}
+    </Card>
+  </Page>
+);
+
 export const LoginPage = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
@@ -37,9 +57,9 @@ export const LoginPage = () => {
     // Simple validation - just check if fields are filled
     if (!formData.identifier || !formData.password) {
       if (!formData.identifier) {
-        showError('Email or username is required');
+        showError('Enter your email address or username.');
       } else if (!formData.password) {
-        showError('Password is required');
+        showError('Enter your password.');
       }
       return;
     }
@@ -55,10 +75,10 @@ export const LoginPage = () => {
       }
 
       if (result.success) {
-        showSuccess('Login successful! Welcome back.');
+        showSuccess('Signed in.');
         navigate('/'); // Navigate to dashboard after successful login
       } else {
-        showError(result.error || 'Login failed. Please check your credentials.');
+        showError(result.error || 'That sign-in did not work. Check your username and password.');
       }
     } catch {
     } finally {
@@ -81,162 +101,95 @@ export const LoginPage = () => {
       }
     };
     return (
-      <Page layout="flex" align="center" justify="center" background="dots" backgroundFade="radial">
-        <Card layout="flex-column" padding="xl" align="center" gap="lg" width="100%" maxWidth="560px">
-          <Container layout="flex-column" gap="sm" align="center" padding="none">
-            <Icon name="FaUserCheck" size="lg" color="primary" />
-            <Typography as="h1" size="2xl" weight="bold" font="secondary" color="primary" align="center">
-              Welcome back
-            </Typography>
-            <Typography align="center">
-              You were away for a while. Continue where you left off.
-            </Typography>
-          </Container>
-          <Container layout="flex-column" gap="md" padding="none" width="92%">
-            <Input type="text" name="identifier" label="Username" variant="floating" value={resume.username} readOnly width="100%" autoComplete="username" />
-            <Button color="primary" width="100%" disabled={isLoading} onClick={carryOn}>
-              <Icon name={isLoading ? 'FaSpinner' : 'FaSignInAlt'} />
-              {isLoading ? 'Continuing...' : `Continue as ${resume.username}`}
-            </Button>
-          </Container>
-          <Button color="secondary" size="sm" disabled={isLoading} onClick={signOutAway}>
+      <AuthCard
+        title="You were away for a while"
+        lead="Continue where you left off. No password is needed."
+        onSubmit={(event) => { event.preventDefault(); carryOn(); }}
+        footer={(
+          <Button size="sm" variant="ghost" disabled={isLoading} onClick={signOutAway}>
             Not you? Sign out
           </Button>
-        </Card>
-      </Page>
+        )}
+      >
+        <Input type="text" name="identifier" label="Username" value={resume.username} readOnly width="100%" autoComplete="username" />
+        <Button type="submit" size="lg" color="secondary" variant="solid" width="100%" disabled={isLoading}>
+          {isLoading ? 'Continuing…' : `Continue as ${resume.username}`}
+        </Button>
+      </AuthCard>
     );
   }
 
   return (
-    <Page layout="flex" align="center" justify="center" background="dots" backgroundFade="radial">
-        <Card layout="flex-column" padding="xl" align="center" gap="lg" width="100%" maxWidth="560px">
-            {/* Header */}
-            <Container layout="flex-column" gap="sm" align="center" padding="none">
-              <Icon name={twoFactorStep ? 'FaShieldAlt' : 'FaLock'} size="lg" color="primary" />
-              <Typography as="h1" size="2xl" weight="bold" font="secondary" color="primary" style={{ textAlign: 'center' }}>
-                {twoFactorStep ? 'Two-Factor Authentication' : 'Sign In'}
-              </Typography>
-              <Typography align="center">
-                Welcome back! Please sign in to your account.
-              </Typography>
-            </Container>
+    <AuthCard
+      title={twoFactorStep ? 'Two-factor sign-in' : 'Sign in'}
+      lead={twoFactorStep
+        ? 'Enter the 6-digit code from your authenticator app, or a backup code.'
+        : 'Use your username or your email address.'}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') handleSubmit(event);
+      }}
+      onSubmit={handleSubmit}
+      footer={(
+        <Container layout="flex-column" gap="xs" padding="none" width="100%" wrap={false}>
+          <Button size="sm" variant="ghost" align="start" onClick={() => navigate('/forgot-password')}>
+            Forgot your password?
+          </Button>
+          <Button size="sm" variant="ghost" align="start" onClick={() => navigate('/signup')}>
+            No account yet? Create an account
+          </Button>
+        </Container>
+      )}
+    >
+      {twoFactorStep && (
+        <Input
+          type="text"
+          name="twoFactorToken"
+          label="Authentication code"
+          value={twoFactorToken}
+          onChange={(event) => setTwoFactorToken(event.target.value)}
+          required
+          width="100%"
+          maxLength={20}
+          autoComplete="one-time-code"
+        />
+      )}
 
-            {/* Login Form */}
-              <Container
-                as="form"
-                style={{ width: '92%' }}
-                gap="md"
-                padding="none"
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    handleSubmit(e);
-                  }
-                }}
-                onSubmit={handleSubmit}
-              >
-                {twoFactorStep && (
-                  <>
-                    <Typography size="sm" align="center" style={{ display: 'block', textAlign: 'center', width: '100%' }}>
-                      Enter the 6-digit code from your authenticator app, or a backup code.
-                    </Typography>
-                    <Input
-                      type="text"
-                      name="twoFactorToken"
-                      label="Authentication code"
-                      variant="floating"
-                      value={twoFactorToken}
-                      onChange={e => setTwoFactorToken(e.target.value)}
-                      required
-                      width="100%"
-                      maxLength={20}
-                      autoComplete="one-time-code"
-                    />
-                    <Button
-                      type="button"
-                      color="secondary"
-                      width="100%"
-                      onClick={() => { setTwoFactorStep(false); setTwoFactorToken(''); }}
-                      disabled={isLoading}
-                    >
-                      Back to sign in
-                    </Button>
-                  </>
-                )}
+      {!twoFactorStep && (
+        <Input
+          type="text"
+          name="identifier"
+          label="Email or username"
+          value={formData.identifier}
+          onChange={handleInputChange}
+          required
+          width="100%"
+          autoComplete="username"
+        />
+      )}
 
-                {!twoFactorStep && (
-                <Input
-                  type="text"
-                  name="identifier"
-                  label="Email or Username"
-                  variant="floating"
-                  value={formData.identifier}
-                  onChange={handleInputChange}
-                  required
-                  width="100%"
-                  autoComplete="username"
-                />
-                )}
+      {!twoFactorStep && (
+        <Input
+          type="password"
+          name="password"
+          label="Password"
+          value={formData.password}
+          onChange={handleInputChange}
+          required
+          width="100%"
+          autoComplete="current-password"
+        />
+      )}
 
-                {!twoFactorStep && (
-                <Input
-                  type="password"
-                  name="password"
-                  label="Password"
-                  variant="floating"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  required
-                  width="100%"
-                  autoComplete="current-password"
-                />
-                )}
+      <Button type="submit" size="lg" color="secondary" variant="solid" width="100%" disabled={!isFormValid || isLoading} onClick={handleSubmit}>
+        {isLoading ? 'Signing in…' : 'Sign in'}
+      </Button>
 
-                <Button
-                  type="submit"
-                  color="primary"
-                  disabled={!isFormValid || isLoading}
-                  onClick={handleSubmit}
-                  width="100%"
-                >
-                  {isLoading ? (
-                    <>
-                      <Icon name="FaSpinner" />
-                      Signing In...
-                    </>
-                  ) : (
-                    <>
-                      <Icon name="FaSignInAlt" />
-                      Sign In
-                    </>
-                  )}
-                </Button>
-              </Container>
-
-            {/* Actions */}
-            <Container layout="flex-column" gap="sm" align="center" padding="none">
-              <Button
-                color="secondary"
-                size="sm"
-                onClick={() => navigate('/forgot-password')}
-              >
-                Forgot your password?
-              </Button>
-
-              <Container layout="flex" justify="center" gap="sm">
-                <Typography size="sm">
-                  Don't have an account?
-                </Typography>
-                <Button
-                  color="tertiary"
-                  size="sm"
-                  onClick={() => navigate('/signup')}
-                >
-                  Sign Up
-                </Button>
-              </Container>
-            </Container>
-        </Card>
-    </Page>
+      {twoFactorStep && (
+        <Button type="button" size="md" width="100%" disabled={isLoading} onClick={() => { setTwoFactorStep(false); setTwoFactorToken(''); }}>
+          Back to sign in
+        </Button>
+      )}
+    </AuthCard>
   );
 };
 

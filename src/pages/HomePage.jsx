@@ -22,7 +22,8 @@ const DEMOS = [
         reply: 'Here are three that fit a student budget. The Air is the lightest; the Vivobook is the cheapest.',
         render: () => (
             <Data
-                size="xs"
+                flat
+                size="sm"
                 width="100%"
                 variant="table"
                 sortable={false}
@@ -92,12 +93,12 @@ const DEMOS = [
         render: () => (
             <Container layout="grid" columns={3} gap="sm" padding="none" width="100%">
                 {[['Design', 100, 'success', 'Done'], ['Website', 70, 'primary', 'On track'], ['Testing', 15, 'warning', 'Just started']].map(([title, value, color, state]) => (
-                    <Card key={title} layout="flex-column" gap="xs" padding="sm" hover={false} shadow={false} minWidth="0">
-                        <Container layout="flex" justify="between" align="center" padding="none" width="100%" wrap={false}>
+                    <Card key={title} layout="flex-column" gap="xs" padding="sm" minWidth="0">
+                        <Container layout="flex" justify="between" align="center" gap="xs" padding="none" width="100%" wrap={false}>
                             <Typography size="xs" weight="semibold">{title}</Typography>
                             <Badge size="xs" color={color}>{state}</Badge>
                         </Container>
-                        <Typography size="xl" weight="bold" font="monospace">{value}%</Typography>
+                        <Typography size="lg" weight="semibold" font="secondary">{value}%</Typography>
                         <ProgressBar value={value} size="sm" color={color} width="100%" />
                     </Card>
                 ))}
@@ -106,29 +107,13 @@ const DEMOS = [
     }
 ];
 
-const PITCH = [
-    { text: 'Chat with AI models that run on your own hardware.' },
-    { text: 'Attach a PDF, Word document or spreadsheet and ask about it.' },
-    { text: 'Turn on web search and get answers with their sources.' },
-    { text: 'Get tables, charts and diagrams back, not only text.' },
-    { text: 'Use a mixture of expert models on one project, across several machines.' },
-    { text: 'Models lay out answers with the App Base components. Open the component library.', link: { text: 'component library', href: 'https://base.eccco.space/components' } }
-];
-
-const ACCENTS = ['primary', 'secondary', 'tertiary', 'success', 'warning'];
-
-const PROOF = [
+const FEATURES = [
     { icon: 'FiLock', title: 'Stays on this computer', text: 'Replies are written by a model running on your own hardware, not by a cloud service.' },
-    { icon: 'FiBox', title: 'Any Ollama model', text: 'Download from a list that marks which models fit your graphics card and memory.' },
-    { icon: 'FiHardDrive', title: 'Your files, one account', text: 'The same sign-in opens your FilesystemOne files, so you can attach them to a chat.' }
-];
-
-const BENTO = [
-    { icon: 'FiMessageSquare', title: 'Chat that keeps going', text: 'Close the tab and the reply carries on. Queue the next question while one is being written. Dictate instead of typing.', span: 2 },
-    { icon: 'FiSliders', title: 'Shows which models fit', text: 'Every model is checked against your graphics card and memory before you download it.' },
+    { icon: 'FiMessageSquare', title: 'Chat that keeps going', text: 'Close the tab and the reply carries on. Queue the next question while one is being written. Dictate instead of typing.' },
     { icon: 'FiFileText', title: 'Answers from your documents', text: 'Attach a PDF, Word document or spreadsheet, or pick one from FilesystemOne. A model only sees the files you attach.' },
     { icon: 'FiSearch', title: 'Web search with checked links', text: 'Mollama opens each page a search finds and test-loads each file, and a model may only show the ones that worked.' },
-    { icon: 'FiUser', title: 'Your own versions of a model', text: 'Save an installed model under a new name with your instructions and a creativity level, and edit them whenever you like.' }
+    { icon: 'FiUser', title: 'Your own versions of a model', text: 'Save an installed model under a new name with your instructions and a creativity level, and edit them whenever you like.' },
+    { icon: 'FiHardDrive', title: 'Your files, one account', text: 'The same sign-in opens your FilesystemOne files, so you can attach them to a chat.' }
 ];
 
 const STEPS = [
@@ -136,12 +121,6 @@ const STEPS = [
     ['Pick a model', 'Choose from the ones that fit and press Download.'],
     ['Ask', 'Open Chat and type. Nothing to configure first.']
 ];
-
-const Band = ({ children, width = '1120px', ...rest }) => (
-    <Container layout="flex" justify="center" padding="none" width="100%" wrap={false} {...rest}>
-        <Container layout="flex-column" gap="md" padding="lg" width="100%" maxWidth={width} wrap={false}>{children}</Container>
-    </Container>
-);
 
 const GRAPHICS_CARDS = [
     { value: 'none', label: 'No graphics card', gb: 0 },
@@ -188,16 +167,23 @@ const HELP = [
     }
 ];
 
+const Wordmark = () => (
+    <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>
+        <Icon name="FiCpu" size="md" color="primary" />
+        <Typography size="md" weight="bold" font="secondary">Mollama</Typography>
+    </Container>
+);
+
 const SpecHelp = () => (
-    <Container layout="flex-column" gap="sm" padding="md" width="680px" maxWidth="92vw" backgroundColor="background" wrap={false}>
+    <Container layout="flex-column" gap="md" padding="md" width="680px" maxWidth="92vw" backgroundColor="surface" wrap={false}>
         {HELP.map((entry) => (
             <Container key={entry.system} layout="flex-column" gap="xs" padding="none" width="100%" wrap={false}>
-                <Typography size="xs" weight="semibold" color="secondary">{entry.system}</Typography>
+                <Typography as="h3" size="xs" weight="semibold" font="secondary">{entry.system}</Typography>
                 {entry.steps.map((step) => (
-                    <Container key={step.label} layout="flex-column" gap="none" padding="none" width="100%" wrap={false}>
-                        <Typography size="xxs">{step.label}</Typography>
+                    <Container key={step.label} layout="flex-column" gap="xs" padding="none" width="100%" wrap={false}>
+                        <Typography size="xxs" color="muted">{step.label}</Typography>
                         {step.code && (
-                            <Card layout="flex" align="center" justify="between" gap="sm" padding="xs" width="100%" hover={false} shadow={false} bordered={false} backgroundColor="surface" wrap={false}>
+                            <Card layout="flex" align="center" justify="between" gap="sm" padding="xs" width="100%" backgroundColor="background" wrap={false}>
                                 <Container padding="none" flexFill minWidth="0">
                                     <Typography size="xxs" font="monospace">{step.code}</Typography>
                                 </Container>
@@ -217,21 +203,18 @@ const SpecHelp = () => (
     </Container>
 );
 
-const SectionHead = ({ title, children, reverse = false, side = null }) => {
-    const heading = <Typography key="title" as="h2" size="lg" weight="bold" font="secondary" color="header" animation="shiny" animationDuration={4000}>{title}</Typography>;
-    const text = side
-        ? <Container key="text" padding="none">{side}</Container>
-        : (
-            <Container key="text" padding="none" maxWidth="460px">
-                <Typography size="sm" color="muted">{children}</Typography>
-            </Container>
-        );
-    return (
+const Section = ({ id, title, lead, aside = null, children }) => (
+    <Container as="section" id={id} layout="flex-column" gap="lg" padding="none" width="100%" wrap={false}>
         <Container layout="flex" align="end" justify="between" gap="md" padding="none" width="100%">
-            {reverse ? [text, heading] : [heading, text]}
+            <Container layout="flex-column" gap="xs" padding="none" maxWidth="640px" wrap={false}>
+                <Typography as="h2" size="xl" weight="semibold" font="secondary">{title}</Typography>
+                {lead && <Typography as="p" size="sm" color="muted" margin="none">{lead}</Typography>}
+            </Container>
+            {aside}
         </Container>
-    );
-};
+        {children}
+    </Container>
+);
 
 const Calculator = ({ user }) => {
     const navigate = useNavigate();
@@ -334,9 +317,9 @@ const Calculator = ({ user }) => {
         const downloading = activity.downloads.some((job) => job.model === model.tag);
         const installed = mine?.installed.has(model.tag);
         return (
-            <Card key={model.tag} layout="flex-column" gap="xs" padding="md" width="100%" height="100%" minWidth="0" shadow={false} wrap={false}>
+            <Card key={model.tag} layout="flex-column" gap="sm" padding="md" width="100%" height="100%" minWidth="0" wrap={false}>
                 <Container layout="flex" justify="between" align="center" gap="sm" padding="none" width="100%" wrap={false}>
-                    <Typography as="h3" size="sm" weight="semibold" truncate>{model.name}</Typography>
+                    <Typography as="h4" size="sm" weight="semibold" truncate>{model.name}</Typography>
                     {model.pickLabel && <Badge size="xs" color="primary" title={model.pickWhy}>{model.pickLabel}</Badge>}
                 </Container>
                 <Typography size="xs" color="muted">{model.description}</Typography>
@@ -344,128 +327,116 @@ const Calculator = ({ user }) => {
                 <Container layout="flex" align="center" gap="xs" padding="none">
                     <Badge size="xs" color={VERDICT_COLORS[model.fit.verdict]}>{model.fit.label}</Badge>
                     {model.pool?.copies && <Badge size="xs" color="primary" title="Mollama can pool several of your computers on the same home network into one, more slowly than a single computer.">{`Fits on ${model.pool.copies} computers like this, pooled`}</Badge>}
-                    {model.moe && <Badge size="xs" color="secondary">Mixture of experts</Badge>}
+                    {model.moe && <Badge size="xs" color="tertiary">Mixture of experts</Badge>}
                 </Container>
-                <Container layout="flex" justify="between" align="center" gap="sm" padding="none" width="100%" wrap={false}>
-                    <Container padding="none" flexFill minWidth="0">
-                        <Typography size="xxs" color="muted" truncate>
-                            {[`${gbText(model.sizeMb)} download`, `needs ${gbText(model.fit.memoryNeededMb)}`, speedText(model.fit.tokensPerSecond)].filter(Boolean).join(' · ')}
-                        </Typography>
+                <Typography size="xs">
+                    {[`${gbText(model.sizeMb)} download`, `needs ${gbText(model.fit.memoryNeededMb)} to run`, speedText(model.fit.tokensPerSecond)].filter(Boolean).join(', ')}
+                </Typography>
+                {mine && (installed || downloading || (mine.canManage && model.fit.fits)) && (
+                    <Container layout="flex" justify="end" align="center" gap="sm" padding="none" width="100%" wrap={false}>
+                        {installed && <Badge size="xs" color="success">Installed</Badge>}
+                        {!installed && downloading && <Badge size="xs" color="primary">Downloading</Badge>}
+                        {mine.canManage && !installed && !downloading && model.fit.fits && (
+                            <Button size="sm" onClick={() => download(model.tag)}><Icon name="FiDownload" />Download</Button>
+                        )}
                     </Container>
-                    {mine && installed && <Badge size="xs" color="success">Installed</Badge>}
-                    {mine && !installed && downloading && <Badge size="xs" color="primary">Downloading</Badge>}
-                    {mine?.canManage && !installed && !downloading && model.fit.fits && (
-                        <Button size="xs" onClick={() => download(model.tag)}><Icon name="FiDownload" size="xs" />Download</Button>
-                    )}
-                </Container>
+                )}
             </Card>
         );
     };
 
-    return (
-        <Container layout="flex-column" gap="md" padding="none" width="100%">
-            <SectionHead title="Check your computer" side={<GetStarted />} />
+    const group = (title, models, muted = false) => models.length > 0 && (
+        <Container layout="flex-column" gap="sm" padding="none" width="100%" wrap={false}>
+            <Typography as="h3" size="sm" weight="semibold" color={muted ? 'muted' : 'default'}>{title}</Typography>
+            <Container layout="grid" columns="auto-lg" gap="md" padding="none" width="100%" align="stretch">{models.map(modelCard)}</Container>
+        </Container>
+    );
 
-            <Card layout="flex-column" gap="sm" padding="md" width="100%" hover={false}>
-                <Container layout="grid" columns="auto" gap="sm" padding="none" width="100%" align="start">
-                    <Input size="sm" label="System memory (GB)" helpText="For example 16" value={memory} onChange={(event) => setMemory(event.target.value)} width="100%" />
-                    <Select size="sm" label="Graphics card" options={GRAPHICS_CARDS.map(({ value, label }) => ({ value, label }))} value={card} onChange={setCard} width="100%" />
+    return (
+        <Section
+            id="fit"
+            title="See which models your computer can run"
+            lead={mine?.device
+                ? `Filled in from ${mine.device}. Change the numbers to try another machine.`
+                : 'Enter two numbers to see which AI models your computer can run, how fast they would be, and why. No account needed.'}
+        >
+            <Card layout="flex-column" gap="md" padding="lg" width="100%">
+                <Container layout="grid" columns="auto" gap="md" padding="none" width="100%" align="start">
+                    <Input size="md" label="System memory (GB)" helpText="For example 16" value={memory} onChange={(event) => setMemory(event.target.value)} width="100%" />
+                    <Select size="md" label="Graphics card" options={GRAPHICS_CARDS.map(({ value, label }) => ({ value, label }))} value={card} onChange={setCard} width="100%" />
                     {card === 'other' && (
-                        <Input size="sm" label="Graphics memory (GB)" helpText="For example 10" value={cardMemory} onChange={(event) => setCardMemory(event.target.value)} width="100%" />
+                        <Input size="md" label="Graphics memory (GB)" helpText="For example 10" value={cardMemory} onChange={(event) => setCardMemory(event.target.value)} width="100%" />
                     )}
                 </Container>
+                {problem && <Typography size="xs" color="error">{problem}</Typography>}
                 <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%">
-                    <Button size="xs" variant="ghost" genie={{ content: <SpecHelp />, trigger: 'click', padding: 'none', backgroundColor: 'background' }}>
-                        <Icon name="FiHelpCircle" size="xs" />Where do I find these?
+                    <Button size="sm" variant="ghost" genie={{ content: <SpecHelp />, trigger: 'click', padding: 'none' }}>
+                        <Icon name="FiHelpCircle" />Where do I find these?
                     </Button>
-                    <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>
-                        <Button size="sm" variant="ghost" title="Clear" aria-label="Clear" disabled={busy || (!memory && !cardMemory && !result && !problem)} onClick={clear}>
-                            <Icon name="FiX" size="xs" />
+                    <Container layout="flex" align="center" gap="sm" padding="none" wrap={false}>
+                        <Button size="md" variant="ghost" title="Clear" aria-label="Clear" disabled={busy || (!memory && !cardMemory && !result && !problem)} onClick={clear}>
+                            <Icon name="FiX" />
                         </Button>
-                        <Button size="sm" color="primary" disabled={busy || !memory.trim()} title={!memory.trim() ? 'Enter your system memory first' : undefined} onClick={submit}>
-                            <Icon name="FiCpu" size="xs" />{busy ? 'Working it out…' : 'Show what fits'}
+                        <Button size="md" color="primary" variant="solid" disabled={busy || !memory.trim()} title={!memory.trim() ? 'Enter your system memory first' : undefined} onClick={submit}>
+                            <Icon name="FiCpu" />{busy ? 'Working it out…' : 'Show what fits'}
                         </Button>
                     </Container>
                 </Container>
-                {problem && <Typography size="xs" color="error">{problem}</Typography>}
             </Card>
 
-            <Typography size="xs" color="muted">
-                {mine?.device
-                    ? `Filled in from ${mine.device}. Change the numbers to try another machine.`
-                    : 'Enter two numbers to see which AI models your computer can run, how fast they would be, and why. No account needed.'}
-            </Typography>
-
             {result && (
-                <>
+                <Container layout="flex-column" gap="lg" padding="none" width="100%" wrap={false}>
                     {result.notes.length > 0 && (
-                        <Container layout="flex-column" gap="xs" padding="none" width="100%">
+                        <Container layout="flex-column" gap="xs" padding="none" width="100%" wrap={false}>
                             {result.notes.map((note) => (
                                 <Container key={note} layout="flex" align="start" gap="xs" padding="none" wrap={false}>
-                                    <Icon name="FiInfo" size="xs" color="primary" />
+                                    <Icon name="FiInfo" size="sm" color="primary" />
                                     <Typography size="xs">{note}</Typography>
                                 </Container>
                             ))}
                         </Container>
                     )}
-                    {runsFully.length > 0 && (
-                        <>
-                            <Typography size="xs" weight="semibold">{result.hardware.gpuMemoryMb ? 'Runs fully on the graphics card' : 'Runs on the processor'}</Typography>
-                            <Container layout="grid" columns="auto-lg" gap="sm" padding="none" width="100%" align="stretch">{runsFully.map(modelCard)}</Container>
-                        </>
-                    )}
-                    {withMemory.length > 0 && (
-                        <>
-                            <Typography size="xs" weight="semibold">Runs on the graphics card with help from system memory</Typography>
-                            <Container layout="grid" columns="auto-lg" gap="sm" padding="none" width="100%" align="stretch">{withMemory.map(modelCard)}</Container>
-                        </>
-                    )}
-                    {tooLarge.length > 0 && (
-                        <>
-                            <Typography size="xs" weight="semibold" color="muted">Too large for this machine</Typography>
-                            <Container layout="grid" columns="auto-lg" gap="sm" padding="none" width="100%" align="stretch">{tooLarge.map(modelCard)}</Container>
-                        </>
-                    )}
-                    <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%" wrap={false}>
+                    {group(result.hardware.gpuMemoryMb ? 'Runs fully on the graphics card' : 'Runs on the processor', runsFully)}
+                    {group('Runs on the graphics card with help from system memory', withMemory)}
+                    {group('Too large for this machine', tooLarge, true)}
+                    <Container layout="flex" align="center" justify="between" gap="md" padding="none" width="100%">
                         <Container padding="none" flexFill minWidth="0">
-                            <Typography size="xs" weight="semibold">
+                            <Typography size="sm" weight="medium">
                                 {compatible} of {result.total ?? shown.length} model sizes on ollama.com are compatible with {gbText(result.hardware.memoryMb)} of {result.hardware.gpuShared ? 'memory shared with the graphics' : `memory${result.hardware.gpuMemoryMb ? ` and a ${gbText(result.hardware.gpuMemoryMb)} graphics card` : ' with no graphics card'}`}.{user ? '' : ' Sign in to see the full list.'}
                             </Typography>
                         </Container>
-                        <Button size="sm" color="primary" onClick={() => navigate(user ? '/models' : '/login')}>
-                            {user ? 'See the full list' : 'Sign in'}<Icon name="FiArrowRight" size="xs" />
+                        <Button size="md" onClick={() => navigate(user ? '/models' : '/login')}>
+                            {user ? 'See the full list' : 'Sign in'}
                         </Button>
                     </Container>
-                </>
+                </Container>
             )}
 
-            <Container layout="grid" columns={3} gap="sm" padding="none" width="100%">
-                <Card layout="flex-column" gap="xs" padding="md" minWidth="0" shadow={false} hover={false} wrap={false}>
-                    <Icon name="FiLayers" size="sm" color="primary" />
-                    <Typography size="sm" weight="semibold">Why a 30B model can run on an 8 GB card</Typography>
+            <Divider />
+            <Container layout="grid" columns={3} gap="xl" padding="none" width="100%">
+                <Container layout="flex-column" gap="xs" padding="none" minWidth="0" wrap={false}>
+                    <Typography as="h3" size="sm" weight="semibold">Why a 30B model can run on an 8 GB card</Typography>
                     <Typography size="xs" color="muted">
                         Some large models are a team of specialists and only a few work on each word. The whole team still has to be held in memory,
                         so whatever does not fit on the graphics card sits in system memory. For these models, system memory matters as much as graphics memory.
                     </Typography>
-                </Card>
-                <Card layout="flex-column" gap="xs" padding="md" minWidth="0" shadow={false} hover={false} wrap={false}>
-                    <Icon name="FiShield" size="sm" color="primary" />
-                    <Typography size="sm" weight="semibold">Room left for everything else</Typography>
+                </Container>
+                <Container layout="flex-column" gap="xs" padding="none" minWidth="0" wrap={false}>
+                    <Typography as="h3" size="sm" weight="semibold">Room left for everything else</Typography>
                     <Typography size="xs" color="muted">
                         A model only counts as fitting in what is left after {gbText(reserved.gpuMemoryMb)} of graphics memory is kept for your screen and other apps,
                         and {gbText(reserved.memoryMb)} of system memory for the rest of the computer.
                     </Typography>
-                </Card>
-                <Card layout="flex-column" gap="xs" padding="md" minWidth="0" shadow={false} hover={false} wrap={false}>
-                    <Icon name="FiSliders" size="sm" color="primary" />
-                    <Typography size="sm" weight="semibold">The quality level shown</Typography>
+                </Container>
+                <Container layout="flex-column" gap="xs" padding="none" minWidth="0" wrap={false}>
+                    <Typography as="h3" size="sm" weight="semibold">The quality level shown</Typography>
                     <Typography size="xs" color="muted">
                         Every model is listed at the standard version Ollama downloads: packed to about a quarter of its full size with little loss in quality.
                         Higher-quality versions exist and need more memory than shown here.
                     </Typography>
-                </Card>
+                </Container>
             </Container>
-        </Container>
+        </Section>
     );
 };
 
@@ -482,20 +453,19 @@ const GetStarted = () => {
     }, []);
 
     return (
-        <ButtonGroup size="sm" justify="start" selectable={false}>
+        <ButtonGroup size="md" justify="start" selectable={false} spaced>
             {order.map((id) => desktopService.systems.find((system) => system.id === id)).map((system) => {
                 const file = `${channel.name}${system.ending}`;
                 const ready = published === null || published.files.includes(file);
                 return (
                     <Button
                         key={system.id}
-                        size="sm"
-                        color="primary"
+                        size="md"
                         disabled={!ready}
                         title={ready ? `Download the Mollama desktop app for ${system.label}` : `The ${system.label} app is not available yet`}
                         onClick={() => window.open(desktopService.address(file), '_blank', 'noopener')}
                     >
-                        <Icon name={system.icon} size="xs" />Get started on {system.label}
+                        <Icon name={system.icon} />Download for {system.label}
                     </Button>
                 );
             })}
@@ -507,156 +477,137 @@ const HomePage = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const [demo, setDemo] = useState(DEMOS[0]);
-    const [pitch, setPitch] = useState(0);
-    const [prompt, setPrompt] = useState(DEMOS[0].prompt);
+    const [prompt, setPrompt] = useState('');
     const start = user ? '/chat' : '/signup';
+    const mainAction = user ? 'Open chat' : 'Create an account';
 
     const choose = (item) => {
         setDemo(item);
-        setPrompt(item.prompt);
+        setPrompt('');
     };
+    // An empty field asks the example on show.
     const send = () => {
         try {
-            sessionStorage.setItem(FIRST_PROMPT_KEY, prompt.trim());
+            sessionStorage.setItem(FIRST_PROMPT_KEY, prompt.trim() || demo.prompt);
         } catch {
             return navigate(start);
         }
         return navigate(start);
     };
+    const showFit = () => document.getElementById('fit')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     return (
-        <Page layout="block" padding="none" background="grid" backgroundSize="lg" backgroundFade="bottom">
-            <Band>
-                <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%" wrap={false}>
-                    <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>
-                        <Icon name="FiCpu" size="md" color="primary" />
-                        <Typography size="md" weight="bold" font="secondary">Mollama</Typography>
-                    </Container>
-                    <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>
-                        {!user && <Button size="sm" variant="ghost" onClick={() => navigate('/login')}>Sign in</Button>}
-                        {user && <Button size="sm" variant="ghost" onClick={() => navigate('/dashboard')}>Dashboard</Button>}
-                        <Button size="sm" color="primary" onClick={() => navigate(start)}>{user ? 'Open chat' : 'Get started'}</Button>
-                    </Container>
-                </Container>
-            </Band>
-
-            <Band width="820px">
-                <Container layout="flex-column" align="center" gap="sm" padding="none" width="100%" marginTop="lg">
-                    <Badge color="secondary" size="sm">Local AI, no command line</Badge>
-                    <Typography as="h1" size="3xl" weight="extrabold" font="secondary">
-                        Ask your own computer,{' '}
-                        <Typography as="span" size="3xl" weight="extrabold" font="secondary" color="primary" animation="gradient" animationDuration={5000}>all your computers.</Typography>
+        <Page
+            frame
+            gap="4xl"
+            background="dots"
+            backgroundFade="bottom"
+            brand={<Wordmark />}
+            actions={(
+                <>
+                    {!user && <Button size="sm" variant="ghost" onClick={() => navigate('/login')}>Sign in</Button>}
+                    {user && <Button size="sm" variant="ghost" onClick={() => navigate('/dashboard')}>Dashboard</Button>}
+                    <Button size="sm" color="secondary" variant="solid" onClick={() => navigate(start)}>{mainAction}</Button>
+                </>
+            )}
+        >
+            <Container as="section" layout="grid" columns={2} gap="2xl" padding="none" width="100%" align="start" marginTop="xl">
+                <Container layout="flex-column" gap="lg" padding="none" minWidth="0" wrap={false}>
+                    <Typography as="h1" size="3xl" weight="semibold" font="secondary">
+                        Chat with AI models on your own computers
                     </Typography>
-                    <Container layout="flex" justify="start" align="center" padding="none" width="100%" minHeight="3.5rem">
-                        <Typography
-                            key={pitch}
-                            size="md"
-                            color="muted"
-                            animation="typewriter"
-                            animationConfig={{ typingSpeed: 55, deletingSpeed: 25, pauseDuration: 2600, reserveSpace: false, link: PITCH[pitch].link || null }}
-                            onAnimationComplete={() => setPitch((now) => (now + 1) % PITCH.length)}
-                        >
-                            {PITCH[pitch].text}
-                        </Typography>
+                    <Typography as="p" size="md" margin="none">
+                        Mollama is a web app for Ollama. It shows which models fit your graphics card and memory, downloads them with one button,
+                        and answers with tables, diagrams and files as well as text.
+                    </Typography>
+                    <Container layout="flex" align="center" gap="sm" padding="none">
+                        <Button size="lg" color="secondary" variant="solid" onClick={() => navigate(start)}>{mainAction}</Button>
+                        <Button size="lg" onClick={showFit}>Check your computer</Button>
                     </Container>
+                    <Typography size="xs" color="muted">Desktop app for Windows, macOS and Linux.</Typography>
                 </Container>
 
-                <Card layout="flex-column" gap="sm" padding="md" width="100%" hover={false} borderColor="primary" marginTop="md">
-                    <Input
-                        multiline
-                        rows={2}
-                        size="md"
-                        variant="underline"
-                        backgroundColor="transparent"
-                        width="100%"
-                        placeholder="Ask anything…"
-                        aria-label="Try a first question"
-                        value={prompt}
-                        onChange={(event) => setPrompt(event.target.value)}
-                    />
-                    <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%">
-                        <Container layout="flex" gap="xs" padding="none">
-                            {DEMOS.map((item) => (
-                                <Button key={item.id} size="xs" variant="ghost" selected={demo.id === item.id} onClick={() => choose(item)}>
-                                    <Icon name={item.icon} size="xs" />{item.chip}
-                                </Button>
-                            ))}
-                        </Container>
-                        <Button size="sm" color="primary" disabled={!prompt.trim()} onClick={send}>
-                            {user ? 'Ask in chat' : 'Create an account to ask'}<Icon name="FiArrowRight" size="xs" />
+                <Card layout="flex-column" gap="md" padding="lg" width="100%" minWidth="0" wrap={false}>
+                    <ButtonGroup size="xs" justify="start">
+                        {DEMOS.map((item) => (
+                            <Button key={item.id} size="xs" selected={demo.id === item.id} onClick={() => choose(item)}>
+                                <Icon name={item.icon} />{item.chip}
+                            </Button>
+                        ))}
+                    </ButtonGroup>
+                    <Container layout="flex" justify="end" padding="none" width="100%" wrap={false}>
+                        <Card padding="sm" bordered={false} backgroundColor="surface-alt" maxWidth="85%">
+                            <Typography size="xs">{demo.prompt}</Typography>
+                        </Card>
+                    </Container>
+                    <Container layout="flex-column" gap="sm" padding="none" width="100%" minWidth="0" wrap={false}>
+                        <Typography size="xxs" color="muted">The reply, laid out by the model</Typography>
+                        <Typography size="sm">{demo.reply}</Typography>
+                        <Container key={demo.id} padding="none" width="100%" minWidth="0">{demo.render()}</Container>
+                    </Container>
+                    <Divider />
+                    <Container layout="flex" align="center" gap="sm" padding="none" width="100%" wrap={false}>
+                        <Input
+                            size="md"
+                            flexFill
+                            width="100%"
+                            placeholder="Or type your own question"
+                            aria-label="Try a first question"
+                            value={prompt}
+                            onChange={(event) => setPrompt(event.target.value)}
+                            onKeyDown={(event) => { if (event.key === 'Enter') send(); }}
+                        />
+                        <Button size="md" title={user ? 'Ask in chat' : 'Create an account to ask'} onClick={send}>
+                            <Icon name="FiArrowUp" />
                         </Button>
                     </Container>
                 </Card>
-                <Typography size="xxs" color="muted">Pick an example to see an answer a model laid out as a table, diagram or chart. Sending opens your question in Chat.</Typography>
+            </Container>
 
-                <Card layout="flex-column" gap="sm" padding="md" width="100%" hover={false} backgroundColor="background">
-                    <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%" wrap={false}>
-                        <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>
-                            <Icon name="FiCpu" size="xs" color="primary" />
-                            <Typography size="xs" weight="semibold">What the answer looks like</Typography>
-                        </Container>
-                        <Badge size="xs" color="success">Drawn by the model</Badge>
-                    </Container>
-                    <Typography key={demo.id} size="sm" animation="fade" animationDuration={500}>{demo.reply}</Typography>
-                    <Container key={`${demo.id}-view`} padding="none" width="100%">{demo.render()}</Container>
-                </Card>
-            </Band>
+            <Calculator user={user} />
 
-            <Band>
-                <Container layout="grid" columns="auto" gap="md" padding="none" width="100%" marginTop="lg">
-                    {PROOF.map((item, index) => (
-                        <Container key={item.title} layout="flex" align="start" gap="sm" padding="none" wrap={false}>
-                            <Icon name={item.icon} size="sm" color={ACCENTS[index % ACCENTS.length]} />
-                            <Container layout="flex-column" gap="none" padding="none">
-                                <Typography size="sm" weight="semibold">{item.title}</Typography>
+            <Section title="What Mollama adds to a local model" lead="Everything a local model needs to be useful, in one app you run yourself.">
+                <Container layout="grid" columns={3} gap="xl" padding="none" width="100%">
+                    {FEATURES.map((item) => (
+                        <Container key={item.title} layout="flex" align="start" gap="sm" padding="none" minWidth="0" wrap={false}>
+                            <Icon name={item.icon} size="md" color="primary" />
+                            <Container layout="flex-column" gap="xs" padding="none" minWidth="0" wrap={false}>
+                                <Typography as="h3" size="sm" weight="semibold">{item.title}</Typography>
                                 <Typography size="xs" color="muted">{item.text}</Typography>
                             </Container>
                         </Container>
                     ))}
                 </Container>
-                <Divider margin="sm" />
-            </Band>
+            </Section>
 
-            <Band>
-                <Calculator user={user} />
-                <Divider margin="sm" />
-            </Band>
-
-            <Band>
-                <SectionHead reverse title="Built for real work, not demos">Everything a local model needs to be useful, in one app you run yourself.</SectionHead>
-                <Container layout="grid" columns={3} gap="sm" padding="none" width="100%">
-                    {BENTO.map((item, index) => (
-                        <Card key={item.title} layout="flex-column" gap="xs" padding="md" span={item.span || null} minWidth="0" shadow={false} wrap={false} background={item.span ? 'dots' : null} backgroundFade="left">
-                            <Icon name={item.icon} size="sm" color={ACCENTS[index % ACCENTS.length]} />
-                            <Typography size="sm" weight="semibold">{item.title}</Typography>
-                            <Typography size="xs" color="muted">{item.text}</Typography>
-                        </Card>
-                    ))}
-                </Container>
-            </Band>
-
-            <Band>
-                <Divider margin="sm" />
-                <SectionHead title="Start in three steps">From nothing installed to your first answer, without touching a command line.</SectionHead>
-                <Container layout="grid" columns="auto" gap="md" padding="none" width="100%">
+            <Section title="Three steps to a first answer" lead="From nothing installed to your first answer, without touching a command line.">
+                <Container layout="grid" columns={3} gap="xl" padding="none" width="100%">
                     {STEPS.map(([title, text], index) => (
-                        <Container key={title} layout="flex" align="start" gap="sm" padding="none" wrap={false}>
-                            <Typography size="2xl" weight="bold" color={ACCENTS[index % ACCENTS.length]} font="monospace">{index + 1}</Typography>
-                            <Container layout="flex-column" gap="none" padding="none">
-                                <Typography size="sm" weight="semibold">{title}</Typography>
+                        <Container key={title} layout="flex" align="start" gap="md" padding="none" minWidth="0" wrap={false}>
+                            <Typography size="xl" weight="semibold" font="secondary" color="muted">{index + 1}</Typography>
+                            <Container layout="flex-column" gap="xs" padding="none" minWidth="0" wrap={false}>
+                                <Typography as="h3" size="sm" weight="semibold">{title}</Typography>
                                 <Typography size="xs" color="muted">{text}</Typography>
                             </Container>
                         </Container>
                     ))}
                 </Container>
-                <Divider margin="sm" />
-                <Container layout="flex" align="center" justify="between" gap="md" padding="none" width="100%">
-                    <Typography size="xs" color="muted">Mollama. Local AI that stays on the machine it runs on.</Typography>
-                    <Button size="sm" color="primary" onClick={() => navigate(start)}>
-                        {user ? 'Open chat' : 'Get started'}<Icon name="FiArrowRight" size="xs" />
-                    </Button>
+                <Container layout="flex-column" gap="sm" padding="none" width="100%" wrap={false}>
+                    <Typography size="xs" color="muted">The desktop app links a computer to your account.</Typography>
+                    <GetStarted />
                 </Container>
-            </Band>
+            </Section>
+
+            <Container as="footer" layout="flex-column" gap="lg" padding="none" width="100%" wrap={false}>
+                <Divider />
+                <Container layout="flex" align="center" justify="between" gap="md" padding="none" width="100%">
+                    <Container layout="flex" align="center" gap="md" padding="none">
+                        <Wordmark />
+                        <Typography size="xs" color="muted">Local AI that stays on the machine it runs on.</Typography>
+                    </Container>
+                    <Button size="md" color="secondary" variant="solid" onClick={() => navigate(start)}>{mainAction}</Button>
+                </Container>
+            </Container>
         </Page>
     );
 };
@@ -668,12 +619,15 @@ export const DesktopHome = () => {
     if (user) return <Navigate to="/dashboard" replace />;
     return (
         <Page layout="flex" align="center" justify="center" background="dots" backgroundFade="radial">
-            <Card layout="flex-column" padding="xl" align="center" gap="md" width="100%" maxWidth="420px" hover={false}>
-                <Typography as="h1" size="xl" weight="bold" font="secondary" color="header">Mollama</Typography>
-                <Typography size="sm" color="muted" align="center">Sign in to use your models and devices from this computer.</Typography>
+            <Card layout="flex-column" padding="xl" align="center" gap="lg" width="100%" maxWidth="420px">
+                <Wordmark />
+                <Container layout="flex-column" align="center" gap="xs" padding="none" width="100%" wrap={false}>
+                    <Typography as="h1" size="lg" weight="semibold" font="secondary" align="center">Sign in to Mollama</Typography>
+                    <Typography size="xs" color="muted" align="center">Use your models and devices from this computer.</Typography>
+                </Container>
                 <Container layout="flex" justify="center" gap="sm" padding="none">
-                    <Button size="sm" color="primary" onClick={() => navigate('/login')}>Sign in</Button>
-                    <Button size="sm" color="secondary" onClick={() => navigate('/signup')}>Create an account</Button>
+                    <Button size="md" color="secondary" variant="solid" onClick={() => navigate('/login')}>Sign in</Button>
+                    <Button size="md" onClick={() => navigate('/signup')}>Create an account</Button>
                 </Container>
             </Card>
         </Page>

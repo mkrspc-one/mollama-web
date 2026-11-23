@@ -8,7 +8,7 @@ import { userService } from '@/client/user.client';
 import { authService } from '@/client/auth.client';
 import {
     Page, Container, Card, Button, Typography, Icon, Input, Badge,
-    CircularProgress, Select, Switch, Divider, PageLoading, ProgressBar, Data,
+    CircularProgress, Select, Switch, Divider, PageLoading, LoadingText, ProgressBar, Data,
     ButtonGroup
 } from '@components/Components';
 
@@ -43,49 +43,51 @@ const EditUserForm = ({ user, onSave, onCancel }) => {
     };
 
     return (
-        <Container layout="flex-column" gap="lg" padding="lg">
-            <Typography as="h3" size="lg" weight="semibold">Edit: {user.firstName} {user.lastName}</Typography>
-            <Container layout="grid" columns="2" gap="md">
-                <Input label="First Name" value={formData.firstName} onChange={e => set('firstName', e.target.value)} />
-                <Input label="Last Name" value={formData.lastName} onChange={e => set('lastName', e.target.value)} />
+        <Container layout="flex-column" gap="md" padding="sm" width="min(440px, 80vw)">
+            <Typography as="h3" size="md" weight="semibold" font="secondary">Edit {user.firstName} {user.lastName}</Typography>
+            <Container layout="grid" columns={2} gap="md" padding="none" width="100%">
+                <Input size="sm" label="First name" value={formData.firstName} onChange={e => set('firstName', e.target.value)} width="100%" />
+                <Input size="sm" label="Last name" value={formData.lastName} onChange={e => set('lastName', e.target.value)} width="100%" />
             </Container>
-            <Input label="Username" value={formData.username} onChange={e => set('username', e.target.value)} />
-            <Input label="Email" type="email" value={formData.email} onChange={e => set('email', e.target.value)} />
-            <Input label="Profile Photo URL" value={formData.profilePhoto} onChange={e => set('profilePhoto', e.target.value)} />
+            <Input size="sm" label="Username" value={formData.username} onChange={e => set('username', e.target.value)} width="100%" />
+            <Input size="sm" label="Email" type="email" value={formData.email} onChange={e => set('email', e.target.value)} width="100%" />
+            <Input size="sm" label="Profile photo address" value={formData.profilePhoto} onChange={e => set('profilePhoto', e.target.value)} width="100%" />
             <Divider />
             <Select
+                size="sm"
                 label="Roles"
                 multiSelect
                 value={formData.roles}
                 onChange={val => set('roles', val)}
+                width="100%"
                 options={[
                     { value: 'USER', label: 'User' },
                     { value: 'CREATOR', label: 'Creator' },
-                    { value: 'SUPER_CREATOR', label: 'Super Creator' },
+                    { value: 'SUPER_CREATOR', label: 'Super creator' },
                     { value: 'ADMIN', label: 'Admin' },
                     { value: 'OWNER', label: 'Owner' }
                 ]}
             />
-            <Container layout="flex" align="center" gap="sm" padding="none">
+            <Container layout="flex" align="center" gap="sm" padding="none" width="100%">
                 <Switch checked={formData.active} onChange={(change) => set('active', typeof change === 'boolean' ? change : Boolean(change?.target?.checked))} size="sm" />
-                <Typography size="sm">Active account</Typography>
+                <Typography size="xs">Active account</Typography>
             </Container>
-            <Container layout="grid" columns="2" gap="md">
-                <Container layout="flex-column" gap="xs" padding="none">
-                    <Typography size="xs" color="secondary">Created</Typography>
-                    <Typography size="sm">{new Date(user.createdAt).toLocaleString()}</Typography>
+            <Container layout="grid" columns={2} gap="md" padding="none" width="100%">
+                <Container layout="flex-column" gap="none" padding="none">
+                    <Typography as="p" size="xxs" color="muted">Created</Typography>
+                    <Typography as="p" size="xs">{new Date(user.createdAt).toLocaleString()}</Typography>
                 </Container>
                 {user.updatedAt && (
-                    <Container layout="flex-column" gap="xs" padding="none">
-                        <Typography size="xs" color="secondary">Last Updated</Typography>
-                        <Typography size="sm">{new Date(user.updatedAt).toLocaleString()}</Typography>
+                    <Container layout="flex-column" gap="none" padding="none">
+                        <Typography as="p" size="xxs" color="muted">Last updated</Typography>
+                        <Typography as="p" size="xs">{new Date(user.updatedAt).toLocaleString()}</Typography>
                     </Container>
                 )}
             </Container>
-            <ButtonGroup spaced selectable={false} justify="end">
-                <Button color="secondary" onClick={onCancel} disabled={isSaving}>Cancel</Button>
-                <Button color="primary" onClick={handleSave} disabled={isSaving}>
-                    {isSaving ? <><CircularProgress size="sm" /> Saving…</> : 'Save Changes'}
+            <ButtonGroup size="sm" spaced selectable={false} justify="end" width="100%">
+                <Button onClick={onCancel} disabled={isSaving}>Cancel</Button>
+                <Button color="secondary" variant="solid" onClick={handleSave} disabled={isSaving}>
+                    {isSaving ? <><CircularProgress size="xs" /> Saving…</> : 'Save changes'}
                 </Button>
             </ButtonGroup>
         </Container>
@@ -93,10 +95,6 @@ const EditUserForm = ({ user, onSave, onCancel }) => {
 };
 
 // ─── Shared presentation helpers ──────────────────────────────────────────────
-
-const BY_WORDS = { splitBy: 'words' };
-
-const tint = (color, pct) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
 
 const formatBytes = (bytes) => {
     if (!bytes || bytes === 0) return '0 B';
@@ -108,64 +106,53 @@ const formatBytes = (bytes) => {
 const formatUptime = (seconds = 0) =>
     `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
 
-/** KPI tile — icon plate, value, label */
-// Status colors tint the icon only; the tile behind it stays neutral.
-const tileFill = (color) => (/(success|warning|error)-color/.test(color) ? tint('var(--text-color)', 8) : tint(color, 14));
+const sentenceCase = (text) => {
+    const words = String(text ?? '').replace(/_/g, ' ').toLowerCase();
+    return words ? words.charAt(0).toUpperCase() + words.slice(1) : '—';
+};
 
-const StatTile = ({ icon, label, value, caption, accent = 'var(--primary-color)' }) => (
-    <Card layout="flex" gap="md" padding="md" hover={false} style={{ alignItems: 'center', minWidth: 0 }}>
-        <Container
-            layout="flex" align="center" justify="center" padding="none" wrap={false}
-            width="40px" height="40px"
-            style={{ borderRadius: 10, flexShrink: 0, background: tileFill(accent) }}
-        >
-            <Icon name={icon} size="sm" style={{ color: accent }} />
+// One fact under a hairline: its name on the left, its value on the right. A value that carries a state is a Badge.
+const MetricRow = ({ label, value, status = null, badge = null }) => (
+    <>
+        <Divider />
+        <Container layout="flex" justify="between" align="center" gap="md" padding="none" width="100%" wrap={false}>
+            <Typography size="xs" color="muted">{label}</Typography>
+            {badge || (status
+                ? <Badge size="xs" color={status}>{value}</Badge>
+                : <Typography size="sm" weight="medium" align="right">{value}</Typography>)}
         </Container>
-        <Container layout="flex-column" gap="none" padding="none" style={{ minWidth: 0 }}>
-            <Typography size="lg" weight="bold" style={{ lineHeight: 1.15 }}>{value}</Typography>
-            <Typography size="xxs" color="muted" style={{ whiteSpace: 'nowrap' }}>
-                {label}{caption ? ` · ${caption}` : ''}
-            </Typography>
-        </Container>
-    </Card>
+    </>
 );
 
-/** Dense label/value row used across the detail panels */
-const MetricRow = ({ label, value, color = 'default', badge = null }) => (
-    <Container layout="flex" justify="between" align="center" padding="none" width="100%" wrap={false}>
-        <Typography size="xs" color="muted">{label}</Typography>
-        {badge || <Typography size="xs" weight="medium" color={color}>{value}</Typography>}
-    </Container>
-);
-
-/** Titled card used for every detail block */
-const Panel = ({ title, actions, children, ...rest }) => (
-    <Card layout="flex-column" gap="sm" padding="lg" hover={false} width="100%" style={{ minWidth: 0 }} {...rest}>
-        {(title || actions) && (
-            <Container layout="flex" justify="between" align="center" padding="none" width="100%" wrap={false}>
-                {title && <Typography size="sm" weight="semibold">{title}</Typography>}
-                {actions}
-            </Container>
-        )}
+const Facts = ({ title, actions, children }) => (
+    <Container layout="flex-column" gap="none" padding="none" width="100%" minWidth="0">
+        <Container layout="flex" justify="between" align="center" gap="sm" padding="none" width="100%" minHeight="34px" wrap={false}>
+            <Typography as="h3" size="sm" weight="semibold">{title}</Typography>
+            {actions}
+        </Container>
         {children}
-    </Card>
-);
-
-/** Section intro: title, description and section-level actions */
-const SectionHeader = ({ title, description, actions }) => (
-    <Container layout="flex" justify="between" align="center" padding="none" width="100%" gap="md" wrap>
-        <Container layout="flex-column" gap="none" padding="none" style={{ minWidth: 0 }}>
-            <Typography as="h2" size="md" weight="semibold">{title}</Typography>
-            {description && <Typography size="xxs" color="muted">{description}</Typography>}
-        </Container>
-        {actions}
     </Container>
 );
 
-const EmptyState = ({ icon, message }) => (
-    <Container layout="flex-column" align="center" gap="sm" padding="xl" width="100%">
-        <Icon name={icon} size="md" color="secondary" />
-        <Typography size="xs" color="muted">{message}</Typography>
+const FACT_COLUMNS = 4;
+
+const SectionHeader = ({ title, description, actions }) => (
+    <Container layout="flex" justify="between" align="center" padding="none" width="100%" gap="md">
+        <Container layout="flex-column" gap="xs" padding="none" minWidth="0">
+            <Typography as="h2" size="md" weight="semibold" font="secondary">{title}</Typography>
+            {description && <Typography as="p" size="xxs" color="muted">{description}</Typography>}
+        </Container>
+        {actions && <Container layout="flex" align="center" gap="sm" padding="none">{actions}</Container>}
+    </Container>
+);
+
+// The one pattern for a state: an icon, what it is, one line on what to do, and one button passed as children.
+const State = ({ icon, color = 'primary', title, message, page = false, children }) => (
+    <Container layout="flex-column" align="center" gap="sm" padding="xl" width="100%" maxWidth={page ? '420px' : null}>
+        <Icon name={icon} size={page ? 'lg' : 'md'} color={color} />
+        <Typography as={page ? 'h1' : 'p'} size={page ? 'lg' : 'sm'} weight="semibold" font={page ? 'secondary' : 'primary'} align="center">{title}</Typography>
+        {message && <Typography as="p" size="xs" color="muted" align="center">{message}</Typography>}
+        {children}
     </Container>
 );
 
@@ -188,31 +175,31 @@ const RoleRequestActions = ({ item, onApprove, onReject }) => {
     };
     if (step === 'approve') {
         return (
-            <Container layout="flex-column" gap="xs" padding="xs">
-                <Typography size="sm">{`Give ${item.username} the ${role} role?`}</Typography>
+            <Container layout="flex-column" gap="sm" padding="xs" width="260px">
+                <Typography as="p" size="xs">{`Give ${item.username} the ${sentenceCase(role)} role?`}</Typography>
                 <Container layout="flex" gap="xs" padding="none">
-                    <Button size="sm" disabled={busy} onClick={() => act(() => onApprove(item))}><Icon name="FiCheck" size="xs" />Give role</Button>
-                    <Button size="sm" color="secondary" disabled={busy} onClick={() => setStep('choose')}>Back</Button>
+                    <Button size="sm" color="secondary" variant="solid" disabled={busy} onClick={() => act(() => onApprove(item))}><Icon name="FiCheck" />Give role</Button>
+                    <Button size="sm" disabled={busy} onClick={() => setStep('choose')}>Back</Button>
                 </Container>
             </Container>
         );
     }
     if (step === 'reject') {
         return (
-            <Container layout="flex-column" gap="xs" padding="xs">
-                <Input size="sm" label="Reason (optional)" value={reason} onChange={(event) => setReason(event.target.value)} />
+            <Container layout="flex-column" gap="sm" padding="xs" width="260px">
+                <Input size="sm" label="Reason (optional)" value={reason} onChange={(event) => setReason(event.target.value)} width="100%" />
                 <Container layout="flex" gap="xs" padding="none">
-                    <Button size="sm" color="error" disabled={busy} onClick={() => act(() => onReject(item, reason.trim()))}><Icon name="FiX" size="xs" />Reject request</Button>
-                    <Button size="sm" color="secondary" disabled={busy} onClick={() => setStep('choose')}>Back</Button>
+                    <Button size="sm" color="error" variant="solid" disabled={busy} onClick={() => act(() => onReject(item, reason.trim()))}><Icon name="FiX" />Reject request</Button>
+                    <Button size="sm" disabled={busy} onClick={() => setStep('choose')}>Back</Button>
                 </Container>
             </Container>
         );
     }
     return (
-        <Container layout="flex-column" gap="xs" padding="xs">
-            <Typography size="sm" weight="semibold">Actions</Typography>
-            <Button size="sm" onClick={() => setStep('approve')}><Icon name="FiCheck" size="xs" />Approve</Button>
-            <Button size="sm" color="error" onClick={() => setStep('reject')}><Icon name="FiX" size="xs" />Reject</Button>
+        <Container layout="flex-column" gap="xs" padding="xs" width="260px">
+            <Typography as="p" size="xxs" color="muted">{`${item.username} asks for the ${sentenceCase(role)} role`}</Typography>
+            <Button size="sm" align="start" width="100%" onClick={() => setStep('approve')}><Icon name="FiCheck" />Approve</Button>
+            <Button size="sm" color="error" align="start" width="100%" onClick={() => setStep('reject')}><Icon name="FiX" />Reject</Button>
         </Container>
     );
 };
@@ -260,13 +247,13 @@ const AdminPage = () => {
 
 
     const sections = [
-        { id: 'overview', label: 'Overview', icon: 'FiActivity', desc: 'Health & resources' },
-        { id: 'cache', label: 'Cache', icon: 'FiDatabase', desc: 'Redis & cleanup' },
-        { id: 'users', label: 'Users', icon: 'FiUsers', desc: 'Accounts & roles' },
-        { id: 'logs', label: 'Logs', icon: 'FiFileText', desc: 'Requests & errors' },
-        { id: 'email', label: 'Email', icon: 'FiMail', desc: 'Delivery testing' },
-        { id: 'appstats', label: 'App Stats', icon: 'FiBarChart2', desc: 'Application metrics' },
-        ...(hasOwnerAccess ? [{ id: 'role-requests', label: 'Role Requests', icon: 'FiUserCheck', desc: 'Pending elevations' }] : [])
+        { id: 'overview', label: 'Overview', icon: 'FiActivity', desc: 'How the server, its memory and its database are doing.' },
+        { id: 'cache', label: 'Cache', icon: 'FiDatabase', desc: 'Redis figures, the cleanup service and clearing the cache.' },
+        { id: 'users', label: 'Users', icon: 'FiUsers', desc: 'Accounts, roles and activity. Right-click a row to edit the account.' },
+        { id: 'logs', label: 'Logs', icon: 'FiFileText', desc: 'Requests, warnings and errors the server recorded.' },
+        { id: 'email', label: 'Email', icon: 'FiMail', desc: 'Send a test message from a template to check that email delivery works.' },
+        { id: 'appstats', label: 'App stats', icon: 'FiBarChart2', desc: 'Counts for the whole app, its services and recent activity.' },
+        ...(hasOwnerAccess ? [{ id: 'role-requests', label: 'Role requests', icon: 'FiUserCheck', desc: 'Right-click a pending request to approve or reject it.' }] : [])
     ];
 
     const loadSectionData = useCallback(async (section, forceRefresh = false) => {
@@ -379,7 +366,7 @@ const AdminPage = () => {
         setRunningCleanup(true);
         try {
             const result = await cacheService.triggerCleanup();
-            showSuccess(`Cache cleanup completed! Cleaned ${result.cleanup?.keysRemoved || 0} keys`);
+            showSuccess(`Cache cleanup finished. ${result.cleanup?.keysRemoved || 0} keys removed.`);
             await handleGetCleanupInfo();
         } catch { showError('Failed to run cache cleanup'); }
         finally { setRunningCleanup(false); }
@@ -403,446 +390,362 @@ const AdminPage = () => {
 
     if (!hasAdminAccess) {
         return (
-            <Page layout="flex" align="center" justify="center" background="rings" backgroundMotion="drift" backgroundFade="radial">
-                <Container layout="flex-column" align="center" gap="md">
-                    <Icon name="FiLock" size="xl" color="error" />
-                    <Typography size="xl" weight="bold">Access Denied</Typography>
-                    <Typography color="secondary">Admin or Owner role required.</Typography>
-                </Container>
+            <Page layout="flex" align="center" justify="center" background="dots" backgroundFade="bottom">
+                <State page icon="FiLock" color="error" title="Access denied" message="You need the Admin or Owner role to open this page.">
+                    <Button size="sm" onClick={() => navigate('/chat')}><Icon name="FiMessageSquare" />Open Chat</Button>
+                </State>
             </Page>
         );
     }
 
     if (isLoading) {
-        return <PageLoading message="Loading admin dashboard..." />;
+        return <PageLoading message="Loading Admin" />;
     }
 
-    return (
-        <Page layout="flex-column" padding="none" gap="none" background="graph" backgroundFade="bottom">
-            <Container
-                layout="flex-column" gap="lg" padding="none" width="100%" maxWidth="1400px"
-                style={{ margin: '0 auto', padding: 'clamp(20px, 3vw, 36px)' }}
-            >
-                {/* Header */}
-                <Container layout="flex" justify="between" align="center" padding="none" width="100%" gap="md" wrap>
-                    <Container layout="flex-column" gap="none" padding="none">
-                        <Typography size="xs" color="muted" weight="medium" style={{ textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                            Administration
-                        </Typography>
-                        <Typography as="h1" size="xl" weight="bold" animation="blur" animationDuration={700} animationConfig={BY_WORDS} style={{ letterSpacing: '-0.015em' }}>
-                            Admin Console
-                        </Typography>
-                    </Container>
-                    <Container layout="flex" align="center" gap="sm" padding="none" wrap>
-                        <Container layout="flex-column" align="end" gap="none" padding="none">
-                            <Badge size="sm" color={adminData.health?.status === 'ok' ? 'success' : 'error'}>
-                                {adminData.health?.status === 'ok' ? 'System healthy' : 'System issues'}
-                            </Badge>
-                            <Typography size="xxs" color="muted">
-                                {adminData.health?.timestamp ? `Checked ${new Date(adminData.health.timestamp).toLocaleTimeString()}` : ''}
-                            </Typography>
-                        </Container>
-                        <Button size="sm" color="secondary" onClick={() => loadSectionData(activeSection, true)} disabled={refreshing}>
-                            <Icon name="FiRefreshCw" size="xs" />{refreshing ? 'Refreshing…' : 'Refresh'}
-                        </Button>
-                        <Button size="sm" color="primary" onClick={() => navigate('/chat')}>
-                            <Icon name="FiMessageSquare" size="xs" />Chat
-                        </Button>
-                    </Container>
-                </Container>
+    const section = sections.find((item) => item.id === activeSection) || sections[0];
+    const healthy = adminData.health?.status === 'ok';
+    const refreshButton = (
+        <Button size="sm" onClick={() => loadSectionData(activeSection, true)} disabled={refreshing}>
+            <Icon name="FiRefreshCw" />{refreshing ? 'Refreshing…' : 'Refresh'}
+        </Button>
+    );
+    const toolbars = {
+        cache: (
+            <>
+                {refreshButton}
+                <Button size="sm" onClick={handleGetCleanupInfo} disabled={loadingCleanup}>
+                    <Icon name="FiInfo" />{loadingCleanup ? 'Loading…' : 'Show cleanup status'}
+                </Button>
+                <Button size="sm" onClick={handleRunCleanup} disabled={runningCleanup || loadingCleanup}>
+                    <Icon name="FiPlay" />{runningCleanup ? 'Running…' : 'Run cleanup'}
+                </Button>
+                <Button size="sm" color="error" onClick={handleClearCache} disabled={clearingCache}>
+                    <Icon name="FiTrash2" />{clearingCache ? 'Clearing…' : 'Clear cache'}
+                </Button>
+            </>
+        ),
+        email: null
+    };
 
-                {adminData.errors.length > 0 && (
-                    <Card padding="md" hover={false} style={{ borderColor: 'var(--error-color)' }}>
-                        <Container layout="flex-column" gap="xs" padding="none">
-                            <Typography size="sm" weight="semibold" color="error">Data loading errors</Typography>
-                            {adminData.errors.map((err, i) => <Typography key={i} size="xs" color="muted">• {err}</Typography>)}
-                        </Container>
-                    </Card>
+    return (
+        <Page
+            title="Admin"
+            lead="Check the server, the cache, accounts, logs and email."
+            gap="xl"
+            background="dots"
+            backgroundFade="bottom"
+            actions={
+                <>
+                    {adminData.health?.timestamp && (
+                        <Typography size="xxs" color="muted">{`Checked ${new Date(adminData.health.timestamp).toLocaleTimeString()}`}</Typography>
+                    )}
+                    <Badge size="sm" color={healthy ? 'success' : 'error'}>{healthy ? 'System healthy' : 'System issues'}</Badge>
+                    <Button size="sm" variant="ghost" onClick={() => navigate('/chat')}>
+                        <Icon name="FiMessageSquare" />Open Chat
+                    </Button>
+                </>
+            }
+        >
+            <ButtonGroup size="sm" selectable={false} justify="start">
+                {sections.map((item) => (
+                    <Button key={item.id} selected={activeSection === item.id} aria-pressed={activeSection === item.id} onClick={() => setActiveSection(item.id)}>
+                        <Icon name={item.icon} />{item.label}
+                    </Button>
+                ))}
+            </ButtonGroup>
+
+            {adminData.errors.length > 0 && (
+                <Card layout="flex-column" gap="xs" padding="md" width="100%">
+                    <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>
+                        <Icon name="FiAlertTriangle" size="sm" color="error" />
+                        <Typography as="p" size="sm" weight="semibold">Some data did not load</Typography>
+                    </Container>
+                    {adminData.errors.map((err, i) => <Typography key={i} as="p" size="xs" color="muted">{err}</Typography>)}
+                </Card>
+            )}
+
+            <Container layout="flex-column" gap="lg" padding="none" width="100%">
+                <SectionHeader
+                    title={section.label}
+                    description={section.desc}
+                    actions={section.id in toolbars ? toolbars[section.id] : refreshButton}
+                />
+
+                {sectionLoading[activeSection] && (
+                    <Container layout="flex" align="center" justify="center" padding="xl" width="100%">
+                        <LoadingText>{`Loading ${section.label.toLowerCase()}`}</LoadingText>
+                    </Container>
                 )}
 
-                {/* Main layout: sidebar + content */}
-                <Container layout="flex" gap="lg" align="start" padding="none" width="100%" wrap>
-                    {/* Sidebar */}
-                    <Card padding="sm" hover={false} style={{ flex: '0 1 240px', minWidth: 200, position: 'sticky', top: 20 }}>
-                        <Container layout="flex-column" gap="none" padding="none" width="100%">
-                            {sections.map(section => (
-                                <Container
-                                    key={section.id}
-                                    layout="flex" align="center" gap="sm" padding="sm"
-                                    hoverable
-                                    wrap={false}
-                                    onClick={() => setActiveSection(section.id)}
-                                    width="100%"
-                                    style={activeSection === section.id ? { background: tint('var(--primary-color)', 12), borderRadius: 'var(--border-radius-lg)' } : {}}
-                                >
-                                    <Icon name={section.icon} size="sm" color={activeSection === section.id ? 'primary' : 'text'} />
-                                    <Container layout="flex-column" gap="none" padding="none" style={{ minWidth: 0, overflow: 'hidden' }}>
-                                        <Typography size="sm" weight={activeSection === section.id ? 'semibold' : 'medium'} color={activeSection === section.id ? 'primary' : 'default'}>
-                                            {section.label}
-                                        </Typography>
-                                        <Typography size="xxs" color="muted" truncate>
-                                            {section.desc}
-                                        </Typography>
-                                    </Container>
-                                </Container>
-                            ))}
-                        </Container>
-                    </Card>
-
-                    {/* Content */}
-                    <Container layout="flex-column" gap="md" padding="none" style={{ flex: '1 1 560px', minWidth: 0 }}>
-
-                        {sectionLoading[activeSection] && (
-                            <Card layout="flex" padding="xl" hover={false} style={{ alignItems: 'center', justifyContent: 'center', minHeight: 180 }}>
-                                <CircularProgress size="sm" />
-                            </Card>
-                        )}
-
-                        {/* ── Overview ── */}
-                        {activeSection === 'overview' && !sectionLoading.overview && (
-                            <>
-                                <Container layout="grid" columns="auto-sm" gap="sm" padding="none" width="100%">
-                                    <StatTile icon="FiGlobe" label="Environment" value={adminData.health?.env?.toUpperCase() || '—'}
-                                        caption={adminData.health?.system ? `${adminData.health.system.platform} ${adminData.health.system.arch}` : null} />
-                                    <StatTile icon="FiClock" label="Uptime" value={formatUptime(adminData.health?.system?.uptime)}
-                                        caption={adminData.health?.system?.nodeVersion} accent="var(--success-color)" />
-                                    <StatTile icon="FiDatabase" label="Database" value={adminData.health?.database?.status === 'connected' ? 'Connected' : (adminData.health?.database?.status || '—')}
-                                        caption={adminData.health?.database?.latencyMs != null ? `${adminData.health.database.latencyMs}ms latency` : null}
-                                        accent={adminData.health?.database?.status === 'connected' ? 'var(--success-color)' : 'var(--error-color)'} />
-                                    <StatTile icon="FiCpu" label="Heap memory"
-                                        value={adminData.health?.system?.memoryUsage ? `${((adminData.health.system.memoryUsage.heapUsed / adminData.health.system.memoryUsage.heapTotal) * 100).toFixed(0)}%` : '—'}
-                                        caption={adminData.health?.system?.memoryUsage ? `${(adminData.health.system.memoryUsage.heapUsed / 1048576).toFixed(0)} / ${(adminData.health.system.memoryUsage.heapTotal / 1048576).toFixed(0)} MB` : null}
-                                        accent="var(--warning-color)" />
-                                </Container>
-                                <Container layout="grid" columns={3} gap="md" padding="none" width="100%">
-                                    <Panel title="Memory">
-                                        {adminData.health?.system?.memoryUsage ? (() => {
-                                            const mem = adminData.health.system.memoryUsage;
-                                            const pct = mem.heapUsed / mem.heapTotal;
-                                            return (
-                                                <Container layout="flex-column" gap="sm" padding="none" width="100%">
-                                                    <ProgressBar value={mem.heapUsed} max={mem.heapTotal} color={pct > 0.8 ? 'error' : pct > 0.6 ? 'warning' : 'success'} showPercentage size="sm" width="100%" />
-                                                    <MetricRow label="Heap used" value={`${(mem.heapUsed / 1048576).toFixed(1)} MB`} />
-                                                    <MetricRow label="Heap total" value={`${(mem.heapTotal / 1048576).toFixed(1)} MB`} />
-                                                    <MetricRow label="RSS" value={`${(mem.rss / 1048576).toFixed(1)} MB`} />
-                                                    <MetricRow label="External" value={`${(mem.external / 1048576).toFixed(1)} MB`} />
-                                                </Container>
-                                            );
-                                        })() : <EmptyState icon="FiCpu" message="Memory data not available" />}
-                                    </Panel>
-                                    <Panel title="System">
-                                        {adminData.health?.system ? (
-                                            <Container layout="flex-column" gap="sm" padding="none" width="100%">
-                                                <MetricRow label="Platform" value={`${adminData.health.system.platform} (${adminData.health.system.arch})`} />
-                                                <MetricRow label="Node.js" value={adminData.health.system.nodeVersion} />
-                                                <MetricRow label="Uptime" value={formatUptime(adminData.health.system.uptime)} />
-                                                <MetricRow label="Environment" value={adminData.health?.env || '—'} />
-                                            </Container>
-                                        ) : <EmptyState icon="FiServer" message="System data not available" />}
-                                    </Panel>
-                                    <Panel title="Database">
-                                        {adminData.health?.database ? (
-                                            <Container layout="flex-column" gap="sm" padding="none" width="100%">
-                                                <MetricRow label="Status" badge={
-                                                    <Badge size="xs" color={adminData.health.database.status === 'connected' ? 'success' : 'error'}>
-                                                        {adminData.health.database.status?.toUpperCase()}
-                                                    </Badge>} />
-                                                <MetricRow label="Connection" value={adminData.health.database.connection} />
-                                                <MetricRow label="Latency" value={`${adminData.health.database.latencyMs}ms`} />
-                                            </Container>
-                                        ) : <EmptyState icon="FiDatabase" message="Database data not available" />}
-                                    </Panel>
-                                </Container>
-                            </>
-                        )}
-
-                        {/* ── Cache ── */}
-                        {activeSection === 'cache' && !sectionLoading.cache && (
-                            <>
-                                <SectionHeader
-                                    title="Cache management"
-                                    description="Redis performance, cleanup service, and emergency controls"
-                                    actions={
-                                        <ButtonGroup spaced selectable={false} justify="start">
-                                            <Button size="sm" color="secondary" onClick={handleGetCleanupInfo} disabled={loadingCleanup}>
-                                                <Icon name="FiInfo" size="xs" />{loadingCleanup ? 'Loading…' : 'Cleanup status'}
-                                            </Button>
-                                            <Button size="sm" color="primary" onClick={handleRunCleanup} disabled={runningCleanup || loadingCleanup}>
-                                                <Icon name="FiPlay" size="xs" />{runningCleanup ? 'Running…' : 'Run cleanup'}
-                                            </Button>
-                                            <Button size="sm" color="error" onClick={handleClearCache} disabled={clearingCache}>
-                                                <Icon name="FiTrash2" size="xs" />{clearingCache ? 'Clearing…' : 'Clear all'}
-                                            </Button>
-                                        </ButtonGroup>
-                                    }
-                                />
-                                {adminData.cache && (
-                                    <Container layout="grid" columns="auto-sm" gap="sm" padding="none" width="100%">
-                                        <StatTile icon="FiTarget" label="Hit rate" value={`${adminData.cache.cacheHitRate?.toFixed(1) ?? '0'}%`}
-                                            accent={adminData.cache.cacheHitRate > 80 ? 'var(--success-color)' : 'var(--warning-color)'}
-                                            caption={cacheRefreshed ? 'refreshed' : null} />
-                                        <StatTile icon="FiHardDrive" label="Used memory" value={adminData.cache.redisInfo?.memory?.used_memory_human || '—'}
-                                            caption={`peak ${adminData.cache.redisInfo?.memory?.used_memory_peak_human || '—'}`} />
-                                        <StatTile icon="FiZap" label="Ops / sec" value={adminData.cache.redisInfo?.stats?.instantaneous_ops_per_sec || '0'}
-                                            accent="var(--tertiary-accent-color, var(--tertiary-color))" />
-                                        <StatTile icon="FiLink" label="Connections" value={adminData.cache.redisInfo?.stats?.total_connections_received ? parseInt(adminData.cache.redisInfo.stats.total_connections_received).toLocaleString() : '—'}
-                                            accent="var(--neutral-color)" />
-                                    </Container>
-                                )}
-                                {cleanupInfo && (
-                                    <Panel
-                                        title="Cleanup service"
-                                        actions={
-                                            <Button size="xs" color="secondary" onClick={() => setCleanupInfo(null)}>
-                                                <Icon name="FiX" size="xs" />Close
-                                            </Button>
-                                        }
-                                    >
-                                        <Container layout="grid" columns={2} gap="md" padding="none" width="100%">
-                                            <Container layout="flex-column" gap="sm" padding="none" width="100%">
-                                                <MetricRow label="Service" badge={<Badge size="xs" color={cleanupInfo.enabled ? 'success' : 'warning'}>{cleanupInfo.enabled ? 'Active' : 'Disabled'}</Badge>} />
-                                                <MetricRow label="Interval" value={cleanupInfo.intervalHours ? `${cleanupInfo.intervalHours}h` : '—'} />
-                                                <MetricRow label="Minimum age" value={cleanupInfo.minAgeHours ? `${cleanupInfo.minAgeHours}h` : '—'} />
-                                            </Container>
-                                            <Container layout="flex-column" gap="sm" padding="none" width="100%">
-                                                <MetricRow label="Last run" value={cleanupInfo.lastRun ? new Date(cleanupInfo.lastRun).toLocaleString() : 'Never'} />
-                                                <MetricRow label="Next run" value={cleanupInfo.nextRun ? new Date(cleanupInfo.nextRun).toLocaleString() : '—'} />
-                                                <MetricRow label="Keys cleaned" value={cleanupInfo.lastRunStats?.keysRemoved ?? 0} />
-                                            </Container>
-                                        </Container>
-                                    </Panel>
-                                )}
-                                {adminData.cache && (
-                                    <Container layout="grid" columns={2} gap="md" padding="none" width="100%">
-                                        <Panel title="Performance">
-                                            <Container layout="flex-column" gap="sm" padding="none" width="100%">
-                                                <MetricRow label="Keyspace hits" value={adminData.cache.redisInfo?.stats?.keyspace_hits ? parseInt(adminData.cache.redisInfo.stats.keyspace_hits).toLocaleString() : '—'} />
-                                                <MetricRow label="Keyspace misses" value={adminData.cache.redisInfo?.stats?.keyspace_misses ? parseInt(adminData.cache.redisInfo.stats.keyspace_misses).toLocaleString() : '—'} />
-                                                <MetricRow label="Expired keys" value={adminData.cache.redisInfo?.stats?.expired_keys ? parseInt(adminData.cache.redisInfo.stats.expired_keys).toLocaleString() : '—'} />
-                                                <MetricRow label="Commands processed" value={adminData.cache.redisInfo?.stats?.total_commands_processed ? parseInt(adminData.cache.redisInfo.stats.total_commands_processed).toLocaleString() : '—'} />
-                                            </Container>
-                                        </Panel>
-                                        <Panel title="Memory">
-                                            <Container layout="flex-column" gap="sm" padding="none" width="100%">
-                                                <MetricRow label="Used" value={adminData.cache.redisInfo?.memory?.used_memory_human || '—'} />
-                                                <MetricRow label="Peak" value={adminData.cache.redisInfo?.memory?.used_memory_peak_human || '—'} />
-                                                <MetricRow label="Fragmentation" value={adminData.cache.redisInfo?.memory?.mem_fragmentation_ratio || '—'} />
-                                                <MetricRow label="Updated" value={adminData.cache.timestamp ? new Date(adminData.cache.timestamp).toLocaleTimeString() : '—'} />
-                                            </Container>
-                                        </Panel>
-                                    </Container>
-                                )}
-                            </>
-                        )}
-
-                        {/* ── Users ── */}
-                        {activeSection === 'users' && !sectionLoading.users && (
-                            <>
-                                <SectionHeader title="Users" description="Accounts, roles, and activity — right-click a row to edit" />
-                                <Container layout="grid" columns="auto-sm" gap="sm" padding="none" width="100%">
-                                    <StatTile icon="FiUsers" label="Total" value={adminData.userStats?.summary?.totalUsers?.toLocaleString() || (Array.isArray(adminData.users) ? adminData.users.length : 0)} />
-                                    <StatTile icon="FiUserCheck" label="Active" value={adminData.userStats?.summary?.activeUsers?.toLocaleString() || '—'} accent="var(--success-color)" />
-                                    <StatTile icon="FiUserPlus" label="New this week" value={adminData.userStats?.summary?.newThisWeek || 0} accent="var(--tertiary-accent-color, var(--tertiary-color))" />
-                                    <StatTile icon="FiShield" label="Admins" value={adminData.userStats?.summary?.adminUsers || 0} accent="var(--warning-color)" />
-                                </Container>
-                                {adminData.users && Array.isArray(adminData.users) && adminData.users.length > 0 ? (
-                                    <Panel title={`All users (${adminData.users.length})`}>
-                                        <Data
-                                            data={adminData.users}
-                                            size="xs"
-                                            fieldConfig={{
-                                                firstName: { component: Typography, props: { size: 'xs', weight: 'medium' } },
-                                                lastName: { component: Typography, props: { size: 'xs', weight: 'medium' } },
-                                                username: { component: Typography, props: { size: 'xs', color: 'secondary' } },
-                                                email: { component: Typography, props: { size: 'xs', color: 'primary' } },
-                                                roles: { component: Badge, props: { size: 'xs' }, transform: (value) => { const role = Array.isArray(value) ? value[0] : value; return { color: role === 'OWNER' ? 'error' : role === 'ADMIN' ? 'warning' : role === 'SUPER_CREATOR' ? 'success' : role === 'CREATOR' ? 'tertiary' : 'default', children: role }; } },
-                                                active: { component: Badge, props: { size: 'xs' }, transform: (value) => ({ color: value ? 'success' : 'error', children: value ? 'Active' : 'Inactive' }) },
-                                                emailVerified: { component: Badge, props: { size: 'xs' }, transform: (value) => ({ color: value ? 'success' : 'warning', children: value ? 'Verified' : 'Unverified' }) },
-                                                createdAt: { component: Typography, props: { size: 'xs', color: 'secondary' }, transform: (value) => ({ children: new Date(value).toLocaleDateString() }) },
-                                                lastLogin: { component: Typography, props: { size: 'xs', color: 'muted' }, transform: (value) => ({ children: value ? new Date(value).toLocaleDateString() : 'Never' }) }
-                                            }}
-                                            exclude={['_id', '__v', 'password', 'resetPasswordToken', 'resetPasswordExpires', 'emailVerificationToken']}
-                                            searchable filterable paginated pageSize={25} sortable width="100%"
-                                            genie={{ trigger: 'contextmenu', variant: 'modal', content: (user) => (
-                                                <EditUserForm user={user} onSave={async () => { await loadSectionData('users', true); document.querySelector('[data-genie-backdrop]')?.click(); }} onCancel={() => { document.querySelector('[data-genie-backdrop]')?.click(); }} />
-                                            )}}
-                                        />
-                                    </Panel>
-                                ) : <EmptyState icon="FiUsers" message="No users loaded" />}
-                                {adminData.userStats?.roles && (
-                                    <Panel title="Role distribution">
-                                        <Container layout="grid" columns="auto-sm" gap="md" padding="none" width="100%">
-                                            {adminData.userStats.roles.map((roleData) => (
-                                                <Container key={roleData.role} layout="flex-column" gap="xs" padding="none" style={{ minWidth: 0 }}>
-                                                    <MetricRow label={roleData.role} value={`${roleData.count} · ${roleData.percentage}%`} />
-                                                    <ProgressBar value={roleData.count} max={adminData.userStats.summary?.totalUsers || 1} color={roleData.role === 'OWNER' ? 'error' : roleData.role === 'ADMIN' ? 'warning' : 'primary'} size="xs" width="100%" />
-                                                </Container>
-                                            ))}
-                                        </Container>
-                                    </Panel>
-                                )}
-                            </>
-                        )}
-
-                        {/* ── Logs ── */}
-                        {activeSection === 'logs' && !sectionLoading.logs && (
-                            <>
-                                <SectionHeader title="Logs" description="Request history, warnings, and errors" />
-                                <Container layout="grid" columns="auto-sm" gap="sm" padding="none" width="100%">
-                                    <StatTile icon="FiFileText" label="Total logs" value={(adminData.logStats?.overview?.totalLogs || 0).toLocaleString()} />
-                                    <StatTile icon="FiCalendar" label="Today" value={(adminData.logStats?.overview?.logsToday || 0).toLocaleString()} accent="var(--success-color)" />
-                                    <StatTile icon="FiAlertTriangle" label="Warnings today" value={(adminData.logStats?.warnings?.today || 0).toLocaleString()} accent="var(--warning-color)" />
-                                    <StatTile icon="FiAlertOctagon" label="Errors today" value={(adminData.logStats?.errors?.today || 0).toLocaleString()} accent="var(--error-color)" />
-                                </Container>
-                                {adminData.logStats?.summary && (
-                                    <Panel title="Health summary">
-                                        <Container layout="grid" columns="auto-sm" gap="md" padding="none" width="100%">
-                                            <Container layout="flex-column" gap="xs" padding="none" style={{ minWidth: 0 }}>
-                                                <MetricRow label="System health" value={`${adminData.logStats.summary.systemHealth}%`} color={(adminData.logStats.summary.systemHealth || 0) > 95 ? 'success' : 'warning'} />
-                                                <ProgressBar value={adminData.logStats.summary.systemHealth || 0} max={100} color={(adminData.logStats.summary.systemHealth || 0) > 95 ? 'success' : (adminData.logStats.summary.systemHealth || 0) > 85 ? 'warning' : 'error'} size="xs" width="100%" />
-                                            </Container>
-                                            <MetricRow label="Error rate" value={`${adminData.logStats.summary.errorRate}%`} color={(adminData.logStats.summary.errorRate || 0) > 10 ? 'error' : 'default'} />
-                                            <MetricRow label="Avg response" value={`${adminData.logStats.summary.avgResponseTime?.toFixed(1)}ms`} />
-                                            <MetricRow label="Daily requests" value={adminData.logStats.summary.dailyRequestRate?.toFixed(0)} />
-                                        </Container>
-                                    </Panel>
-                                )}
-                                {adminData.logs && adminData.logs.length > 0 ? (
-                                    <Panel title={`Request log (${adminData.logs.length})`}>
-                                        <Data data={adminData.logs}
-                                            size="xs"
-                                            fieldConfig={{
-                                                timestamp: { component: Typography, props: { size: 'xs', color: 'secondary' }, transform: (value) => ({ children: new Date(value).toLocaleString() }) },
-                                                method: { component: Badge, props: { size: 'xs' }, transform: (value) => ({ color: value === 'POST' ? 'primary' : value === 'PUT' || value === 'PATCH' ? 'warning' : value === 'DELETE' ? 'error' : 'default', children: value }) },
-                                                url: { component: Typography, props: { size: 'xs' }, truncate: true, maxLength: 80 },
-                                                statusCode: { component: Badge, props: { size: 'xs' }, transform: (value) => ({ color: value >= 500 ? 'error' : value >= 400 ? 'warning' : value >= 300 ? 'tertiary' : 'success', children: value }) },
-                                                responseTime: { component: Typography, props: { size: 'xs' }, transform: (value) => ({ children: value ? `${value}ms` : '—', color: value > 1000 ? 'error' : value > 500 ? 'warning' : 'default' }) }
-                                            }}
-                                            exclude={['__v']} searchable filterable paginated pageSize={15} sortable width="100%"
-                                        />
-                                    </Panel>
-                                ) : <EmptyState icon="FiFileText" message="No system logs available" />}
-                                {adminData.logStats?.breakdowns?.statusCodes && (
-                                    <Panel title="Status codes">
-                                        <Container layout="grid" columns="auto-sm" gap="md" padding="none" width="100%">
-                                            {adminData.logStats.breakdowns.statusCodes.map((stat, index) => (
-                                                <Container key={index} layout="flex-column" gap="xs" padding="none" style={{ minWidth: 0 }}>
-                                                    <MetricRow label={String(stat._id)} value={stat.count?.toLocaleString()} />
-                                                    <ProgressBar value={stat.count} max={adminData.logStats.overview?.totalLogs || 1} color={String(stat._id).startsWith('2') ? 'success' : String(stat._id).startsWith('4') ? 'warning' : String(stat._id).startsWith('5') ? 'error' : 'primary'} size="xs" width="100%" />
-                                                </Container>
-                                            ))}
-                                        </Container>
-                                    </Panel>
-                                )}
-                            </>
-                        )}
-
-                        {/* ── Email ── */}
-                        {activeSection === 'email' && (
-                            <>
-                                <SectionHeader title="Email delivery" description="Send a rendered template to any address to verify SMTP settings" />
-                                <Panel title="Send test email">
-                                    <Container layout="grid" columns={2} gap="md" padding="none" width="100%">
-                                        <Input size="sm" label="Recipient" type="email" value={emailTest.recipient} onChange={e => setEmailTest(prev => ({ ...prev, recipient: e.target.value }))} placeholder="test@example.com" width="100%" />
-                                        <Select size="sm" label="Template" value={emailTest.template} onChange={value => setEmailTest(prev => ({ ...prev, template: value }))} width="100%"
-                                            options={[{ value: 'welcome', label: 'Welcome Email' }, { value: 'password-reset', label: 'Password Reset' }, { value: 'password-changed', label: 'Password Changed' }, { value: 'security-alert', label: 'Security Alert' }]} />
-                                        <Input size="sm" label="Subject" value={emailTest.subject} onChange={e => setEmailTest(prev => ({ ...prev, subject: e.target.value }))} placeholder="Test Email Subject" width="100%" />
-                                    </Container>
-                                    <Container layout="flex" justify="end" padding="none" width="100%">
-                                        <Button size="sm" color="primary" onClick={handleSendTestEmail} disabled={emailTest.isLoading || !emailTest.recipient}>
-                                            <Icon name="FiSend" size="xs" />{emailTest.isLoading ? 'Sending…' : 'Send test email'}
-                                        </Button>
-                                    </Container>
-                                </Panel>
-                            </>
-                        )}
-
-                        {/* ── App Stats ── */}
-                        {activeSection === 'appstats' && !sectionLoading.appstats && (
-                            <>
-                                <SectionHeader title="Application statistics" description="Aggregated application, service, and activity metrics" />
-                                {adminData.appStats ? (
-                                    <Container layout="grid" columns={2} gap="md" padding="none" width="100%">
-                                        <Panel title="Summary">
-                                            <Container layout="flex-column" gap="sm" padding="none" width="100%">
-                                                <MetricRow label="Total users" value={adminData.appStats.summary?.totalUsers || 0} />
-                                                <MetricRow label="Active users" value={adminData.appStats.summary?.activeUsers || 0} />
-                                                <MetricRow label="Total files" value={adminData.appStats.summary?.totalFiles || 0} />
-                                                <MetricRow label="Total requests" value={adminData.appStats.summary?.totalRequests || 0} />
-                                                <MetricRow label="Error rate" value={`${adminData.appStats.summary?.errorRate || 0}%`} color={(adminData.appStats.summary?.errorRate || 0) > 10 ? 'error' : 'default'} />
-                                            </Container>
-                                        </Panel>
-                                        <Panel title="System">
-                                            <Container layout="flex-column" gap="sm" padding="none" width="100%">
-                                                <MetricRow label="Node version" value={adminData.appStats.system?.nodeVersion || '—'} />
-                                                <MetricRow label="Platform" value={adminData.appStats.system?.platform || '—'} />
-                                                <MetricRow label="Environment" value={adminData.appStats.system?.environment || '—'} />
-                                                <MetricRow label="Uptime" value={formatUptime(adminData.appStats.system?.uptime)} />
-                                            </Container>
-                                        </Panel>
-                                        <Panel title="Services">
-                                            <Container layout="flex-column" gap="sm" padding="none" width="100%">
-                                                <MetricRow label="Database" badge={<Badge size="xs" color={adminData.appStats.services?.database?.status === 'connected' ? 'success' : 'error'}>{adminData.appStats.services?.database?.status === 'connected' ? 'Connected' : 'Disconnected'}</Badge>} />
-                                                <MetricRow label="Cache" badge={<Badge size="xs" color={adminData.appStats.services?.cache?.status === 'connected' ? 'success' : 'error'}>{adminData.appStats.services?.cache?.status === 'connected' ? 'Connected' : 'Disconnected'}</Badge>} />
-                                                <MetricRow label="Cache hit rate" value={`${adminData.appStats.services?.cache?.hitRate || 0}%`} />
-                                                <MetricRow label="Email" badge={<Badge size="xs" color={adminData.appStats.services?.email?.status === 'configured' ? 'success' : 'warning'}>{adminData.appStats.services?.email?.status === 'configured' ? 'Configured' : 'Not configured'}</Badge>} />
-                                            </Container>
-                                        </Panel>
-                                        <Panel title="Activity">
-                                            <Container layout="flex-column" gap="sm" padding="none" width="100%">
-                                                <MetricRow label="Avg response time" value={`${Math.round(adminData.appStats.activity?.avgResponseTime || 0)} ms`} />
-                                                <MetricRow label="Total errors" value={adminData.appStats.activity?.totalErrors || 0} />
-                                                <MetricRow label="Period" value={adminData.appStats.activity?.period || '—'} />
-                                            </Container>
-                                        </Panel>
-                                    </Container>
-                                ) : <EmptyState icon="FiBarChart2" message="No application statistics available" />}
-                            </>
-                        )}
-
-                        {/* ── Role Requests (Owner only) ── */}
-                        {activeSection === 'role-requests' && hasOwnerAccess && !sectionLoading['role-requests'] && (
-                            <>
-                                <SectionHeader
-                                    title="Role requests"
-                                    description="Right-click a pending request to approve or reject it"
-                                    actions={
-                                        <Button size="sm" color="secondary" onClick={() => loadSectionData('role-requests', true)}>
-                                            <Icon name="FiRefreshCw" size="xs" />Refresh
-                                        </Button>
-                                    }
-                                />
-                                {adminData.roleRequests && adminData.roleRequests.length > 0 ? (
-                                    <Panel title={`Pending requests (${adminData.roleRequests.length})`}>
-                                        <Data data={adminData.roleRequests}
-                                            size="xs"
-                                            fieldConfig={{
-                                                username: { component: Typography, props: { size: 'xs', weight: 'medium' } },
-                                                email: { component: Typography, props: { size: 'xs', color: 'secondary' } },
-                                                currentRoles: { component: Badge, props: { size: 'xs' }, transform: (value) => { const role = Array.isArray(value) ? value[0] : value; return { color: 'secondary', children: role }; } },
-                                                pendingRoles: { component: Badge, props: { size: 'xs' }, transform: (value) => { const role = Array.isArray(value) ? value[0] : value; return { color: role === 'ADMIN' ? 'warning' : role === 'OWNER' ? 'error' : 'tertiary', children: role }; } },
-                                                roleApprovalStatus: { component: Badge, props: { size: 'xs' }, transform: (value) => ({ color: value === 'APPROVED' ? 'success' : value === 'REJECTED' ? 'error' : 'tertiary', children: value || 'PENDING' }) }
-                                            }}
-                                            width="100%"
-                                            genie={{ trigger: 'contextmenu', variant: 'menu', content: (item) => item?.roleApprovalStatus === 'PENDING' ? (
-                                                <RoleRequestActions
-                                                    item={item}
-                                                    onApprove={async (request) => { try { await authService.approveRoleRequest(request._id || request.id, {}); showSuccess('Role request approved'); await loadSectionData('role-requests', true); } catch { showError('Failed to approve'); } }}
-                                                    onReject={async (request, reason) => { try { await authService.rejectRoleRequest(request._id || request.id, reason); showSuccess('Role request rejected'); await loadSectionData('role-requests', true); } catch { showError('Failed to reject'); } }}
-                                                />
-                                            ) : <Container padding="xs"><Typography size="xs" color="muted">Already processed</Typography></Container>
-                                            }}
-                                        />
-                                    </Panel>
-                                ) : <EmptyState icon="FiUserCheck" message="No pending role requests" />}
-                            </>
-                        )}
+                {activeSection === 'overview' && !sectionLoading.overview && (
+                    <Container layout="grid" columns={FACT_COLUMNS} gap="xl" padding="none" width="100%">
+                        <Facts title="Memory">
+                            {adminData.health?.system?.memoryUsage ? (() => {
+                                const mem = adminData.health.system.memoryUsage;
+                                const pct = mem.heapUsed / mem.heapTotal;
+                                return (
+                                    <>
+                                        <MetricRow label="Heap in use" value={`${(pct * 100).toFixed(0)}%`} status={pct > 0.8 ? 'error' : pct > 0.6 ? 'warning' : null} />
+                                        <ProgressBar value={mem.heapUsed} max={mem.heapTotal} color={pct > 0.8 ? 'error' : pct > 0.6 ? 'warning' : 'primary'} size="xs" width="100%" marginBottom="sm" />
+                                        <MetricRow label="Heap used" value={`${(mem.heapUsed / 1048576).toFixed(1)} MB`} />
+                                        <MetricRow label="Heap total" value={`${(mem.heapTotal / 1048576).toFixed(1)} MB`} />
+                                        <MetricRow label="Resident memory (RSS)" value={`${(mem.rss / 1048576).toFixed(1)} MB`} />
+                                        <MetricRow label="External memory" value={`${(mem.external / 1048576).toFixed(1)} MB`} />
+                                    </>
+                                );
+                            })() : <Typography as="p" size="xs" color="muted">Memory figures are not available. Refresh to read them again.</Typography>}
+                        </Facts>
+                        <Facts title="System">
+                            {adminData.health?.system ? (
+                                <>
+                                    <MetricRow label="Platform" value={`${adminData.health.system.platform} (${adminData.health.system.arch})`} />
+                                    <MetricRow label="Node.js" value={adminData.health.system.nodeVersion} />
+                                    <MetricRow label="Uptime" value={formatUptime(adminData.health.system.uptime)} />
+                                    <MetricRow label="Environment" value={adminData.health?.env || '—'} />
+                                </>
+                            ) : <Typography as="p" size="xs" color="muted">System figures are not available. Refresh to read them again.</Typography>}
+                        </Facts>
+                        <Facts title="Database">
+                            {adminData.health?.database ? (
+                                <>
+                                    <MetricRow label="Status" badge={
+                                        <Badge size="xs" color={adminData.health.database.status === 'connected' ? 'success' : 'error'}>
+                                            {sentenceCase(adminData.health.database.status)}
+                                        </Badge>} />
+                                    <MetricRow label="Connection" value={adminData.health.database.connection} />
+                                    <MetricRow label="Latency" value={`${adminData.health.database.latencyMs} ms`} />
+                                </>
+                            ) : <Typography as="p" size="xs" color="muted">Database figures are not available. Refresh to read them again.</Typography>}
+                        </Facts>
                     </Container>
-                </Container>
+                )}
+
+                {activeSection === 'cache' && !sectionLoading.cache && (
+                    (cleanupInfo || adminData.cache) ? (
+                        <Container layout="grid" columns={FACT_COLUMNS} gap="xl" padding="none" width="100%">
+                            {cleanupInfo && (
+                                <Facts
+                                    title="Cleanup service"
+                                    actions={
+                                        <Button size="xs" variant="ghost" onClick={() => setCleanupInfo(null)}>
+                                            <Icon name="FiX" />Close
+                                        </Button>
+                                    }
+                                >
+                                    <MetricRow label="Service" badge={<Badge size="xs" color={cleanupInfo.enabled ? 'success' : 'warning'}>{cleanupInfo.enabled ? 'Active' : 'Disabled'}</Badge>} />
+                                    <MetricRow label="Interval" value={cleanupInfo.intervalHours ? `${cleanupInfo.intervalHours} h` : '—'} />
+                                    <MetricRow label="Minimum age" value={cleanupInfo.minAgeHours ? `${cleanupInfo.minAgeHours} h` : '—'} />
+                                    <MetricRow label="Last run" value={cleanupInfo.lastRun ? new Date(cleanupInfo.lastRun).toLocaleString() : 'Never'} />
+                                    <MetricRow label="Next run" value={cleanupInfo.nextRun ? new Date(cleanupInfo.nextRun).toLocaleString() : '—'} />
+                                    <MetricRow label="Keys removed in the last run" value={cleanupInfo.lastRunStats?.keysRemoved ?? 0} />
+                                </Facts>
+                            )}
+                            {adminData.cache && (
+                                <>
+                                    <Facts title="Activity">
+                                        <MetricRow label={cacheRefreshed ? 'Hit rate (refreshed)' : 'Hit rate'} value={`${adminData.cache.cacheHitRate?.toFixed(1) ?? '0'}%`} status={adminData.cache.cacheHitRate > 80 ? 'success' : 'warning'} />
+                                        <MetricRow label="Operations a second" value={adminData.cache.redisInfo?.stats?.instantaneous_ops_per_sec || '0'} />
+                                        <MetricRow label="Connections received" value={adminData.cache.redisInfo?.stats?.total_connections_received ? parseInt(adminData.cache.redisInfo.stats.total_connections_received).toLocaleString() : '—'} />
+                                    </Facts>
+                                    <Facts title="Performance">
+                                        <MetricRow label="Keyspace hits" value={adminData.cache.redisInfo?.stats?.keyspace_hits ? parseInt(adminData.cache.redisInfo.stats.keyspace_hits).toLocaleString() : '—'} />
+                                        <MetricRow label="Keyspace misses" value={adminData.cache.redisInfo?.stats?.keyspace_misses ? parseInt(adminData.cache.redisInfo.stats.keyspace_misses).toLocaleString() : '—'} />
+                                        <MetricRow label="Expired keys" value={adminData.cache.redisInfo?.stats?.expired_keys ? parseInt(adminData.cache.redisInfo.stats.expired_keys).toLocaleString() : '—'} />
+                                        <MetricRow label="Commands processed" value={adminData.cache.redisInfo?.stats?.total_commands_processed ? parseInt(adminData.cache.redisInfo.stats.total_commands_processed).toLocaleString() : '—'} />
+                                    </Facts>
+                                    <Facts title="Memory">
+                                        <MetricRow label="Used" value={adminData.cache.redisInfo?.memory?.used_memory_human || '—'} />
+                                        <MetricRow label="Peak" value={adminData.cache.redisInfo?.memory?.used_memory_peak_human || '—'} />
+                                        <MetricRow label="Fragmentation" value={adminData.cache.redisInfo?.memory?.mem_fragmentation_ratio || '—'} />
+                                        <MetricRow label="Updated" value={adminData.cache.timestamp ? new Date(adminData.cache.timestamp).toLocaleTimeString() : '—'} />
+                                    </Facts>
+                                </>
+                            )}
+                        </Container>
+                    ) : (
+                        <State icon="FiDatabase" title="No cache figures" message="Refresh to read them again.">{refreshButton}</State>
+                    )
+                )}
+
+                {activeSection === 'users' && !sectionLoading.users && (
+                    <>
+                        <Container layout="grid" columns={FACT_COLUMNS} gap="xl" padding="none" width="100%">
+                            <Facts title="Accounts">
+                                <MetricRow label="Total" value={adminData.userStats?.summary?.totalUsers?.toLocaleString() || (Array.isArray(adminData.users) ? adminData.users.length : 0)} />
+                                <MetricRow label="Active" value={adminData.userStats?.summary?.activeUsers?.toLocaleString() || '—'} />
+                                <MetricRow label="New this week" value={adminData.userStats?.summary?.newThisWeek || 0} />
+                                <MetricRow label="Admins" value={adminData.userStats?.summary?.adminUsers || 0} />
+                            </Facts>
+                            {adminData.userStats?.roles && (
+                                <Facts title="Roles">
+                                    {adminData.userStats.roles.map((roleData) => (
+                                        <React.Fragment key={roleData.role}>
+                                            <MetricRow label={sentenceCase(roleData.role)} value={`${roleData.count} · ${roleData.percentage}%`} />
+                                            <ProgressBar value={roleData.count} max={adminData.userStats.summary?.totalUsers || 1} color="primary" size="xs" width="100%" marginBottom="sm" />
+                                        </React.Fragment>
+                                    ))}
+                                </Facts>
+                            )}
+                        </Container>
+                        {adminData.users && Array.isArray(adminData.users) && adminData.users.length > 0 ? (
+                            <Container layout="flex-column" gap="sm" padding="none" width="100%">
+                                <Typography as="h3" size="sm" weight="semibold">{`All users (${adminData.users.length})`}</Typography>
+                                <Data
+                                    data={adminData.users}
+                                    size="xs"
+                                    fieldConfig={{
+                                        firstName: { component: Typography, props: { size: 'xs', weight: 'medium' } },
+                                        lastName: { component: Typography, props: { size: 'xs', weight: 'medium' } },
+                                        username: { component: Typography, props: { size: 'xs' } },
+                                        email: { component: Typography, props: { size: 'xs' } },
+                                        roles: { component: Badge, props: { size: 'xs' }, transform: (value) => { const role = Array.isArray(value) ? value[0] : value; return { color: role === 'OWNER' || role === 'ADMIN' ? 'primary' : 'default', children: sentenceCase(role) }; } },
+                                        active: { component: Badge, props: { size: 'xs' }, transform: (value) => ({ color: value ? 'success' : 'error', children: value ? 'Active' : 'Inactive' }) },
+                                        emailVerified: { component: Badge, props: { size: 'xs' }, transform: (value) => ({ color: value ? 'success' : 'warning', children: value ? 'Verified' : 'Unverified' }) },
+                                        createdAt: { component: Typography, props: { size: 'xxs', color: 'muted' }, transform: (value) => ({ children: new Date(value).toLocaleDateString() }) },
+                                        lastLogin: { component: Typography, props: { size: 'xxs', color: 'muted' }, transform: (value) => ({ children: value ? new Date(value).toLocaleDateString() : 'Never' }) }
+                                    }}
+                                    exclude={['_id', '__v', 'password', 'resetPasswordToken', 'resetPasswordExpires', 'emailVerificationToken']}
+                                    searchable filterable paginated pageSize={25} sortable width="100%"
+                                    genie={{ trigger: 'contextmenu', variant: 'modal', content: (user) => (
+                                        <EditUserForm user={user} onSave={async () => { await loadSectionData('users', true); document.querySelector('[data-genie-backdrop]')?.click(); }} onCancel={() => { document.querySelector('[data-genie-backdrop]')?.click(); }} />
+                                    )}}
+                                />
+                            </Container>
+                        ) : (
+                            <State icon="FiUsers" title="No users loaded" message="Refresh to read the list again.">{refreshButton}</State>
+                        )}
+                    </>
+                )}
+
+                {activeSection === 'logs' && !sectionLoading.logs && (
+                    <>
+                        <Container layout="grid" columns={FACT_COLUMNS} gap="xl" padding="none" width="100%">
+                            <Facts title="Entries">
+                                <MetricRow label="Total" value={(adminData.logStats?.overview?.totalLogs || 0).toLocaleString()} />
+                                <MetricRow label="Today" value={(adminData.logStats?.overview?.logsToday || 0).toLocaleString()} />
+                                <MetricRow label="Warnings today" value={(adminData.logStats?.warnings?.today || 0).toLocaleString()} />
+                                <MetricRow label="Errors today" value={(adminData.logStats?.errors?.today || 0).toLocaleString()} />
+                            </Facts>
+                            {adminData.logStats?.summary && (
+                                <Facts title="Health">
+                                    <MetricRow label="System health" value={`${adminData.logStats.summary.systemHealth}%`} status={(adminData.logStats.summary.systemHealth || 0) > 95 ? 'success' : 'warning'} />
+                                    <ProgressBar value={adminData.logStats.summary.systemHealth || 0} max={100} color={(adminData.logStats.summary.systemHealth || 0) > 95 ? 'primary' : (adminData.logStats.summary.systemHealth || 0) > 85 ? 'warning' : 'error'} size="xs" width="100%" marginBottom="sm" />
+                                    <MetricRow label="Error rate" value={`${adminData.logStats.summary.errorRate}%`} status={(adminData.logStats.summary.errorRate || 0) > 10 ? 'error' : null} />
+                                    <MetricRow label="Average response" value={`${adminData.logStats.summary.avgResponseTime?.toFixed(1)} ms`} />
+                                    <MetricRow label="Requests a day" value={adminData.logStats.summary.dailyRequestRate?.toFixed(0)} />
+                                </Facts>
+                            )}
+                            {adminData.logStats?.breakdowns?.statusCodes && (
+                                <Facts title="Status codes">
+                                    {adminData.logStats.breakdowns.statusCodes.map((stat, index) => (
+                                        <React.Fragment key={index}>
+                                            <MetricRow label={String(stat._id)} value={stat.count?.toLocaleString()} />
+                                            <ProgressBar value={stat.count} max={adminData.logStats.overview?.totalLogs || 1} color={String(stat._id).startsWith('4') ? 'warning' : String(stat._id).startsWith('5') ? 'error' : 'primary'} size="xs" width="100%" marginBottom="sm" />
+                                        </React.Fragment>
+                                    ))}
+                                </Facts>
+                            )}
+                        </Container>
+                        {adminData.logs && adminData.logs.length > 0 ? (
+                            <Container layout="flex-column" gap="sm" padding="none" width="100%">
+                                <Typography as="h3" size="sm" weight="semibold">{`Request log (${adminData.logs.length})`}</Typography>
+                                <Data data={adminData.logs}
+                                    size="xs"
+                                    fieldConfig={{
+                                        timestamp: { component: Typography, props: { size: 'xxs', color: 'muted' }, transform: (value) => ({ children: new Date(value).toLocaleString() }) },
+                                        method: { component: Badge, props: { size: 'xs', color: 'default' } },
+                                        url: { component: Typography, props: { size: 'xs' }, truncate: true, maxLength: 80 },
+                                        statusCode: { component: Badge, props: { size: 'xs' }, transform: (value) => ({ color: value >= 500 ? 'error' : value >= 400 ? 'warning' : value >= 300 ? 'default' : 'success', children: value }) },
+                                        responseTime: { component: Typography, props: { size: 'xs' }, transform: (value) => ({ children: value ? `${value} ms` : '—', color: value > 1000 ? 'error' : value > 500 ? 'warning' : 'default' }) }
+                                    }}
+                                    exclude={['__v']} searchable filterable paginated pageSize={15} sortable width="100%"
+                                />
+                            </Container>
+                        ) : (
+                            <State icon="FiFileText" title="No logs recorded" message="Refresh to read them again.">{refreshButton}</State>
+                        )}
+                    </>
+                )}
+
+                {activeSection === 'email' && (
+                    <Container layout="flex-column" gap="md" padding="none" width="100%" maxWidth="560px">
+                        <Typography as="h3" size="sm" weight="semibold">Send a test email</Typography>
+                        <Input size="sm" label="Recipient" type="email" value={emailTest.recipient} onChange={e => setEmailTest(prev => ({ ...prev, recipient: e.target.value }))} placeholder="test@example.com" width="100%" />
+                        <Select size="sm" label="Template" value={emailTest.template} onChange={value => setEmailTest(prev => ({ ...prev, template: value }))} width="100%"
+                            options={[{ value: 'welcome', label: 'Welcome email' }, { value: 'password-reset', label: 'Password reset' }, { value: 'password-changed', label: 'Password changed' }, { value: 'security-alert', label: 'Security alert' }]} />
+                        <Input size="sm" label="Subject" value={emailTest.subject} onChange={e => setEmailTest(prev => ({ ...prev, subject: e.target.value }))} placeholder="Test email subject" width="100%" />
+                        <Container layout="flex" justify="start" padding="none" width="100%">
+                            <Button size="sm" color="secondary" variant="solid" onClick={handleSendTestEmail} disabled={emailTest.isLoading || !emailTest.recipient}>
+                                <Icon name="FiSend" />{emailTest.isLoading ? 'Sending…' : 'Send test email'}
+                            </Button>
+                        </Container>
+                    </Container>
+                )}
+
+                {activeSection === 'appstats' && !sectionLoading.appstats && (
+                    adminData.appStats ? (
+                        <Container layout="grid" columns={FACT_COLUMNS} gap="xl" padding="none" width="100%">
+                            <Facts title="Summary">
+                                <MetricRow label="Total users" value={adminData.appStats.summary?.totalUsers || 0} />
+                                <MetricRow label="Active users" value={adminData.appStats.summary?.activeUsers || 0} />
+                                <MetricRow label="Total files" value={adminData.appStats.summary?.totalFiles || 0} />
+                                <MetricRow label="Total requests" value={adminData.appStats.summary?.totalRequests || 0} />
+                                <MetricRow label="Error rate" value={`${adminData.appStats.summary?.errorRate || 0}%`} status={(adminData.appStats.summary?.errorRate || 0) > 10 ? 'error' : null} />
+                            </Facts>
+                            <Facts title="System">
+                                <MetricRow label="Node.js" value={adminData.appStats.system?.nodeVersion || '—'} />
+                                <MetricRow label="Platform" value={adminData.appStats.system?.platform || '—'} />
+                                <MetricRow label="Environment" value={adminData.appStats.system?.environment || '—'} />
+                                <MetricRow label="Uptime" value={formatUptime(adminData.appStats.system?.uptime)} />
+                            </Facts>
+                            <Facts title="Services">
+                                <MetricRow label="Database" badge={<Badge size="xs" color={adminData.appStats.services?.database?.status === 'connected' ? 'success' : 'error'}>{adminData.appStats.services?.database?.status === 'connected' ? 'Connected' : 'Disconnected'}</Badge>} />
+                                <MetricRow label="Cache" badge={<Badge size="xs" color={adminData.appStats.services?.cache?.status === 'connected' ? 'success' : 'error'}>{adminData.appStats.services?.cache?.status === 'connected' ? 'Connected' : 'Disconnected'}</Badge>} />
+                                <MetricRow label="Cache hit rate" value={`${adminData.appStats.services?.cache?.hitRate || 0}%`} />
+                                <MetricRow label="Email" badge={<Badge size="xs" color={adminData.appStats.services?.email?.status === 'configured' ? 'success' : 'warning'}>{adminData.appStats.services?.email?.status === 'configured' ? 'Configured' : 'Not configured'}</Badge>} />
+                            </Facts>
+                            <Facts title="Activity">
+                                <MetricRow label="Average response" value={`${Math.round(adminData.appStats.activity?.avgResponseTime || 0)} ms`} />
+                                <MetricRow label="Total errors" value={adminData.appStats.activity?.totalErrors || 0} />
+                                <MetricRow label="Period" value={adminData.appStats.activity?.period || '—'} />
+                            </Facts>
+                        </Container>
+                    ) : (
+                        <State icon="FiBarChart2" title="No app figures" message="Refresh to read them again.">{refreshButton}</State>
+                    )
+                )}
+
+                {activeSection === 'role-requests' && hasOwnerAccess && !sectionLoading['role-requests'] && (
+                    adminData.roleRequests && adminData.roleRequests.length > 0 ? (
+                        <Container layout="flex-column" gap="sm" padding="none" width="100%">
+                            <Typography as="h3" size="sm" weight="semibold">{`Pending requests (${adminData.roleRequests.length})`}</Typography>
+                            <Data data={adminData.roleRequests}
+                                size="xs"
+                                fieldConfig={{
+                                    username: { component: Typography, props: { size: 'xs', weight: 'medium' } },
+                                    email: { component: Typography, props: { size: 'xs' } },
+                                    currentRoles: { component: Badge, props: { size: 'xs' }, transform: (value) => { const role = Array.isArray(value) ? value[0] : value; return { color: 'default', children: sentenceCase(role) }; } },
+                                    pendingRoles: { component: Badge, props: { size: 'xs' }, transform: (value) => { const role = Array.isArray(value) ? value[0] : value; return { color: 'primary', children: sentenceCase(role) }; } },
+                                    roleApprovalStatus: { component: Badge, props: { size: 'xs' }, transform: (value) => ({ color: value === 'APPROVED' ? 'success' : value === 'REJECTED' ? 'error' : 'warning', children: sentenceCase(value || 'PENDING') }) }
+                                }}
+                                width="100%"
+                                genie={{ trigger: 'contextmenu', variant: 'menu', content: (item) => item?.roleApprovalStatus === 'PENDING' ? (
+                                    <RoleRequestActions
+                                        item={item}
+                                        onApprove={async (request) => { try { await authService.approveRoleRequest(request._id || request.id, {}); showSuccess('Role request approved'); await loadSectionData('role-requests', true); } catch { showError('Failed to approve'); } }}
+                                        onReject={async (request, reason) => { try { await authService.rejectRoleRequest(request._id || request.id, reason); showSuccess('Role request rejected'); await loadSectionData('role-requests', true); } catch { showError('Failed to reject'); } }}
+                                    />
+                                ) : <Container padding="xs"><Typography size="xs" color="muted">Already processed</Typography></Container>
+                                }}
+                            />
+                        </Container>
+                    ) : (
+                        <State icon="FiUserCheck" title="No pending role requests" message="A request shows here when someone asks for a higher role.">{refreshButton}</State>
+                    )
+                )}
             </Container>
         </Page>
     );
 };
 
 export default AdminPage;
-

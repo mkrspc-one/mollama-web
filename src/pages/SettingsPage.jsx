@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-    Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Select, Switch, Divider, Data, Image, CircularProgress
+    Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Select, Switch, Divider, Image, CircularProgress
 } from '@components/Components';
 import { useAuth } from '@contexts/AuthContext';
 import { useTheme } from '@contexts/ThemeContext';
@@ -15,17 +15,56 @@ import { listFontKeys, ensureFontsLoaded } from '@styles/font.registry';
 const failText = (error, fallback) => error?.response?.data?.message || fallback;
 
 const Section = ({ title, note, action, children }) => (
-    <Container layout="flex-column" gap="sm" padding="none" width="100%">
-        <Container layout="flex" justify="between" align="center" gap="sm" padding="none" width="100%">
-            <Container layout="flex-column" gap="none" padding="none">
-                <Typography as="h3" size="sm" weight="semibold">{title}</Typography>
-                {note && <Typography size="xs" color="muted">{note}</Typography>}
+    <Container as="section" layout="flex-column" gap="md" padding="none" width="100%">
+        <Container layout="flex" justify="between" align="end" gap="sm" padding="none" width="100%">
+            <Container layout="flex-column" gap="xs" padding="none" minWidth="min(100%, 240px)" flexFill>
+                <Typography as="h2" size="md" weight="semibold" font="secondary">{title}</Typography>
+                {note && <Typography as="p" size="xs" color="muted">{note}</Typography>}
             </Container>
             {action}
         </Container>
         {children}
     </Container>
 );
+
+const Rows = ({ children }) => (
+    <Container layout="flex-column" gap="none" padding="none" width="100%">
+        {React.Children.toArray(children).map((row, index) => (
+            <React.Fragment key={index}>
+                {index > 0 && <Divider margin="sm" />}
+                {row}
+            </React.Fragment>
+        ))}
+    </Container>
+);
+
+// A setting: its name and what it does on the left, its control on the right (under it on a phone).
+const Row = ({ name, note, field = false, align = 'center', children }) => (
+    <Container layout="flex" justify="between" align={align} gap="md" padding="none" width="100%">
+        <Container layout="flex-column" gap="none" padding="none" minWidth="min(100%, 220px)" flexFill>
+            <Typography as="p" size="xs" weight="medium">{name}</Typography>
+            {note && <Typography as="p" size="xxs" color="muted">{note}</Typography>}
+        </Container>
+        <Container layout="flex" align="center" justify="end" gap="xs" padding="none" width={field ? 'min(100%, 320px)' : undefined}>{children}</Container>
+    </Container>
+);
+
+const Actions = ({ children }) => (
+    <Container layout="flex" justify="end" align="center" gap="xs" padding="none" width="100%">{children}</Container>
+);
+
+// The one shape for a list or setting that is loading, empty or failed: what is the case, then the one thing to do about it.
+const ListState = ({ loading = false, failed = false, action = null, children }) => (
+    <Container layout="flex" align="center" gap="sm" padding="none" width="100%">
+        {loading && <CircularProgress size="xs" />}
+        {failed && <Icon name="FiAlertCircle" size="sm" color="error" />}
+        <Typography as="p" size="xs" weight={failed ? 'medium' : 'normal'} color={loading ? 'muted' : 'default'}>{children}</Typography>
+        {action}
+    </Container>
+);
+
+// Filled only while the section has changes to save.
+const saveLook = (changed) => ({ color: changed ? 'secondary' : 'primary', variant: changed ? 'solid' : null });
 
 const AiTab = () => {
     const { success, error: notifyError } = useNotification();
@@ -105,81 +144,65 @@ const AiTab = () => {
         save({ maxConcurrentGenerations: concurrentNumber, keepAliveMinutes: keepAliveNumber }, 'Saved. No restart needed.');
     };
 
-    if (failed) {
-        return (
-            <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%">
-                <Typography size="sm" weight="semibold">Settings could not be loaded.</Typography>
-                <Button size="sm" onClick={load}>Try again</Button>
-            </Container>
-        );
-    }
-    if (!settings) return <CircularProgress size="sm" />;
+    if (failed) return <ListState failed action={<Button size="sm" onClick={load}>Try again</Button>}>Settings could not be loaded. Check that the server is running, then try again.</ListState>;
+    if (!settings) return <ListState loading>Loading settings…</ListState>;
+
+    const addressChanged = address.trim() !== (settings.ollamaBaseUrl || '');
+    const runningChanged = concurrent !== String(settings.maxConcurrentGenerations) || keepAlive !== String(settings.keepAliveMinutes);
 
     return (
-        <Container layout="flex" justify="center" padding="none" width="100%">
-        <Container layout="flex-column" gap="md" padding="none" width="100%" maxWidth="640px">
-            {!canManage && <Typography size="xs" color="muted">Only an admin or owner can change these settings.</Typography>}
+        <Container layout="flex-column" gap="3xl" padding="none" width="100%" maxWidth="720px">
+            {!canManage && <ListState>Only an admin or owner can change these settings.</ListState>}
             <Section
                 title="Where Ollama is"
                 note="Ollama is the program that runs the models. Change this only if it is on a different address than usual."
                 action={settings.ollamaBaseUrlIsDefault ? <Badge size="xs" color="tertiary">Standard address</Badge> : null}
             >
-                <Input
-                    size="sm"
-                    label="Ollama address"
-                    value={address}
-                    onChange={(event) => { setAddress(event.target.value); setTestResult(null); }}
-                    disabled={!canManage}
-                    width="100%"
-                />
-                {testResult && <Typography size="xs" color={testResult.ok ? 'success' : 'error'} weight="semibold">{testResult.text}</Typography>}
+                <Rows>
+                    <Row name="Ollama address" field>
+                        <Input
+                            size="sm"
+                            aria-label="Ollama address"
+                            value={address}
+                            onChange={(event) => { setAddress(event.target.value); setTestResult(null); }}
+                            disabled={!canManage}
+                            width="100%"
+                        />
+                    </Row>
+                </Rows>
+                {testResult && <Typography as="p" size="xs" color={testResult.ok ? 'success' : 'error'} weight="semibold">{testResult.text}</Typography>}
                 {canManage && (
-                    <Container layout="flex" gap="xs" padding="none">
-                        <Button size="sm" color="secondary" onClick={testConnection} disabled={busy || !address.trim()}>
-                            <Icon name="FiActivity" size="xs" />Test connection
-                        </Button>
-                        <Button size="sm" onClick={() => save({ ollamaBaseUrl: address.trim() }, 'Ollama address saved. It is in use now.')} disabled={busy || !address.trim()}>
-                            <Icon name="FiSave" size="xs" />Save
-                        </Button>
+                    <Actions>
                         {!settings.ollamaBaseUrlIsDefault && (
-                            <Button size="sm" color="secondary" disabled={busy} onClick={() => { setTestResult(null); save({ ollamaBaseUrl: '' }, 'Back to the standard Ollama address.'); }}>
+                            <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setTestResult(null); save({ ollamaBaseUrl: '' }, 'Back to the standard Ollama address.'); }}>
                                 Use the standard address
                             </Button>
                         )}
-                    </Container>
+                        <Button size="sm" onClick={testConnection} disabled={busy || !address.trim()}>
+                            <Icon name="FiActivity" />Test connection
+                        </Button>
+                        <Button size="sm" {...saveLook(addressChanged)} onClick={() => save({ ollamaBaseUrl: address.trim() }, 'Ollama address saved. It is in use now.')} disabled={busy || !address.trim()}>
+                            <Icon name="FiSave" />{addressChanged ? 'Save changes' : 'Save'}
+                        </Button>
+                    </Actions>
                 )}
             </Section>
-
-            <Divider color="surface" margin="xs" />
 
             <Section title="Running models" note="How many replies are written at once, and how long a model stays in memory.">
-                <Container layout="grid" columns={2} gap="sm" padding="none" width="100%">
-                    <Input
-                        size="sm"
-                        label="Replies at the same time (1 to 8)"
-                        helpText="Keep this at 1 unless the graphics card has memory to spare."
-                        value={concurrent}
-                        onChange={(event) => setConcurrent(event.target.value)}
-                        disabled={!canManage}
-                        width="100%"
-                    />
-                    <Input
-                        size="sm"
-                        label="Minutes a model stays loaded"
-                        helpText="Longer means faster follow-ups; shorter frees memory sooner."
-                        value={keepAlive}
-                        onChange={(event) => setKeepAlive(event.target.value)}
-                        disabled={!canManage}
-                        width="100%"
-                    />
-                </Container>
+                <Rows>
+                    <Row name="Replies at the same time (1 to 8)" note="Keep this at 1 unless the graphics card has memory to spare." field>
+                        <Input size="sm" aria-label="Replies at the same time (1 to 8)" value={concurrent} onChange={(event) => setConcurrent(event.target.value)} disabled={!canManage} width="100%" />
+                    </Row>
+                    <Row name="Minutes a model stays loaded" note="Longer means faster follow-ups; shorter frees memory sooner." field>
+                        <Input size="sm" aria-label="Minutes a model stays loaded" value={keepAlive} onChange={(event) => setKeepAlive(event.target.value)} disabled={!canManage} width="100%" />
+                    </Row>
+                </Rows>
                 {canManage && (
-                    <Container layout="flex" justify="end" padding="none" width="100%">
-                        <Button size="sm" onClick={saveRunning} disabled={busy}><Icon name="FiSave" size="xs" />Save</Button>
-                    </Container>
+                    <Actions>
+                        <Button size="sm" {...saveLook(runningChanged)} onClick={saveRunning} disabled={busy}><Icon name="FiSave" />{runningChanged ? 'Save changes' : 'Save'}</Button>
+                    </Actions>
                 )}
             </Section>
-        </Container>
         </Container>
     );
 };
@@ -193,6 +216,7 @@ const AccountTab = ({ user }) => {
         email: user?.email || '',
         bio: user?.bio || ''
     });
+    const [saved, setSaved] = useState(profile);
     const [password, setPassword] = useState({ current: '', next: '', confirm: '' });
     const [busy, setBusy] = useState(null);
     const field = (key) => (event) => setProfile((now) => ({ ...now, [key]: event.target.value }));
@@ -212,6 +236,11 @@ const AccountTab = ({ user }) => {
         }
     };
 
+    const profileChanged = Object.keys(profile).some((key) => profile[key] !== saved[key]);
+    const saveProfile = async () => {
+        if (await run('profile', () => userService.updateProfile(profile), 'Profile updated.', 'The profile could not be updated.')) setSaved(profile);
+    };
+
     const savePassword = async () => {
         if (password.next !== password.confirm) {
             notifyError('The two new passwords do not match.');
@@ -226,51 +255,63 @@ const AccountTab = ({ user }) => {
     };
 
     return (
-        <Container layout="flex" justify="center" padding="none" width="100%">
-        <Container layout="flex-column" gap="md" padding="none" width="100%" maxWidth="640px">
+        <Container layout="flex-column" gap="3xl" padding="none" width="100%" maxWidth="720px">
             <Section title="Profile" note="The same account is used in FilesystemOne and Makerspace One.">
-                <Container layout="grid" columns={2} gap="sm" padding="none" width="100%">
-                    <Input size="sm" label="First name" value={profile.firstName} onChange={field('firstName')} width="100%" />
-                    <Input size="sm" label="Last name" value={profile.lastName} onChange={field('lastName')} width="100%" />
-                    <Input size="sm" label="Username" value={profile.username} onChange={field('username')} width="100%" />
-                    <Input size="sm" label="Email" type="email" value={profile.email} onChange={field('email')} width="100%" />
-                </Container>
-                <Container layout="flex" align="center" gap="xs" padding="none">
-                    <Badge size="xs" color={user?.emailVerified ? 'success' : 'warning'}>{user?.emailVerified ? 'Email verified' : 'Email not verified'}</Badge>
-                    {!user?.emailVerified && (
-                        <Button
-                            size="xs"
-                            color="secondary"
-                            disabled={busy === 'verify'}
-                            onClick={() => run('verify', () => authService.sendVerificationEmail(), 'Verification email sent. Check your inbox.', 'The verification email could not be sent.')}
-                        >
-                            <Icon name="FiMail" size="xs" />{busy === 'verify' ? 'Sending…' : 'Send verification email'}
-                        </Button>
-                    )}
-                </Container>
-                <Input size="sm" label="Bio" multiline rows={3} placeholder="Tell others about yourself" value={profile.bio} onChange={field('bio')} width="100%" />
-                <Container layout="flex" justify="end" padding="none" width="100%">
-                    <Button size="sm" disabled={busy === 'profile'} onClick={() => run('profile', () => userService.updateProfile(profile), 'Profile updated.', 'The profile could not be updated.')}>
-                        <Icon name="FiSave" size="xs" />{busy === 'profile' ? 'Saving…' : 'Save changes'}
+                <Rows>
+                    <Row name="First name" field>
+                        <Input size="sm" aria-label="First name" value={profile.firstName} onChange={field('firstName')} width="100%" />
+                    </Row>
+                    <Row name="Last name" field>
+                        <Input size="sm" aria-label="Last name" value={profile.lastName} onChange={field('lastName')} width="100%" />
+                    </Row>
+                    <Row name="Username" field>
+                        <Input size="sm" aria-label="Username" value={profile.username} onChange={field('username')} width="100%" />
+                    </Row>
+                    <Row name="Email" field>
+                        <Input size="sm" aria-label="Email" type="email" value={profile.email} onChange={field('email')} width="100%" />
+                    </Row>
+                    <Row name="Email check" note={user?.emailVerified ? 'This address is confirmed.' : 'Confirm this address to get account emails.'}>
+                        <Badge size="xs" color={user?.emailVerified ? 'success' : 'warning'}>{user?.emailVerified ? 'Email verified' : 'Email not verified'}</Badge>
+                        {!user?.emailVerified && (
+                            <Button
+                                size="xs"
+                                variant="ghost"
+                                disabled={busy === 'verify'}
+                                onClick={() => run('verify', () => authService.sendVerificationEmail(), 'Verification email sent. Check your inbox.', 'The verification email could not be sent.')}
+                            >
+                                <Icon name="FiMail" />{busy === 'verify' ? 'Sending…' : 'Send verification email'}
+                            </Button>
+                        )}
+                    </Row>
+                    <Row name="Bio" note="Shown to other people." field align="start">
+                        <Input size="sm" aria-label="Bio" multiline rows={3} placeholder="Tell others about yourself" value={profile.bio} onChange={field('bio')} width="100%" />
+                    </Row>
+                </Rows>
+                <Actions>
+                    <Button size="sm" {...saveLook(profileChanged)} disabled={busy === 'profile'} onClick={saveProfile}>
+                        <Icon name="FiSave" />{busy === 'profile' ? 'Saving…' : 'Save changes'}
                     </Button>
-                </Container>
+                </Actions>
             </Section>
-
-            <Divider color="surface" margin="xs" />
 
             <Section title="Change password">
-                <Input size="sm" label="Current password" type="password" value={password.current} onChange={secret('current')} width="100%" />
-                <Container layout="grid" columns={2} gap="sm" padding="none" width="100%">
-                    <Input size="sm" label="New password" type="password" value={password.next} onChange={secret('next')} width="100%" />
-                    <Input size="sm" label="Confirm new password" type="password" value={password.confirm} onChange={secret('confirm')} width="100%" />
-                </Container>
-                <Container layout="flex" justify="end" padding="none" width="100%">
-                    <Button size="sm" disabled={busy === 'password' || !password.current || !password.next} onClick={savePassword}>
-                        <Icon name="FiLock" size="xs" />{busy === 'password' ? 'Saving…' : 'Update password'}
+                <Rows>
+                    <Row name="Current password" field>
+                        <Input size="sm" aria-label="Current password" type="password" value={password.current} onChange={secret('current')} width="100%" />
+                    </Row>
+                    <Row name="New password" note="At least 8 characters." field>
+                        <Input size="sm" aria-label="New password" type="password" value={password.next} onChange={secret('next')} width="100%" />
+                    </Row>
+                    <Row name="Confirm new password" field>
+                        <Input size="sm" aria-label="Confirm new password" type="password" value={password.confirm} onChange={secret('confirm')} width="100%" />
+                    </Row>
+                </Rows>
+                <Actions>
+                    <Button size="sm" {...saveLook(Boolean(password.current && password.next))} disabled={busy === 'password' || !password.current || !password.next} onClick={savePassword}>
+                        <Icon name="FiLock" />{busy === 'password' ? 'Saving…' : 'Update password'}
                     </Button>
-                </Container>
+                </Actions>
             </Section>
-        </Container>
         </Container>
     );
 };
@@ -364,7 +405,7 @@ const SecurityTab = () => {
             {!setup ? (
                 <Container layout="flex" align="center" gap="sm" padding="none">
                     <CircularProgress size="xs" />
-                    <Typography size="xs" color="secondary">Preparing…</Typography>
+                    <Typography as="p" size="xs" color="muted">Preparing…</Typography>
                 </Container>
             ) : (
                 <>
@@ -376,7 +417,7 @@ const SecurityTab = () => {
                     )}
                     {setup.manualEntryKey && (
                         <>
-                            <Typography size="xxs" color="secondary">Or type this key into the app:</Typography>
+                            <Typography as="p" size="xxs" color="muted">Or type this key into the app:</Typography>
                             <Input size="xs" value={setup.manualEntryKey} readOnly width="100%" aria-label="Key to type into your authenticator app" />
                         </>
                     )}
@@ -401,7 +442,7 @@ const SecurityTab = () => {
             {backupCodes ? (
                 <>
                     <Typography size="xs" weight="semibold">Backup codes</Typography>
-                    <Typography size="xxs" color="secondary">Each one works once. Keep them somewhere safe.</Typography>
+                    <Typography as="p" size="xxs" color="muted">Each one works once. Keep them somewhere safe.</Typography>
                     <Container layout="grid" columns={2} gap="xs" padding="sm" width="100%" backgroundColor="surface">
                         {backupCodes.map((item) => <Typography key={item} size="xs" font="monospace">{item}</Typography>)}
                     </Container>
@@ -418,66 +459,62 @@ const SecurityTab = () => {
     );
 
     return (
-        <Container layout="flex-column" gap="md" padding="none" width="100%">
-            <Section
-                title="Two-step sign-in"
-                note={statusFailed
-                    ? 'Two-step sign-in status could not be loaded.'
-                    : enabled
-                        ? 'On. You need your authenticator app each time you sign in.'
-                        : 'Adds a code from an authenticator app when you sign in.'}
-                action={loadingStatus ? <CircularProgress size="xs" /> : statusFailed ? (
-                    <Button size="sm" color="secondary" onClick={loadStatus}><Icon name="FiRefreshCw" size="xs" />Try again</Button>
-                ) : (
-                    <Container layout="flex" align="center" gap="xs" padding="none">
-                        <Badge size="xs" color={enabled ? 'success' : 'secondary'}>{enabled ? 'On' : 'Off'}</Badge>
-                        {!enabled && (
-                            <Button size="sm" genie={setupGenie} genieTrigger="click" onGenieShow={startSetup}>
-                                <Icon name="FiShield" size="xs" />Turn on
-                            </Button>
-                        )}
-                        {enabled && (
+        <Container layout="flex-column" gap="3xl" padding="none" width="100%" maxWidth="720px">
+            <Section title="Two-step sign-in" note="Adds a code from an authenticator app when you sign in.">
+                <Rows>
+                    <Row
+                        name="Code from an authenticator app"
+                        note={statusFailed
+                            ? 'Two-step sign-in status could not be loaded.'
+                            : enabled
+                                ? 'On. You need your authenticator app each time you sign in.'
+                                : 'Off. Turn it on to protect your account with a second step.'}
+                    >
+                        {loadingStatus ? <CircularProgress size="xs" /> : statusFailed ? (
+                            <Button size="sm" onClick={loadStatus}><Icon name="FiRefreshCw" />Try again</Button>
+                        ) : (
                             <>
-                                <Button size="sm" color="secondary" genie={codesGenie} genieTrigger="click"><Icon name="FiKey" size="xs" />Backup codes</Button>
-                                <Button size="sm" color="error" genie={offGenie} genieTrigger="click"><Icon name="FiShieldOff" size="xs" />Turn off</Button>
+                                <Badge size="xs" color={enabled ? 'success' : 'secondary'}>{enabled ? 'On' : 'Off'}</Badge>
+                                {!enabled && (
+                                    <Button size="sm" genie={setupGenie} genieTrigger="click" onGenieShow={startSetup}>
+                                        <Icon name="FiShield" />Turn on
+                                    </Button>
+                                )}
+                                {enabled && (
+                                    <>
+                                        <Button size="sm" variant="ghost" genie={codesGenie} genieTrigger="click"><Icon name="FiKey" />Backup codes</Button>
+                                        <Button size="sm" variant="ghost" color="error" genie={offGenie} genieTrigger="click"><Icon name="FiShieldOff" />Turn off</Button>
+                                    </>
+                                )}
                             </>
                         )}
-                    </Container>
-                )}
-            >
-                {backupCodes && !enabled && null}
+                    </Row>
+                </Rows>
                 {backupCodes && enabled && (
-                    <Card layout="flex-column" gap="xs" padding="sm" width="100%" hover={false} shadow={false} borderColor="primary">
-                        <Typography size="xs" weight="semibold">Save these backup codes now</Typography>
+                    <Card layout="flex-column" gap="sm" width="100%" borderColor="primary">
+                        <Typography as="h3" size="sm" weight="semibold">Save these backup codes now</Typography>
                         <Container layout="grid" columns="auto-sm" gap="xs" padding="none" width="100%">
                             {backupCodes.map((item) => <Typography key={item} size="xs" font="monospace">{item}</Typography>)}
                         </Container>
-                        <Container layout="flex" padding="none"><Button size="xs" color="secondary" onClick={() => setBackupCodes(null)}>I have saved them</Button></Container>
+                        <Container layout="flex" padding="none"><Button size="xs" onClick={() => setBackupCodes(null)}>I have saved them</Button></Container>
                     </Card>
                 )}
             </Section>
 
-            <Divider color="surface" margin="xs" />
-
             <Section title="Signed-in devices" note="Browsers and computers that have signed in to your account.">
-                {devices === null && <CircularProgress size="sm" />}
-                {devices?.length === 0 && <Typography size="xs" color="muted">No sign-in history yet.</Typography>}
+                {devices === null && <ListState loading>Loading your devices…</ListState>}
+                {devices?.length === 0 && <ListState>No sign-in history yet. Devices appear here after they sign in.</ListState>}
                 {devices?.length > 0 && (
-                    <Data
-                        data={devices.map((device) => ({
-                            device: [device.browser, device.os].filter(Boolean).join(' on ') || 'Unknown device',
-                            address: device.ipAddress || '—',
-                            place: [device.location?.city, device.location?.country].filter(Boolean).join(', ') || '—',
-                            lastSeen: device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString() : '—'
-                        }))}
-                        variant="table"
-                        size="xxs"
-                        sortable={false}
-                        searchable={false}
-                        filterable={false}
-                        paginated={false}
-                        width="100%"
-                    />
+                    <Container layout="grid" columns="auto" gap="md" padding="none" width="100%">
+                        {devices.map((device, index) => (
+                            <Card key={index} layout="flex-column" gap="xs" minWidth="0">
+                                <Typography as="h3" size="sm" weight="semibold" truncate>{[device.browser, device.os].filter(Boolean).join(' on ') || 'Unknown device'}</Typography>
+                                <Typography as="p" size="xxs" color="muted">Address: {device.ipAddress || '—'}</Typography>
+                                <Typography as="p" size="xxs" color="muted">Place: {[device.location?.city, device.location?.country].filter(Boolean).join(', ') || '—'}</Typography>
+                                <Typography as="p" size="xxs" color="muted">Last seen: {device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString() : '—'}</Typography>
+                            </Card>
+                        ))}
+                    </Container>
                 )}
             </Section>
         </Container>
@@ -516,7 +553,7 @@ const RolesTab = ({ user }) => {
     };
 
     return (
-        <Container layout="flex-column" gap="md" padding="none" width="100%">
+        <Container layout="flex-column" gap="3xl" padding="none" width="100%" maxWidth="720px">
             <Section
                 title="Your roles"
                 note="Roles decide what you can do here and in the sibling apps."
@@ -528,57 +565,44 @@ const RolesTab = ({ user }) => {
             />
 
             {pending && (
-                <Card layout="flex" align="center" gap="sm" padding="sm" width="100%" hover={false} shadow={false} borderColor="secondary" wrap={false}>
+                <Card layout="flex" align="center" gap="sm" width="100%" borderColor="secondary" wrap={false}>
                     <Icon name="FiClock" size="sm" color="warning" />
                     <Container layout="flex-column" gap="none" padding="none">
-                        <Typography size="sm" weight="semibold">A request is waiting for approval</Typography>
-                        <Typography size="xs" color="muted">Asked for: {pending.roles.join(', ')}{pending.reason ? `. Reason: ${pending.reason}` : ''}</Typography>
+                        <Typography as="h3" size="sm" weight="semibold">A request is waiting for approval</Typography>
+                        <Typography as="p" size="xs" color="muted">Asked for: {pending.roles.join(', ')}{pending.reason ? `. Reason: ${pending.reason}` : ''}</Typography>
                     </Container>
                 </Card>
             )}
 
             {rejected && (
-                <Card layout="flex" align="center" gap="sm" padding="sm" width="100%" hover={false} shadow={false} wrap={false}>
+                <Card layout="flex" align="center" gap="sm" width="100%" wrap={false}>
                     <Icon name="FiXCircle" size="sm" color="error" />
                     <Container layout="flex-column" gap="none" padding="none">
-                        <Typography size="sm" weight="semibold">Your last request was turned down</Typography>
-                        {user.roleApprovalRequest?.reason && <Typography size="xs" color="muted">Reason: {user.roleApprovalRequest.reason}</Typography>}
+                        <Typography as="h3" size="sm" weight="semibold">Your last request was turned down</Typography>
+                        {user.roleApprovalRequest?.reason && <Typography as="p" size="xs" color="muted">Reason: {user.roleApprovalRequest.reason}</Typography>}
                     </Container>
                 </Card>
             )}
 
             {!pending && (
                 <Section title="Ask for a higher role" note="An administrator reviews each request.">
-                    <Container layout="grid" columns={3} gap="sm" padding="none" width="100%">
+                    <Rows>
                         {Object.entries(ROLE_INFO).map(([name, info]) => (
-                            <Card
-                                key={name}
-                                layout="flex-column"
-                                gap="xs"
-                                padding="sm"
-                                minWidth="0"
-                                shadow={false}
-                                borderColor={role === name ? 'primary' : null}
-                                backgroundColor={role === name ? 'surface' : 'background'}
-                                role="button"
-                                tabIndex={0}
-                                onClick={() => setRole(name)}
-                                onKeyDown={(event) => event.key === 'Enter' && setRole(name)}
-                            >
-                                <Container layout="flex" align="center" justify="between" padding="none" width="100%" wrap={false}>
-                                    <Typography size="xs" weight="semibold">{info.label}</Typography>
-                                    {role === name && <Icon name="FiCheck" size="xs" color="primary" />}
-                                </Container>
-                                <Typography size="xs" color="muted">{info.text}</Typography>
-                            </Card>
+                            <Row key={name} name={info.label} note={info.text}>
+                                <Button size="xs" selected={role === name} onClick={() => setRole(name)}>
+                                    {role === name && <Icon name="FiCheck" />}{role === name ? 'Chosen' : 'Choose'}
+                                </Button>
+                            </Row>
                         ))}
-                    </Container>
-                    <Input size="sm" label="Reason" multiline rows={3} placeholder="Why do you need this role?" value={reason} onChange={(event) => setReason(event.target.value)} width="100%" />
-                    <Container layout="flex" justify="end" padding="none" width="100%">
-                        <Button size="sm" disabled={sending || !reason.trim()} onClick={request}>
-                            <Icon name="FiArrowUp" size="xs" />{sending ? 'Sending…' : 'Send request'}
+                        <Row name="Reason" note="Why do you need this role?" field align="start">
+                            <Input size="sm" aria-label="Reason" multiline rows={3} placeholder="Why do you need this role?" value={reason} onChange={(event) => setReason(event.target.value)} width="100%" />
+                        </Row>
+                    </Rows>
+                    <Actions>
+                        <Button size="sm" {...saveLook(Boolean(reason.trim()))} disabled={sending || !reason.trim()} onClick={request}>
+                            <Icon name="FiArrowUp" />{sending ? 'Sending…' : 'Send request'}
                         </Button>
-                    </Container>
+                    </Actions>
                 </Section>
             )}
         </Container>
@@ -671,9 +695,9 @@ const ThemeEditor = ({ initial, editingId, onSaved, onCancel }) => {
     };
 
     return (
-        <Card layout="flex-column" gap="sm" padding="md" hover={false} shadow={false} borderColor="primary" width="100%">
+        <Card layout="flex-column" gap="md" borderColor="primary" width="100%">
             <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%">
-                <Typography size="sm" weight="semibold">
+                <Typography as="h3" size="sm" weight="semibold">
                     {editingId ? 'Edit theme' : form.forkedFrom ? `Copy of ${form.forkedFromName || 'theme'}` : 'New theme'}
                 </Typography>
                 <Swatches colors={[form.colors.primary, form.colors.secondary, form.colors.tertiary, form.colors.background, form.colors.surface]} />
@@ -700,6 +724,7 @@ const ThemeEditor = ({ initial, editingId, onSaved, onCancel }) => {
             <Input size="sm" label="Description (optional)" value={form.description} width="100%" onChange={(event) => setForm((now) => ({ ...now, description: event.target.value }))} />
             <Container layout="flex" gap="md" align="end" padding="none">
                 <Select
+                    size="sm"
                     label="Who can see it"
                     width="260px"
                     options={[
@@ -713,59 +738,59 @@ const ThemeEditor = ({ initial, editingId, onSaved, onCancel }) => {
                 <Switch label="Dark theme" checked={form.darkMode} onChange={(event) => setForm((now) => ({ ...now, darkMode: event.target.checked }))} />
             </Container>
 
-            <Divider color="surface" margin="xs" />
-            <Typography size="xs" weight="semibold">Colours</Typography>
+            <Divider margin="xs" />
+            <Typography as="h4" size="sm" weight="semibold">Colours</Typography>
             <Container layout="grid" columns="auto-sm" gap="sm" padding="none" width="100%">
                 {COLOR_FIELDS.map(([key, label]) => (
                     <Container key={key} layout="flex" align="center" gap="sm" padding="none" wrap={false}>
                         <Input type="color" size="sm" width="48px" value={form.colors[key] || '#000000'} onChange={(event) => part('colors', key, event.target.value)} aria-label={label} />
                         <Container layout="flex-column" gap="none" padding="none" minWidth="0">
-                            <Typography size="xs" weight="medium">{label}</Typography>
-                            <Typography size="xxs" color="muted" font="monospace">{form.colors[key]}</Typography>
+                            <Typography as="p" size="xs" weight="medium">{label}</Typography>
+                            <Typography as="p" size="xxs" color="muted" font="monospace">{form.colors[key]}</Typography>
                         </Container>
                     </Container>
                 ))}
             </Container>
 
-            <Divider color="surface" margin="xs" />
-            <Typography size="xs" weight="semibold">Fonts</Typography>
+            <Divider margin="xs" />
+            <Typography as="h4" size="sm" weight="semibold">Fonts</Typography>
             <Container layout="grid" columns={3} gap="sm" padding="none" width="100%">
-                <Select label="Main text" options={fontOptions('sans')} value={form.fonts.primary} onChange={(value) => part('fonts', 'primary', value)} width="100%" />
-                <Select label="Headings" options={fontOptions()} value={form.fonts.secondary} onChange={(value) => part('fonts', 'secondary', value)} width="100%" />
-                <Select label="Code" options={fontOptions('mono')} value={form.fonts.monospace} onChange={(value) => part('fonts', 'monospace', value)} width="100%" />
+                <Select size="sm" label="Main text" options={fontOptions('sans')} value={form.fonts.primary} onChange={(value) => part('fonts', 'primary', value)} width="100%" />
+                <Select size="sm" label="Headings" options={fontOptions()} value={form.fonts.secondary} onChange={(value) => part('fonts', 'secondary', value)} width="100%" />
+                <Select size="sm" label="Code" options={fontOptions('mono')} value={form.fonts.monospace} onChange={(value) => part('fonts', 'monospace', value)} width="100%" />
             </Container>
 
-            <Divider color="surface" margin="xs" />
-            <Typography size="xs" weight="semibold">Corners</Typography>
-            <Typography size="xxs" color="muted">Any CSS length works: 0 for sharp, 9999px for pills, 50% for circles.</Typography>
+            <Divider margin="xs" />
+            <Typography as="h4" size="sm" weight="semibold">Corners</Typography>
+            <Typography as="p" size="xxs" color="muted">Any CSS length works: 0 for sharp, 9999px for pills, 50% for circles.</Typography>
             <Container layout="grid" columns="auto-sm" gap="sm" padding="none" width="100%">
                 {RADII_FIELDS.map(([key, label]) => (
                     <Input key={key} size="sm" label={label} value={form.radii?.[key] ?? ''} placeholder={NEW_THEME.radii[key]} onChange={(event) => part('radii', key, event.target.value)} width="100%" />
                 ))}
             </Container>
 
-            <Container layout="flex" gap="xs" padding="none">
-                <Button size="sm" disabled={saving} onClick={save}><Icon name="FiSave" size="xs" />{saving ? 'Saving…' : editingId ? 'Save changes' : 'Create theme'}</Button>
-                <Button size="sm" color="secondary" disabled={saving} onClick={onCancel}>Cancel</Button>
+            <Container layout="flex" justify="end" gap="xs" padding="none" width="100%">
+                <Button size="sm" disabled={saving} onClick={onCancel}>Cancel</Button>
+                <Button size="sm" color="secondary" variant="solid" disabled={saving} onClick={save}><Icon name="FiSave" />{saving ? 'Saving…' : editingId ? 'Save changes' : 'Create theme'}</Button>
             </Container>
         </Card>
     );
 };
 
 const ThemeCard = ({ doc, applied, onApply, onFork, onEdit, onDelete }) => (
-    <Card layout="flex-column" gap="xs" padding="sm" hover={false} shadow={false} minWidth="0" borderColor={applied ? 'primary' : null}>
+    <Card layout="flex-column" gap="sm" minWidth="0" borderColor={applied ? 'primary' : null}>
         <Container layout="flex" align="center" gap="xs" padding="none" width="100%" wrap={false}>
-            <Typography size="sm" weight="semibold" truncate>{doc.name}</Typography>
+            <Typography as="h3" size="sm" weight="semibold" truncate>{doc.name}</Typography>
             {applied && <Badge size="xs" color="success">In use</Badge>}
             {!doc.isPreset && doc.visibility && doc.visibility !== 'private' && <Badge size="xs" color="tertiary">{doc.visibility}</Badge>}
         </Container>
-        {doc.description && <Typography size="xs" color="muted" truncate>{doc.description}</Typography>}
+        {doc.description && <Typography as="p" size="xxs" color="muted" truncate>{doc.description}</Typography>}
         <Swatches colors={swatchesOf(doc)} />
         <Container layout="flex" gap="xs" padding="none">
-            <Button size="xs" disabled={applied} onClick={onApply}><Icon name="FiCheck" size="xs" />{applied ? 'In use' : 'Use'}</Button>
-            {onFork && <Button size="xs" color="secondary" onClick={onFork}><Icon name="FiCopy" size="xs" />Copy</Button>}
-            {onEdit && <Button size="xs" color="secondary" onClick={onEdit}><Icon name="FiEdit2" size="xs" />Edit</Button>}
-            {onDelete && <Button size="xs" color="error" onClick={onDelete}><Icon name="FiTrash2" size="xs" />Delete</Button>}
+            <Button size="xs" variant="ghost" disabled={applied} onClick={onApply}><Icon name="FiCheck" />{applied ? 'In use' : 'Use'}</Button>
+            {onFork && <Button size="xs" variant="ghost" onClick={onFork}><Icon name="FiCopy" />Copy</Button>}
+            {onEdit && <Button size="xs" variant="ghost" onClick={onEdit}><Icon name="FiEdit2" />Edit</Button>}
+            {onDelete && <Button size="xs" variant="ghost" color="error" onClick={onDelete}><Icon name="FiTrash2" />Delete</Button>}
         </Container>
     </Card>
 );
@@ -842,22 +867,22 @@ const AppearanceTab = ({ user }) => {
     };
 
     return (
-        <Container layout="flex-column" gap="md" padding="none" width="100%">
+        <Container layout="flex-column" gap="3xl" padding="none" width="100%">
             <Section title="Built-in themes" note="Use one as it is, or copy it as the start of your own.">
-                <Container layout="grid" columns="auto-sm" gap="sm" padding="none" width="100%">
+                <Container layout="grid" columns="auto" gap="md" padding="none" width="100%">
                     {BUILT_IN.map((slug) => {
                         const preset = presets.find((doc) => doc.slug === slug);
                         const applied = currentTheme === slug;
                         return (
-                            <Card key={slug} layout="flex-column" gap="xs" padding="sm" hover={false} shadow={false} minWidth="0" borderColor={applied ? 'primary' : null}>
+                            <Card key={slug} layout="flex-column" gap="sm" minWidth="0" borderColor={applied ? 'primary' : null}>
                                 <Container layout="flex" align="center" justify="between" padding="none" width="100%" wrap={false}>
-                                    <Typography size="sm" weight="semibold">{themes?.[slug]?.name || slug}</Typography>
+                                    <Typography as="h3" size="sm" weight="semibold">{themes?.[slug]?.name || slug}</Typography>
                                     {applied && <Badge size="xs" color="success">In use</Badge>}
                                 </Container>
                                 <ThemePreview theme={slug} />
                                 <Container layout="flex" gap="xs" padding="none" wrap={false}>
-                                    <Button size="xs" disabled={applied} onClick={() => switchTheme(slug)}><Icon name="FiCheck" size="xs" />{applied ? 'In use' : 'Use'}</Button>
-                                    {canCreate && preset && <Button size="xs" color="secondary" onClick={() => openFork(preset)}><Icon name="FiCopy" size="xs" />Copy</Button>}
+                                    <Button size="xs" variant="ghost" disabled={applied} onClick={() => switchTheme(slug)}><Icon name="FiCheck" />{applied ? 'In use' : 'Use'}</Button>
+                                    {canCreate && preset && <Button size="xs" variant="ghost" onClick={() => openFork(preset)}><Icon name="FiCopy" />Copy</Button>}
                                 </Container>
                             </Card>
                         );
@@ -865,20 +890,18 @@ const AppearanceTab = ({ user }) => {
                 </Container>
             </Section>
 
-            <Divider color="surface" margin="xs" />
-
             <Section
                 title="My themes"
                 note={canCreate ? null : 'Making your own themes needs a Creator role or above. Ask for one under Roles.'}
                 action={canCreate && !editor ? (
-                    <Button size="sm" onClick={() => setEditor({ initial: null, editingId: null })}><Icon name="FiPlus" size="xs" />New theme</Button>
+                    <Button size="sm" onClick={() => setEditor({ initial: null, editingId: null })}><Icon name="FiPlus" />New theme</Button>
                 ) : null}
             >
                 {editor && <ThemeEditor initial={editor.initial} editingId={editor.editingId} onSaved={saved} onCancel={() => setEditor(null)} />}
-                {loading && <CircularProgress size="sm" />}
-                {!loading && mine.length === 0 && !editor && <Typography size="xs" color="muted">No themes of your own yet.</Typography>}
+                {loading && <ListState loading>Loading your themes…</ListState>}
+                {!loading && mine.length === 0 && !editor && <ListState>{canCreate ? 'No themes of your own yet. Choose New theme to make one.' : 'No themes of your own yet.'}</ListState>}
                 {!loading && mine.length > 0 && (
-                    <Container layout="grid" columns="auto" gap="sm" padding="none" width="100%">
+                    <Container layout="grid" columns="auto" gap="md" padding="none" width="100%">
                         {mine.map((doc) => (
                             <ThemeCard
                                 key={idOf(doc)}
@@ -895,16 +918,13 @@ const AppearanceTab = ({ user }) => {
             </Section>
 
             {shared.length > 0 && (
-                <>
-                    <Divider color="surface" margin="xs" />
-                    <Section title="Shared themes" note="Public themes made by other people.">
-                        <Container layout="grid" columns="auto" gap="sm" padding="none" width="100%">
-                            {shared.map((doc) => (
-                                <ThemeCard key={idOf(doc)} doc={doc} applied={usingCustom(doc)} onApply={() => applyDoc(doc)} onFork={canCreate ? () => openFork(doc) : null} />
-                            ))}
-                        </Container>
-                    </Section>
-                </>
+                <Section title="Shared themes" note="Public themes made by other people.">
+                    <Container layout="grid" columns="auto" gap="md" padding="none" width="100%">
+                        {shared.map((doc) => (
+                            <ThemeCard key={idOf(doc)} doc={doc} applied={usingCustom(doc)} onApply={() => applyDoc(doc)} onFork={canCreate ? () => openFork(doc) : null} />
+                        ))}
+                    </Container>
+                </Section>
             )}
         </Container>
     );
@@ -922,60 +942,30 @@ const SettingsPage = () => {
     const { user } = useAuth();
     const [params, setParams] = useSearchParams();
     const tab = TABS.some((item) => item.id === params.get('tab')) ? params.get('tab') : 'ai';
-    const active = TABS.find((item) => item.id === tab);
     const open = (id) => setParams({ tab: id }, { replace: true });
 
     return (
-        <Page layout="block" padding="none" background="plus" backgroundFade="bottom">
-            <Container layout="flex" justify="center" padding="none" width="100%" wrap={false}>
-            <Container layout="flex-column" gap="md" padding="lg" width="100%" maxWidth="1200px" wrap={false}>
-                <Container layout="flex-column" gap="none" padding="none">
-                    <Typography as="h1" size="2xl" weight="bold" animation="blur" animationDuration={600}>Settings</Typography>
-                    <Typography size="xs" color="muted">{user?.username ? `Signed in as ${user.username}.` : 'Your account and this install.'}</Typography>
-                </Container>
+        <Page
+            title="Settings"
+            lead={user?.username ? `Signed in as ${user.username}.` : 'Your account and this install.'}
+            layout="flex-column"
+            gap="xl"
+            background="dots"
+            backgroundFade="bottom"
+        >
+            <ButtonGroup size="sm" selectable={false} wrap>
+                {TABS.map((item) => (
+                    <Button key={item.id} size="sm" selected={tab === item.id} title={item.note} onClick={() => open(item.id)}>
+                        <Icon name={item.icon} />{item.label}
+                    </Button>
+                ))}
+            </ButtonGroup>
 
-                <Container layout="flex" gap="md" align="start" padding="none" width="100%">
-                    <Card layout="flex-column" gap="none" padding="xs" hover={false} width="240px" minWidth="200px">
-                        {TABS.map((item) => (
-                            <Container
-                                key={item.id}
-                                layout="flex"
-                                align="center"
-                                gap="sm"
-                                padding="sm"
-                                width="100%"
-                                wrap={false}
-                                hoverable
-                                backgroundColor={tab === item.id ? 'surface' : 'transparent'}
-                                role="button"
-                                tabIndex={0}
-                                onClick={() => open(item.id)}
-                                onKeyDown={(event) => event.key === 'Enter' && open(item.id)}
-                            >
-                                <Icon name={item.icon} size="sm" color={tab === item.id ? 'primary' : 'text'} />
-                                <Container layout="flex-column" gap="none" padding="none" minWidth="0">
-                                    <Typography size="sm" weight={tab === item.id ? 'semibold' : 'medium'} color={tab === item.id ? 'primary' : 'default'}>{item.label}</Typography>
-                                    <Typography size="xxs" color="muted" truncate>{item.note}</Typography>
-                                </Container>
-                            </Container>
-                        ))}
-                    </Card>
-
-                    <Card layout="flex-column" gap="md" padding="lg" hover={false} flexFill minWidth="320px">
-                        <Container layout="flex" align="center" gap="sm" padding="none">
-                            <Icon name={active.icon} size="sm" color="primary" />
-                            <Typography as="h2" size="md" weight="semibold">{active.label}</Typography>
-                        </Container>
-                        <Divider margin="none" />
-                        {tab === 'ai' && <AiTab />}
-                        {tab === 'appearance' && <AppearanceTab user={user} />}
-                        {tab === 'account' && <AccountTab user={user} />}
-                        {tab === 'security' && <SecurityTab />}
-                        {tab === 'roles' && <RolesTab user={user} />}
-                    </Card>
-                </Container>
-            </Container>
-            </Container>
+            {tab === 'ai' && <AiTab />}
+            {tab === 'appearance' && <AppearanceTab user={user} />}
+            {tab === 'account' && <AccountTab user={user} />}
+            {tab === 'security' && <SecurityTab />}
+            {tab === 'roles' && <RolesTab user={user} />}
         </Page>
     );
 };

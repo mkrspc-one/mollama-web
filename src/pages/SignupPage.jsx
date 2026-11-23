@@ -2,15 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@contexts/AuthContext';
 import { useNotification } from '@contexts/NotificationContext';
-import {
-    Page,
-    Container,
-    Card,
-    Input,
-    Button,
-    Typography,
-    Icon
-} from '@components/Components';
+import { Container, Input, Button } from '@components/Components';
+import { AuthCard } from './LoginPage';
 
 export const SignupPage = () => {
     const navigate = useNavigate();
@@ -41,7 +34,7 @@ export const SignupPage = () => {
         
         for (const field of requiredFields) {
             if (!formData[field]) {
-                showError(`Please fill in all required fields`);
+                showError('Fill in every field to create an account.');
                 return false;
             }
         }
@@ -64,7 +57,7 @@ export const SignupPage = () => {
             if (result.success) {
                 navigate('/'); // Navigate to dashboard after successful signup
             } else {
-                showError(result.error || 'Signup failed. Please try again.');
+                showError(result.error || 'The account could not be created. Try again.');
             }
         } catch {
         } finally {
@@ -81,148 +74,34 @@ export const SignupPage = () => {
         formData.confirmPassword;
 
     return (
-        <Page layout="flex" align="center" justify="center" background="dots" backgroundFade="radial">
-                <Card layout="flex-column" gap="none" align="center">
-                        {/* Header */}
-                        <Container layout="flex-column" gap="sm" align="center">
-                            <Icon name="FaUserPlus" size="lg" color="primary"/>
-                            <Typography as="h1" size="2xl" weight="bold" font="secondary" color="primary">
-                                Create Account
-                            </Typography>
-                            <Typography color="muted">
-                                Join us today! Create your account to get started.
-                            </Typography>
-                        </Container>
-
-                        {/* Signup Form */}
-                        <Container
-                          as="form"
-                          layout="flex-column"
-                          gap="md"
-                          align="center"
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') {
-                              handleSubmit(e);
-                            }
-                          }}
-                          onSubmit={handleSubmit}
-                        >
-                            {/* Name Fields */}
-                            <Container layout="grid" columns={2} gap="xs" padding="none">
-                                <Input
-                                    name="firstName"
-                                    variant="floating"
-                                    label="First Name"
-                                    value={formData.firstName}
-                                    onChange={handleInputChange}
-                                    required
-                                    icon="FaUser"
-                                    autoComplete="given-name"
-                                />
-
-                                <Input
-                                    type="text"
-                                    name="lastName"
-                                    label="Last Name"
-                                    variant="floating"
-                                    value={formData.lastName}
-                                    onChange={handleInputChange}
-                                    required
-                                    icon="FaUser"
-                                    autoComplete="family-name"
-                                />
-
-                                {/* Username and Email */}
-                                <Input
-                                    type="text"
-                                    name="username"
-                                    label="Username"
-                                    variant="floating"
-                                    value={formData.username}
-                                    onChange={handleInputChange}
-                                    required
-                                    icon="FaAt"
-                                    autoComplete="username"
-                                />
-
-                                <Input
-                                    type="email"
-                                    name="email"
-                                    label="Email Address"
-                                    variant="floating"
-                                    value={formData.email}
-                                    onChange={handleInputChange}
-                                    required
-                                    icon="FaEnvelope"
-                                    autoComplete="email"
-                                />
-                            </Container>
-
-                            {/* Password Fields */}
-                            <Container layout="flex" gap="xs" padding="none">
-                            <Input
-                                type="password"
-                                name="password"
-                                label="Password"
-                                variant="floating"
-                                value={formData.password}
-                                onChange={handleInputChange}
-                                required
-                                icon="FaLock"
-                                autoComplete="new-password"
-                            />
-
-                            <Input
-                                type="password"
-                                name="confirmPassword"
-                                label="Confirm Password"
-                                variant="floating"
-                                value={formData.confirmPassword}
-                                onChange={handleInputChange}
-                                required
-                                icon="FaLock"
-                                confirmField={formData.password}
-                                autoComplete="new-password"
-                            />
-                            </Container>
-
-                            <Button
-                                type="submit"
-                                color="primary"
-                                disabled={!isFormValid || isLoading}
-                                onClick={handleSubmit}
-                                width="75%"
-                            >
-                                {isLoading ? (
-                                    <>
-                                        <Icon name="FaSpinner"/>
-                                        Creating Account...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Icon name="FaUserPlus"/>
-                                        Create Account
-                                    </>
-                                )}
-                            </Button>
-                        </Container>
-
-                        {/* Switch to Login */}
-                        <Container layout="flex" justify="center" gap="sm">
-                            <Typography size="sm">
-                                Already have an account?
-                            </Typography>
-                            <Button
-                                color="tertiary"
-                                size="sm"
-                                onClick={() => navigate('/login')}
-                            >
-                                <Icon name="FaSignInAlt"/>
-                                Sign In
-                            </Button>
-                        </Container>
-                </Card>
-        </Page>
+        <AuthCard
+            title="Create an account"
+            lead="One sign-in for Mollama and your FilesystemOne files."
+            maxWidth="520px"
+            onKeyDown={(event) => {
+                if (event.key === 'Enter') handleSubmit(event);
+            }}
+            onSubmit={handleSubmit}
+            footer={(
+                <Button size="sm" variant="ghost" align="start" onClick={() => navigate('/login')}>
+                    Already have an account? Sign in
+                </Button>
+            )}
+        >
+            <Container layout="grid" columns={2} gap="md" padding="none" width="100%">
+                <Input name="firstName" label="First name" value={formData.firstName} onChange={handleInputChange} required width="100%" autoComplete="given-name" />
+                <Input type="text" name="lastName" label="Last name" value={formData.lastName} onChange={handleInputChange} required width="100%" autoComplete="family-name" />
+            </Container>
+            <Input type="text" name="username" label="Username" value={formData.username} onChange={handleInputChange} required width="100%" autoComplete="username" />
+            <Input type="email" name="email" label="Email address" value={formData.email} onChange={handleInputChange} required width="100%" autoComplete="email" />
+            <Container layout="grid" columns={2} gap="md" padding="none" width="100%">
+                <Input type="password" name="password" label="Password" value={formData.password} onChange={handleInputChange} required width="100%" autoComplete="new-password" />
+                <Input type="password" name="confirmPassword" label="Confirm password" value={formData.confirmPassword} onChange={handleInputChange} required width="100%" confirmField={formData.password} autoComplete="new-password" />
+            </Container>
+            <Button type="submit" size="lg" color="secondary" variant="solid" width="100%" disabled={!isFormValid || isLoading} onClick={handleSubmit}>
+                {isLoading ? 'Creating your account…' : 'Create an account'}
+            </Button>
+        </AuthCard>
     );
 };
 

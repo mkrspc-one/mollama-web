@@ -16,7 +16,7 @@ import { useAuth } from '@contexts/AuthContext';
 import { chatService, deviceService, fileService, modelService, promptService, skillService, pickerMemory, describeError, downloadText, useGuide } from '../client/ai.client';
 import { appService } from '../client/app.client';
 
-const FIT_COLORS = { gpu: 'secondary', mixed: 'warning', cpu: 'warning', too_large: 'error', cloud: 'primary' };
+const FIT_COLORS = { gpu: 'success', mixed: 'warning', cpu: 'warning', too_large: 'error', cloud: 'primary' };
 const FIRST_MESSAGE = 'Explain what you can help me with in three sentences.';
 const MAX_ARTICLES = 10;
 const READABLE = /\.(txt|md|markdown|csv|tsv|json|jsonl|log|pdf|docx|xml|ya?ml|html?|js|jsx|ts|tsx|py|java|c|cpp|h|cs|go|rs|rb|php|sql|sh|css|ini|toml|png|jpe?g|webp|gif)$/i;
@@ -29,6 +29,12 @@ const formatSize = (bytes) => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—');
+const formatTime = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    const today = date.toDateString() === new Date().toDateString();
+    return date.toLocaleString(undefined, today ? { hour: 'numeric', minute: '2-digit' } : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+};
 
 const textOf = (node) => {
     if (typeof node === 'string') return node;
@@ -41,20 +47,29 @@ const Row = ({ icon, iconColor = 'primary', label, title, size = 'xs', color = '
         layout="flex"
         wrap={false}
         align="center"
-        gap="xs"
-        padding="xs"
+        gap="sm"
+        padding="sm"
         width="100%"
         hoverable={!disabled}
-        backgroundColor={selected ? 'primary' : 'transparent'}
+        backgroundColor={selected ? 'surface-alt' : 'transparent'}
         role="button"
         tabIndex={disabled ? -1 : 0}
+        aria-current={selected ? 'true' : undefined}
         title={title || label}
         onClick={disabled ? undefined : onClick}
-        onKeyDown={(event) => event.key === 'Enter' && !disabled && onClick?.()}
+        onKeyDown={(event) => {
+            if (disabled) return;
+            if (event.key === 'Enter') onClick?.();
+            // Space presses a row as it presses a button, unless the key was meant for a control inside the row.
+            if (event.key === ' ' && event.target === event.currentTarget) {
+                event.preventDefault();
+                onClick?.();
+            }
+        }}
     >
-        {icon && <Icon name={icon} size="xs" color={selected ? 'contrast' : disabled ? 'text' : iconColor} />}
+        {icon && <Icon name={icon} size="xs" color={disabled ? 'text' : iconColor} />}
         <Container padding="none" flexFill minWidth="0">
-            <Typography size={size} truncate color={selected ? 'contrast' : disabled ? 'muted' : color} weight={selected ? 'semibold' : 'normal'}>
+            <Typography as="div" size={size} truncate color={disabled ? 'muted' : color} weight={selected ? 'semibold' : 'normal'}>
                 {label}
             </Typography>
         </Container>
@@ -62,7 +77,7 @@ const Row = ({ icon, iconColor = 'primary', label, title, size = 'xs', color = '
     </Container>
 );
 
-const Pop = ({ label, icon, endIcon = null, open, onOpen, onClose, width = '320px', tall = false, fab = false, iconOnly = false, iconEnd = false, children, ...button }) => {
+const Pop = ({ label, icon, endIcon = null, mark = null, open, onOpen, onClose, width = '320px', tall = false, fab = false, iconOnly = false, iconEnd = false, children, ...button }) => {
     const trigger = useRef(null);
     const closedAt = useRef(0);
     const close = useCallback(() => {
@@ -82,6 +97,7 @@ const Pop = ({ label, icon, endIcon = null, open, onOpen, onClose, width = '320p
             ) : (
                 <Button ref={trigger} size="sm" variant="ghost" selected={open} onClick={toggle} title={iconOnly ? label : undefined} aria-label={iconOnly ? label : undefined} {...button}>
                     {icon && !iconEnd && <Icon name={icon} size="xs" />}
+                    {mark}
                     {!iconOnly && label}
                     {icon && iconEnd && <Icon name={icon} size="xs" />}
                     {endIcon && <Icon name={endIcon} size="xs" />}
@@ -90,7 +106,7 @@ const Pop = ({ label, icon, endIcon = null, open, onOpen, onClose, width = '320p
             {createPortal(
                 <Genie key={width} visible={open} onClose={close} triggerRef={trigger} variant="popover" width={width} maxWidth="94vw" maxHeight={tall ? '88vh' : '72vh'} padding="xs">
                     {open && (
-                        <Container layout="flex-column" wrap={false} gap="xs" padding="xs" width="100%" maxHeight={tall ? '82vh' : '66vh'} overflow="auto">
+                        <Container layout="flex-column" wrap={false} gap="sm" padding="sm" width="100%" maxHeight={tall ? '82vh' : '66vh'} overflow="auto">
                             {children}
                         </Container>
                     )}
@@ -101,7 +117,7 @@ const Pop = ({ label, icon, endIcon = null, open, onOpen, onClose, width = '320p
     );
 };
 
-export const CopyButton = ({ text, label = 'Copy' }) => {
+export const CopyButton = ({ text, label = 'Copy', size = 'xxs', color = 'primary', round = false }) => {
     const [copied, setCopied] = useState(false);
     const copy = async () => {
         try {
@@ -113,9 +129,38 @@ export const CopyButton = ({ text, label = 'Copy' }) => {
         }
     };
     return (
-        <Button size="xxs" variant="ghost" title={copied ? 'Copied' : label} aria-label={label} onClick={copy}>
+        <Button size={size} variant="ghost" color={color} round={round} title={copied ? 'Copied' : label} aria-label={label} onClick={copy}>
             <Icon name={copied ? 'FiCheck' : 'FiCopy'} />
         </Button>
+    );
+};
+
+const NOTICE_INK = { muted: 'text', warning: 'warning', error: 'error' };
+// Every status, limit and error on this page is this one line: an icon, 14px text and, where the person must act, buttons.
+const Notice = ({ icon = 'FiInfo', tone = 'muted', busy = false, detail = null, mono = false, actions = null, children, ...rest }) => (
+    <Container layout="flex" wrap={false} align="start" gap="md" padding="none" width="100%" {...rest}>
+        {busy ? <CircularProgress size="xs" /> : <Icon name={icon} size="xs" color={NOTICE_INK[tone] || 'text'} />}
+        <Container layout="flex-column" gap="xs" padding="none" flexFill minWidth="0">
+            <Typography as="p" size="xs" color={tone === 'error' ? 'error' : tone === 'muted' ? 'muted' : 'default'}>{children}</Typography>
+            {detail && <Typography as="p" size="xxs" color="muted" font={mono ? 'monospace' : 'primary'}>{detail}</Typography>}
+            {actions && <Container layout="flex" align="center" gap="xs" padding="none">{actions}</Container>}
+        </Container>
+    </Container>
+);
+
+// Thinking, tool steps and drafts fold into one quiet row with a hairline under it, so they never read louder than the answer.
+const Fold = ({ icon = null, label, tone = 'tertiary', startOpen = false, children }) => {
+    const [open, setOpen] = useState(startOpen);
+    return (
+        <Container layout="flex-column" gap="xs" padding="none" width="100%">
+            <Button size="sm" variant="ghost" color={tone} align="start" flat width="100%" aria-expanded={open} onClick={() => setOpen((shown) => !shown)}>
+                <Icon name={open ? 'FiChevronDown' : 'FiChevronRight'} size="xs" />
+                {icon && <Icon name={icon} size="xs" />}
+                <Typography size="xs" color="muted" margin="none" truncate minWidth="0">{label}</Typography>
+            </Button>
+            {open && <Container layout="flex-column" gap="xs" padding="sm" width="100%">{children}</Container>}
+            <Divider />
+        </Container>
     );
 };
 
@@ -396,7 +441,7 @@ const ChatFrame = ({ content, template, height, title, palette, live }) => {
         return () => { current = false; };
     }, [content, template, live]);
     if (live) return <Typography size="xs" color="muted">Building the page…</Typography>;
-    if (state.problem) return <Typography size="xxs" color="warning">[Not drawn: {state.problem}]</Typography>;
+    if (state.problem) return <Typography size="xs" color="warning">[Not drawn: {state.problem}]</Typography>;
     if (state.loading) return <CircularProgress size="sm" />;
     return <Frame html={state.html} height={isText(height) ? String(height) : '520px'} title={isText(title) ? String(title) : 'Page'} variables={variables} dressed={Boolean(variables)} fit />;
 };
@@ -655,7 +700,7 @@ const WebTable = ({ text, address, variant, fields }) => {
         }
     }, [text, address]);
     if (rows.length === 0) return <Typography size="xs" color="warning">This file does not hold a table that can be shown. Use a CSV file or a JSON list.</Typography>;
-    return <Data size="xs" width="100%" variant={variant} data={rows} fieldConfig={dataFields(fields)} />;
+    return <Data size="sm" width="100%" variant={variant} data={rows} fieldConfig={dataFields(fields)} />;
 };
 
 const InlineModel = ({ content, format = 'obj', fileName, ...props }) => {
@@ -769,7 +814,7 @@ const SaveAssets = ({ assets, label = 'Save to my files' }) => {
     };
     if (assets.length === 0) return null;
     return (
-        <Pop label={label} icon="FiHardDrive" size="xxs" open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width="440px" title={assets.map((asset) => asset.name).join(', ')}>
+        <Pop label={label} icon="FiHardDrive" size="xs" open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width="440px" title={assets.map((asset) => asset.name).join(', ')}>
             <FileBrowser mode="save" onPick={save} onBack={() => setOpen(false)} />
         </Pop>
     );
@@ -788,7 +833,7 @@ const renderBlock = (node, context, key, parent = null) => {
 
     const name = node.component;
     const problem = checkNode(node, parent);
-    if (problem) return <Typography key={key} size="xxs" color="warning">[Not drawn: {problem}]</Typography>;
+    if (problem) return <Typography key={key} size="xs" color="warning">[Not drawn: {problem}]</Typography>;
     const spec = BLOCK_SPEC[name];
     const props = Object.fromEntries(Object.entries(node.props || {}).filter(([prop]) => spec.props.includes(prop)));
     const children = spec.children ? renderBlock(node.children, context, 'children', name) : undefined;
@@ -800,7 +845,7 @@ const renderBlock = (node, context, key, parent = null) => {
         const href = 'href' in props ? safeLink(props.href) : null;
         delete props.href;
         const link = href ? { href, target: '_blank', rel: 'noreferrer noopener' } : {};
-        return <Typography key={key} size="xs" {...props} {...link}>{children}</Typography>;
+        return <Typography key={key} size="sm" {...props} {...link}>{children}</Typography>;
     }
     if (name === 'Badge') return <Badge key={key} size="sm" {...props}>{children}</Badge>;
     if (name === 'Icon') return <Icon key={key} size="sm" {...props} />;
@@ -827,7 +872,7 @@ const renderBlock = (node, context, key, parent = null) => {
     if (name === 'Data' && props.src) {
         return <WebFile key={key} address={props.src} kind="table">{(text) => <WebTable text={text} address={props.src} variant={props.variant} fields={props.fields} />}</WebFile>;
     }
-    if (name === 'Data') return <Data key={key} size="xs" width="100%" variant={props.variant} data={props.data} fieldConfig={dataFields(props.fields)} />;
+    if (name === 'Data') return <Data key={key} size="sm" width="100%" variant={props.variant} data={props.data} fieldConfig={dataFields(props.fields)} />;
     if (name === 'Flow') return <ChatFlow key={key} {...props} />;
     if (name === 'TreeView') return <TreeView key={key} size="sm" data={treeData(props.items)} />;
     if (name === 'Editor' && props.src) {
@@ -868,7 +913,7 @@ const renderBlock = (node, context, key, parent = null) => {
     const source = name === 'Image' && typeof content === 'string' && /<svg[\s>]/i.test(content)
         ? `data:image/svg+xml;utf8,${encodeURIComponent(content)}`
         : safeSource(src);
-    if (!source) return <Typography key={key} size="xxs" color="warning">[Not drawn: this {MEDIA[name]} has no https address.]</Typography>;
+    if (!source) return <Typography key={key} size="xs" color="warning">[Not drawn: this {MEDIA[name]} has no https address.]</Typography>;
     if (name === 'Image' && isRemote(source)) {
         return (
             <WebFile key={key} address={source} kind="blob">
@@ -1096,14 +1141,15 @@ const ComponentBlock = ({ source }) => {
 
     return (
         <Container layout="flex-column" gap="sm" padding="none" width="100%" marginBottom="sm">
+            {assets.length > 0 && <Container layout="flex" justify="end" padding="none" width="100%"><SaveAssets assets={assets} /></Container>}
             {shown.map((item, index) => {
-                if (item.text) return <Typography key={index} as="p" size="xs">{item.text}</Typography>;
-                if (item.reason) return <Typography key={index} size="xxs" color="warning">The model wrote a component that could not be drawn. {item.reason}</Typography>;
+                if (item.text) return <Typography key={index} as="p" size="sm">{item.text}</Typography>;
+                if (item.reason) return <Typography key={index} size="xs" color="warning">The model wrote a component that could not be drawn. {item.reason}</Typography>;
                 return (
                     <BlockBoundary
                         key={index}
                         source={source}
-                        fallback={<Typography size="xxs" color="warning">The model wrote a component that failed while being drawn.</Typography>}
+                        fallback={<Typography size="xs" color="warning">The model wrote a component that failed while being drawn.</Typography>}
                     >
                         {renderBlock(item.tree, context, 'root')}
                     </BlockBoundary>
@@ -1112,7 +1158,6 @@ const ComponentBlock = ({ source }) => {
             {(pending || (context.live && items.length === 0)) && <Typography size="xs" color="muted">Building a component…</Typography>}
             {failed && <CodeView code={source} language="xml" />}
             {!context.live && items.length === 0 && <CodeView code={source} language="xml" />}
-            {assets.length > 0 && <Container layout="flex" justify="end" padding="none" width="100%"><SaveAssets assets={assets} /></Container>}
         </Container>
     );
 };
@@ -1126,20 +1171,20 @@ const PreBlock = ({ children }) => {
     return <ComponentBlock source={code.replace(/`+\s*$/, '')} />;
 };
 
-const heading = (as, size) => ({ children }) => <Typography as={as} size={size} weight="bold" marginBottom="sm">{children}</Typography>;
+const heading = (as, size) => ({ children }) => <Typography as={as} size={size} weight="semibold" marginBottom="sm">{children}</Typography>;
 
 const MARKDOWN_PARTS = {
     pre: PreBlock,
-    p: ({ children }) => <Typography as="p" size="xs" marginBottom="sm">{children}</Typography>,
+    p: ({ children }) => <Typography as="p" size="sm" marginBottom="sm">{children}</Typography>,
     a: ({ children, href }) => <Typography size="inherit" color="tertiary" href={href} target="_blank" rel="noreferrer noopener">{children}</Typography>,
     h1: heading('h2', 'md'),
-    h2: heading('h3', 'sm'),
-    h3: heading('h4', 'xs'),
-    h4: heading('h5', 'xs'),
-    li: ({ children }) => <Typography as="li" size="xs">{children}</Typography>,
-    table: ({ children }) => <Container padding="none" width="100%" overflow="auto" marginBottom="sm"><Typography as="table" size="xs">{children}</Typography></Container>,
-    th: ({ children }) => <Typography as="th" size="xs" weight="bold" padding="xs">{children}</Typography>,
-    td: ({ children }) => <Typography as="td" size="xs" padding="xs">{children}</Typography>
+    h2: heading('h3', 'md'),
+    h3: heading('h4', 'sm'),
+    h4: heading('h5', 'sm'),
+    li: ({ children }) => <Typography as="li" size="sm">{children}</Typography>,
+    table: ({ children }) => <Container padding="none" width="100%" overflow="auto" marginBottom="sm"><Typography as="table" size="sm">{children}</Typography></Container>,
+    th: ({ children }) => <Typography as="th" size="sm" weight="semibold" padding="xs">{children}</Typography>,
+    td: ({ children }) => <Typography as="td" size="sm" padding="xs">{children}</Typography>
 };
 
 const Markdown = React.memo(({ text }) => (
@@ -1204,39 +1249,43 @@ const ToolStep = ({ step, text }) => {
     const color = step.failed ? 'error' : 'muted';
     return (
         <Container layout="flex-column" gap="none" padding="none" width="100%">
-            <Button size="xxs" variant="ghost" color={step.failed ? 'error' : 'secondary'} onClick={() => setOpen((now) => !now)} title={open ? 'Hide what was sent and what came back' : 'Show what was sent and what came back'}>
+            <Button size="xs" variant="ghost" color={step.failed ? 'error' : 'primary'} onClick={() => setOpen((now) => !now)} title={open ? 'Hide what was sent and what came back' : 'Show what was sent and what came back'}>
                 {text}<Icon name={open ? 'FiChevronUp' : 'FiChevronDown'} size="xs" />
             </Button>
             {open && (
                 <Container layout="flex-column" gap="none" padding="none" width="100%">
-                    <Typography size="xxs" color={color}>Sent: {step.input || 'nothing'}</Typography>
-                    <Typography size="xxs" color={color}>Came back: {step.answer ?? 'not yet'}</Typography>
+                    <Typography size="xs" color={color}>Sent: {step.input || 'nothing'}</Typography>
+                    <Typography size="xs" color={color}>Came back: {step.answer ?? 'not yet'}</Typography>
                 </Container>
             )}
         </Container>
     );
 };
 
-const Steps = ({ steps, live = false }) => (
-    <Container layout="flex-column" gap="none" padding="none" marginBottom="xs">
-        {steps.map((step, index) => (
-            <Container key={index} layout="flex" wrap={false} align="center" gap="xs" padding="none">
-                <Icon name={step.failed ? 'FiAlertTriangle' : step.tool === 'Skill' || step.tool === 'Skill library' || step.tool === 'Skill file' ? 'FiZap' : !isSearchStep(step) ? 'FiTool' : step.tool === 'web_fetch' ? 'FiFileText' : 'FiSearch'} size="xs" color={step.failed ? 'error' : 'secondary'} />
-                {!isSearchStep(step)
-                    ? <ToolStep step={step} text={stepText(step, live && index === steps.length - 1)} />
-                    : step.failed
-                    ? <Typography size="xxs" color="error">{stepText(step, live && index === steps.length - 1)}</Typography>
-                    : step.tool === 'web_fetch'
-                    ? <Typography size="xxs" color="muted" href={/^https?:/i.test(step.input) ? step.input : undefined} target="_blank" rel="noreferrer noopener" truncate>{stepText(step, live && index === steps.length - 1)}</Typography>
-                    : <Typography size="xxs" color="muted" truncate>{stepText(step, live && index === steps.length - 1)}</Typography>}
-            </Container>
-        ))}
-    </Container>
-);
+const Steps = ({ steps, live = false }) => {
+    const failed = steps.filter((step) => step.failed).length;
+    const label = live ? stepText(steps[steps.length - 1], true) : `${steps.length} ${steps.length === 1 ? 'step' : 'steps'}${failed > 0 ? `, ${failed} failed` : ''}`;
+    return (
+        <Fold icon={failed > 0 ? 'FiAlertTriangle' : 'FiTool'} label={label} startOpen={live}>
+            {steps.map((step, index) => (
+                <Container key={index} layout="flex" wrap={false} align="center" gap="xs" padding="none">
+                    <Icon name={step.failed ? 'FiAlertTriangle' : step.tool === 'Skill' || step.tool === 'Skill library' || step.tool === 'Skill file' ? 'FiZap' : !isSearchStep(step) ? 'FiTool' : step.tool === 'web_fetch' ? 'FiFileText' : 'FiSearch'} size="xs" color={step.failed ? 'error' : 'text'} />
+                    {!isSearchStep(step)
+                        ? <ToolStep step={step} text={stepText(step, live && index === steps.length - 1)} />
+                        : step.failed
+                        ? <Typography size="xs" color="error">{stepText(step, live && index === steps.length - 1)}</Typography>
+                        : step.tool === 'web_fetch'
+                        ? <Typography size="xs" color="muted" href={/^https?:/i.test(step.input) ? step.input : undefined} target="_blank" rel="noreferrer noopener" truncate>{stepText(step, live && index === steps.length - 1)}</Typography>
+                        : <Typography size="xs" color="muted" truncate>{stepText(step, live && index === steps.length - 1)}</Typography>}
+                </Container>
+            ))}
+        </Fold>
+    );
+};
 
 const PlainText = ({ text }) => (
     <Container layout="flex-column" gap="none" padding="none">
-        {text.split('\n').map((line, index) => <Typography key={index} as="p" size="xs">{line || ' '}</Typography>)}
+        {text.split('\n').map((line, index) => <Typography key={index} as="p" size="sm">{line || ' '}</Typography>)}
     </Container>
 );
 
@@ -1257,25 +1306,17 @@ const NotesView = ({ notes }) => (
         {notes.map((note) => (
             <Container key={note.key} layout="flex-column" gap="none" padding="none" width="100%">
                 <Typography size="xs" weight="medium">{note.key}</Typography>
-                <Typography size="xxs" color="muted">{note.text}</Typography>
+                <Typography size="xs" color="muted">{note.text}</Typography>
             </Container>
         ))}
     </Container>
 );
 
-const Thinking = ({ text, startOpen = false }) => {
-    const [open, setOpen] = useState(startOpen);
-    return (
-        <Container layout="flex-column" gap="xs" padding="none" marginBottom="xs">
-            <Container layout="flex" padding="none">
-                <Button size="xs" variant="ghost" onClick={() => setOpen((shown) => !shown)}>
-                    <Icon name={open ? 'FiChevronDown' : 'FiChevronRight'} size="xs" />Thinking
-                </Button>
-            </Container>
-            {open && <Typography size="xxs" color="muted">{text}</Typography>}
-        </Container>
-    );
-};
+const Thinking = ({ text, startOpen = false }) => (
+    <Fold icon="FiCpu" label="Thinking" startOpen={startOpen}>
+        <Typography size="xs" color="muted">{text}</Typography>
+    </Fold>
+);
 
 const FileBrowser = ({ mode, onPick, onBack }) => {
     const [path, setPath] = useState('/');
@@ -1316,9 +1357,9 @@ const FileBrowser = ({ mode, onPick, onBack }) => {
                 ))}
             </Container>
 
-            {problem && <Typography size="sm" color="error">{problem}</Typography>}
-            {!problem && !listing && <Typography size="sm" color="muted">Loading your files…</Typography>}
-            {listing && entries.length === 0 && <Typography size="sm" color="muted">{mode === 'save' ? 'No folders inside this one.' : 'This folder is empty.'}</Typography>}
+            {problem && <Typography size="xs" color="error">{problem}</Typography>}
+            {!problem && !listing && <Typography size="xs" color="muted">Loading your files…</Typography>}
+            {listing && entries.length === 0 && <Typography size="xs" color="muted">{mode === 'save' ? 'No folders inside this one.' : 'This folder is empty.'}</Typography>}
             {entries.length > 0 && (
                 <Container layout="flex-column" gap="none" padding="none" width="100%">
                     {entries.map((entry) => {
@@ -1370,13 +1411,13 @@ const SavedInstructions = ({ onAdd, onBack, full }) => {
         <>
             <Container layout="flex" align="center" gap="xs" padding="none" width="100%">
                 <Button size="xs" variant="ghost" onClick={onBack} title="Back"><Icon name="FiArrowLeft" size="xs" /></Button>
-                <Typography size="sm" weight="semibold">Saved instructions</Typography>
+                <Typography size="xs" weight="semibold">Saved instructions</Typography>
             </Container>
-            {!prompts && <Typography size="sm" color="muted">Loading…</Typography>}
+            {!prompts && <Typography size="xs" color="muted">Loading…</Typography>}
             {prompts?.length === 0 && (
-                <Typography size="sm" color="muted">Nothing is saved yet. Press Save beside an instruction to keep it for other chats.</Typography>
+                <Typography size="xs" color="muted">Nothing is saved yet. Press Save beside an instruction to keep it for other chats.</Typography>
             )}
-            {full && <Typography size="sm" color="warning">This chat already has {MAX_ARTICLES} instructions. Remove one to add another.</Typography>}
+            {full && <Typography size="xs" color="warning">This chat already has {MAX_ARTICLES} instructions. Remove one to add another.</Typography>}
             <Container layout="flex-column" gap="none" padding="none" width="100%">
                 {prompts?.map((prompt) => (
                     <Row
@@ -1443,31 +1484,33 @@ const Message = ({ message, isLast, busy, onRegenerate, onEdit }) => {
                     </Container>
                 </Container>
             ) : mine ? <PlainText text={message.content} /> : message.content && <UnverifiedAddresses.Provider value={(address) => (message.unverified || []).includes(address)}><Markdown text={message.content} /></UnverifiedAddresses.Provider>}
-            {message.error && <Typography size="sm" color="error">{message.error.message} {message.error.action}</Typography>}
-            {message.error?.detail && <Typography size="xs" color="muted">What the computer said: {message.error.detail}</Typography>}
-            {message.stopped && <Typography size="sm" color="muted">Stopped before it finished.</Typography>}
+            {message.error && <Notice icon="FiAlertCircle" tone="error" detail={message.error.detail ? `What the computer said: ${message.error.detail}` : null}>{message.error.message} {message.error.action}</Notice>}
+            {message.stopped && <Notice icon="FiSquare">Stopped before it finished.</Notice>}
         </>
     );
 
     return (
         <Container layout="flex-column" gap="xs" padding="none" width="100%" align={mine ? 'end' : 'stretch'}>
+            {!mine && (message.model || message.createdAt) && (
+                <Typography size="xxs" color="muted">{[message.model, formatTime(message.createdAt)].filter(Boolean).join(' · ')}</Typography>
+            )}
             {mine
-                ? <Card backgroundColor="background" borderColor="secondary" borderStrength="soft" shadow={false} hover={false} layout="flex-column" gap="xs" padding="sm" maxWidth="85%">{body}</Card>
-                : <Container layout="flex-column" gap="xs" padding="none" width="100%">{body}</Container>}
+                ? <Card backgroundColor="surface-alt" bordered={false} layout="flex-column" gap="xs" padding="md" maxWidth="80%">{body}</Card>
+                : <Container layout="flex-column" gap="sm" padding="none" width="100%">{body}</Container>}
             {!editing && (
                 <Container layout="flex" align="center" gap="xs" padding="none">
-                    {message.content && <CopyButton text={message.content} />}
+                    {message.content && <CopyButton text={message.content} size="xs" round />}
                     {mine && !busy && (
-                        <Button size="xxs" variant="ghost" title="Edit" aria-label="Edit" onClick={() => { setDraft(message.content); setEditing(true); }}>
+                        <Button size="xs" variant="ghost" round title="Edit" aria-label="Edit" onClick={() => { setDraft(message.content); setEditing(true); }}>
                             <Icon name="FiEdit2" />
                         </Button>
                     )}
                     {!mine && isLast && !busy && (
-                        <Button size="xxs" variant="ghost" title="Regenerate" aria-label="Regenerate" onClick={onRegenerate}><Icon name="FiRefreshCw" /></Button>
+                        <Button size="xs" variant="ghost" round title="Regenerate" aria-label="Regenerate" onClick={onRegenerate}><Icon name="FiRefreshCw" /></Button>
                     )}
                     {!mine && <ReplySaveAll content={message.content} />}
                     {!mine && message.stats?.tokensPerSecond && (
-                        <Typography size="xs" color="muted">{message.model} · {message.stats.tokensPerSecond} tokens per second</Typography>
+                        <Typography size="xxs" color="muted">{message.stats.tokensPerSecond} tokens per second</Typography>
                     )}
                 </Container>
             )}
@@ -1504,17 +1547,16 @@ const readableDraft = (text) => String(text).replace(/\\n/g, '\n').replace(/\\t/
 const DraftView = ({ text }) => {
     const shown = readableDraft(text);
     return (
-        <Card layout="flex-column" gap="xs" padding="sm" width="100%" hover={false} shadow={false} borderStrength="soft">
-            <Typography size="xxs" color="muted">Being written: {shown.length.toLocaleString()} characters so far</Typography>
-            <Typography as="pre" size="xxs" font="monospace" color="secondary">{shown.length > DRAFT_TAIL ? `…${shown.slice(-DRAFT_TAIL)}` : shown}</Typography>
-        </Card>
+        <Fold icon="FiEdit3" label={`Being written: ${shown.length.toLocaleString()} characters so far`}>
+            <Typography as="pre" size="xxs" font="monospace" color="muted">{shown.length > DRAFT_TAIL ? `…${shown.slice(-DRAFT_TAIL)}` : shown}</Typography>
+        </Fold>
     );
 };
 
 const LIVE_BLOCKS = { send: null, live: true };
 const Centered = ({ gap = 'sm', children }) => (
-    <Container layout="flex" justify="center" padding="sm" width="100%">
-        <Container layout="flex-column" wrap={false} gap={gap} padding="none" width="100%" maxWidth="820px">{children}</Container>
+    <Container layout="flex" justify="center" padding="md" width="100%">
+        <Container layout="flex-column" wrap={false} gap={gap} padding="none" width="100%" maxWidth="760px">{children}</Container>
     </Container>
 );
 
@@ -1602,6 +1644,7 @@ const ChatPage = () => {
     const [draftTitle, setDraftTitle] = useState('');
     const [exportFile, setExportFile] = useState(null);
     const [wide, setWide] = useState(() => window.innerWidth > 900);
+    const [listOpen, setListOpen] = useState(true);
 
     const abortRef = useRef(null);
     const turnRef = useRef(null);
@@ -2423,23 +2466,10 @@ const ChatPage = () => {
             {(chats.length > 6 || search) && (
                 <Input type="search" placeholder="Search by title" value={search} onChange={(event) => setSearch(event.target.value)} width="100%" size="sm" />
             )}
-            {chatsRead && chats.length === 0 && <Typography size="sm" color="muted">{search ? 'No chat has that title.' : 'Your chats appear here.'}</Typography>}
-            <Container layout="flex-column" gap="none" padding="none" width="100%">
+            {chatsRead && chats.length === 0 && <Typography size="xs" color="muted">{search ? 'No chat has that title.' : 'Your chats appear here.'}</Typography>}
+            <Container layout="flex-column" gap="xs" padding="none" width="100%">
                 {chats.map((item) => (
-                    <Button
-                        key={item.id}
-                        size="xs"
-                        variant="ghost"
-                        color="secondary"
-                        align="start"
-                        flat
-                        width="100%"
-                        selected={item.id === chat?.id}
-                        title={item.title}
-                        onClick={() => openChat(item.id)}
-                    >
-                        <Typography size="xs" color="secondary" truncate>{item.title}</Typography>
-                    </Button>
+                    <Row key={item.id} label={item.title} selected={item.id === chat?.id} onClick={() => openChat(item.id)} />
                 ))}
             </Container>
         </>
@@ -2449,332 +2479,45 @@ const ChatPage = () => {
         <Page layout="block" padding="none">
             <BlockContext.Provider value={{ send: busy ? null : sendText, live: false }}>
             <Container layout="flex" wrap={false} align="stretch" gap="none" padding="none" width="100%" height="100vh">
-                {wide && (
-                    <Container padding="lg" height="100%">
-                    <Card
-                        layout="flex-column"
-                        wrap={false}
-                        gap="sm"
-                        padding="sm"
-                        width="clamp(220px, 22vw, 400px)"
-                        minWidth="clamp(220px, 22vw, 400px)"
-                        height="100%"
-                        hover={false}
-                        shadow={false}
-                        borderColor="primary"
-                        borderStrength="soft"
-                        backgroundColor="background"
-                        background="hex"
-                        backgroundIntensity="subtle"
-                    >
-                        <Container layout="flex" padding="none">
-                            <Button size="sm" variant="ghost" onClick={newChat} {...guide.tip('chat.new')}><Icon name="FiPlus" size="xs" />New chat</Button>
+                {wide && listOpen && (
+                    <>
+                        <Container layout="flex-column" wrap={false} gap="md" padding="md" width="280px" minWidth="280px" height="100%" backgroundColor="surface">
+                            <Container layout="flex" wrap={false} align="center" gap="xs" padding="none" width="100%">
+                                <Container padding="none" flexFill minWidth="0">
+                                    <Button width="100%" onClick={newChat} {...guide.tip('chat.new')}><Icon name="FiPlus" size="xs" />New chat</Button>
+                                </Container>
+                                <Button size="sm" variant="ghost" round title="Hide chats" aria-label="Hide chats" onClick={() => setListOpen(false)}><Icon name="FiSidebar" size="xs" /></Button>
+                            </Container>
+                            <Container layout="flex-column" wrap={false} gap="sm" padding="none" width="100%" flexFill minHeight="0" overflow="auto">
+                                {chatList}
+                            </Container>
                         </Container>
-                        <Container layout="flex-column" wrap={false} gap="sm" padding="none" width="100%" flexFill minHeight="0" overflow="auto">
-                            {chatList}
-                        </Container>
-                    </Card>
-                    </Container>
+                        <Divider orientation="vertical" />
+                    </>
                 )}
 
                 <Container layout="flex-column" wrap={false} gap="none" padding="none" flexFill minWidth="0" height="100%">
-                <Centered>
-                    <Container layout="flex" align="center" gap="xs" padding="none" width="100%">
-                        <Container padding="none" flexFill minWidth="120px">
-                            <Typography as="h1" size="md" weight="semibold" color="secondary" truncate>{opening ? (chats.find((one) => one.id === routeId)?.title || '') : chat?.title || 'New chat'}</Typography>
-                        </Container>
-
+                    <Container layout="flex" wrap={false} align="center" gap="sm" padding="md" width="100%" height="56px" minHeight="56px">
+                        {wide && !listOpen && (
+                            <>
+                                <Button size="sm" variant="ghost" round title="Show chats" aria-label="Show chats" onClick={() => setListOpen(true)}><Icon name="FiSidebar" size="xs" /></Button>
+                                <Button size="sm" variant="ghost" round title="New chat" aria-label="New chat" onClick={newChat}><Icon name="FiPlus" size="xs" /></Button>
+                            </>
+                        )}
                         {!wide && (
-                            <Pop label="Chats" icon="FiMessageSquare" open={pop === 'chats'} onOpen={() => openPop('chats')} onClose={closePop} width="300px">
+                            <Pop label="Chats" icon="FiMessageSquare" iconOnly open={pop === 'chats'} onOpen={() => openPop('chats')} onClose={closePop} width="300px">
                                 <Row icon="FiPlus" label="New chat" onClick={newChat} />
                                 {chatList}
                             </Pop>
                         )}
-
-                        {chat && (
-                            <Pop
-                                label=""
-                                icon="FiMoreHorizontal"
-                                title="More"
-                                open={pop === 'more'}
-                                onOpen={() => { setDraftTitle(chat.title); openPop('more'); }}
-                                onClose={closePop}
-                                disabled={busy}
-                                width={view === 'files' ? '440px' : '270px'}
-                            >
-                                {view === 'rename' && (
-                                    <>
-                                        <Input
-                                            label="Chat name"
-                                            size="sm"
-                                            width="100%"
-                                            maxLength={120}
-                                            value={draftTitle}
-                                            onChange={(event) => setDraftTitle(event.target.value)}
-                                            onKeyDown={(event) => event.key === 'Enter' && rename()}
-                                        />
-                                        <Container layout="flex" justify="end" gap="xs" padding="none" width="100%">
-                                            <Button size="sm" variant="ghost" onClick={() => setView('main')}>Back</Button>
-                                            <Button size="sm" color="primary" disabled={!draftTitle.trim()} onClick={rename}>Save</Button>
-                                        </Container>
-                                    </>
-                                )}
-                                {view === 'files' && <FileBrowser mode="save" onPick={saveExport} onBack={() => setView('main')} />}
-                                {view === 'main' && (
-                                    <Container layout="flex-column" gap="none" padding="none" width="100%">
-                                        <Row icon="FiEdit" label="Rename" onClick={() => setView('rename')} />
-                                        {chat.messages.length > 0 && (
-                                            <>
-                                                <Row icon="FiDownload" label="Download as Markdown" onClick={() => exportAs('markdown')} />
-                                                <Row icon="FiDownload" label="Download as JSONL" onClick={() => exportAs('jsonl')} />
-                                                <Row icon="FiHardDrive" label="Save Markdown to my files" onClick={() => exportAs('markdown', true)} />
-                                                <Row icon="FiHardDrive" label="Save JSONL to my files" onClick={() => exportAs('jsonl', true)} />
-                                            </>
-                                        )}
-                                        <Row icon="FiTrash2" iconColor="error" label="Delete chat" onClick={removeChat} />
-                                    </Container>
-                                )}
-                            </Pop>
-                        )}
-                        <Container padding="none" width="3.5rem" />
-                    </Container>
-
-                </Centered>
-                    <Container
-                        layout="block"
-                        padding="none"
-                        width="100%"
-                        flexFill
-                        minHeight="0"
-                        overflow="auto"
-                        onScroll={(event) => {
-                            const box = event.currentTarget;
-                            followRef.current = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
-                        }}
-                    >
-                    <Centered gap="md">
-                        {chat?.summary && (
-                            <Container layout="flex-column" gap="xs" padding="none" width="100%">
-                                <Typography size="sm" color="muted">This chat continues from an earlier one and started with this summary:</Typography>
-                                <Markdown text={chat.summary} />
-                            </Container>
-                        )}
-                        {opening && <Typography size="sm" color="muted">Opening this chat…</Typography>}
-                        {shown.length === 0 && !busy && !opening && (
-                            <Container layout="flex-column" gap="sm" padding="none" marginTop="xl">
-                                <Typography size="lg" weight="semibold">What would you like to work on?</Typography>
-                                {unreachable ? (
-                                    <Typography size="sm" color="muted">{unreachableText}</Typography>
-                                ) : noModels ? (
-                                    <>
-                                        <Typography size="sm" color="muted">No model is installed on this device yet. Download one first.</Typography>
-                                        <Button size="sm" color="primary" onClick={() => navigate('/models')}>Open Models</Button>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Typography size="sm" color="muted">Nothing needs to be chosen first. You can also attach a document and ask about it.</Typography>
-                                        <Button size="sm" variant="ghost" onClick={() => sendText(FIRST_MESSAGE)}>Try: “{FIRST_MESSAGE}”</Button>
-                                    </>
-                                )}
-                            </Container>
-                        )}
-                        {shown.map((message, index) => (
-                            <React.Fragment key={message.id}>
-                                {chat?.memory && message.index === chat.memoryThrough && (
-                                    <Container layout="flex" align="center" gap="xs" padding="none" width="100%" wrap={false}>
-                                        <Container padding="none" flexFill><Divider size="xs" /></Container>
-                                        <Button size="xs" variant="ghost" color="secondary" genieTrigger="click" genie={{ trigger: 'click', width: '420px', padding: 'sm', content: <MemoryView text={chat.memory} /> }} title="The messages above are still here for you. The model now gets a short memory of them instead, so the chat fits what it can read. Choose to read the memory.">
-                                            <Icon name="FiArchive" size="xs" />Context compressed: the model keeps a memory of the messages above
-                                        </Button>
-                                        <Container padding="none" flexFill><Divider size="xs" /></Container>
-                                    </Container>
-                                )}
-                                <Message
-                                    message={message}
-                                    isLast={index === shown.length - 1}
-                                    busy={busy}
-                                    onRegenerate={() => runTurn(chat, { regenerate: true }, null)}
-                                    onEdit={(messageIndex, content) => runTurn(chat, { content, editIndex: messageIndex }, content)}
-                                />
-                            </React.Fragment>
-                        ))}
-                        {live && (
-                            <Container layout="flex-column" gap="xs" padding="none" width="100%">
-                                {live.steps?.length > 0 && <Steps steps={live.steps} live={!live.stopping && Boolean(live.note)} />}
-                                {live.draft && !live.stopping && <DraftView text={live.draft} />}
-                                {live.permission && (
-                                    <Card layout="flex-column" gap="xs" padding="sm" width="100%" hover={false} borderColor="primary">
-                                        <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>
-                                            <Icon name="FiShield" size="xs" color="warning" />
-                                            <Typography size="xs" weight="semibold">{live.permission.tool} can change things. Allow it to run?</Typography>
-                                        </Container>
-                                        <Typography size="xxs" color="muted" font="monospace">{live.permission.input}</Typography>
-                                        <ButtonGroup size="xs" spaced selectable={false} justify="start">
-                                            {[['once', 'Allow once', 'primary'], ['always', 'Always in this chat', 'secondary'], ['no', 'Refuse', 'error']].map(([answer, label, color]) => (
-                                                <Button key={answer} size="xs" color={color} disabled={Boolean(live.permission.sending)} onClick={() => {
-                                                    const question = live.permission.id;
-                                                    const same = (now) => now?.permission?.id === question;
-                                                    setLive((now) => (same(now) ? { ...now, permission: { ...now.permission, sending: true } } : now));
-                                                    chatService.answerPermission(chat.id, question, answer).then(
-                                                        () => setLive((now) => (same(now) ? { ...now, permission: null } : now)),
-                                                        (error) => {
-                                                            setLive((now) => (same(now) ? { ...now, permission: { ...now.permission, sending: false } } : now));
-                                                            notifyError(describeError(error, 'Your answer could not be sent. Try again.'));
-                                                        }
-                                                    );
-                                                }}>{label}</Button>
-                                            ))}
-                                        </ButtonGroup>
-                                    </Card>
-                                )}
-                                {live.thinking && <Thinking text={live.thinking} startOpen={!live.stopping} />}
-                                {live.content && <BlockContext.Provider value={LIVE_BLOCKS}><Markdown text={live.content} /></BlockContext.Provider>}
-                                {live.content && live.stopping && <Typography size="sm" color="muted">Stopped before it finished.</Typography>}
-                                {live.content && live.note && !live.stopping && <Typography key={live.note} color="secondary" size="xxs" animation="typewriter">{live.note}</Typography>}
-                                {!live.content && (
-                                        <Typography key={liveStatus(live)} color="secondary" size="xxs" animation="typewriter">{liveStatus(live)}</Typography>
-                                    )}
-                                {!live.stopping && <LiveClock />}
-                            </Container>
-                        )}
-                        {live && (chat?.queued || []).map((item, index) => (
-                            <Container key={`${index}-${item}`} layout="flex-column" gap="xs" padding="none" width="100%" align="end">
-                                <Card backgroundColor="background" borderColor="secondary" borderStrength="soft" shadow={false} hover={false} layout="flex-column" gap="xs" padding="sm" maxWidth="85%"><PlainText text={item} /></Card>
-                                <Typography size="xs" color="muted">Waiting. It is sent when the reply above is finished.</Typography>
-                            </Container>
-                        ))}
-                        <Container ref={bottomRef} padding="none" />
-                    </Centered>
-                    </Container>
-                <Centered>
-
-                    {context?.warn && !busy && chat.messages.length > 0 && (
-                        <Container layout="flex" align="center" gap="sm" padding="none" role="status">
-                            <Icon name="FiArchive" size="xs" color="warning" />
-                            <Typography size="xs" color="muted">This chat is {context.percent}% full. Older messages are compressed into a memory as you go, so you can keep going here.</Typography>
+                        <Container padding="none" minWidth="0">
+                            <Typography as="h1" size="md" weight="semibold" font="secondary" truncate>{opening ? (chats.find((one) => one.id === routeId)?.title || '') : chat?.title || 'New chat'}</Typography>
                         </Container>
-                    )}
-
-                    <Card backgroundColor="background" borderColor="secondary" borderStrength="soft" shadow={false} hover={false} layout="flex-column" gap="xs" padding="sm" width="100%">
-                        {working && pop !== 'setup' && <Typography size="sm" color="muted">{working}</Typography>}
-                        {pending.length > 0 && (
-                            <Container layout="flex" align="center" gap="xs" padding="none">
-                                {pending.map((file) => (
-                                    <Button
-                                        key={file.id}
-                                        size="xs"
-                                        variant="ghost"
-                                        title={`${file.path || file.name}. Click to remove.`}
-                                        onClick={async () => setChat((await chatService.removeAttachment(chat.id, file.id)).chat)}
-                                    >
-                                        <Icon name="FiFileText" size="xs" />{file.name}<Icon name="FiX" size="xs" />
-                                    </Button>
-                                ))}
-                            </Container>
-                        )}
-                        <Typography as="div" size="xs" width="100%">
-                        <Input
-                            multiline
-                            rows={2}
-                            size="xs"
-                            inheritText
-                            dictation
-                            onDictationError={notifyError}
-                            width="100%"
-                            variant="underline"
-                            backgroundColor="background"
-                            placeholder={unreachable ? unreachableText : noModels ? 'Download a model on the Models page first' : 'Write a message. Enter sends, Shift+Enter starts a new line.'}
-                            value={text}
-                            disabled={noModels || unreachable}
-                            onChange={(event) => setText(event.target.value)}
-                            onKeyDown={(event) => {
-                                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-                                    event.preventDefault();
-                                    sendText(text);
-                                }
-                            }}
-                        />
-                        </Typography>
-                        <Container layout="flex" wrap={false} align="center" justify="between" gap="xs" padding="none" width="100%">
-                            <Pop
-                                label="Attach"
-                                icon="FiPaperclip"
-                                iconOnly
-                                size="xs"
-                                open={pop === 'attach'}
-                                onOpen={() => openPop('attach')}
-                                onClose={closePop}
-                                disabled={busy || Boolean(working) || noModels || unreachable}
-                                width={view === 'files' ? '440px' : '240px'}
-                            >
-                                {view === 'files' ? (
-                                    <FileBrowser mode="read" onPick={(path) => attach((target) => chatService.attachFile(target.id, path))} onBack={() => setView('main')} />
-                                ) : (
-                                    <Container layout="flex-column" gap="none" padding="none" width="100%">
-                                        <Row icon="FiMonitor" label="From this computer" onClick={() => { closePop(); fileInputRef.current?.click(); }} />
-                                        <Row icon="FiHardDrive" label="From my files" onClick={() => setView('files')} />
-                                    </Container>
-                                )}
-                            </Pop>
-                            <Button
-                                size="xs"
-                                variant="ghost"
-                                color={searchOn && modelUsesTools ? 'primary' : 'secondary'}
-                                selected={searchOn && modelUsesTools}
-                                disabled={!webSearch || !modelUsesTools}
-                                title={!webSearch ? 'Web search is not set up on the server' : !modelUsesTools ? 'This model cannot use tools, so it cannot search the web' : searchOn ? 'Web search is on for this chat. Click to turn it off.' : 'Web search is off for this chat. Click to turn it on.'}
-                                aria-label="Web search"
-                                aria-pressed={searchOn && modelUsesTools}
-                                onClick={toggleSearch}
-                            >
-                                <Icon name={searchOn && modelUsesTools ? 'FiGlobe' : 'FiSlash'} size="xs" />
-                            </Button>
-                            {(chat?.notes || []).length > 0 && (
-                                <Pop
-                                    label={`Notes the model kept (${chat.notes.length})`}
-                                    icon="FiBookmark"
-                                    iconOnly
-                                    size="xs"
-                                    open={pop === 'notes'}
-                                    onOpen={() => openPop('notes')}
-                                    onClose={closePop}
-                                    width="360px"
-                                >
-                                    <NotesView notes={chat.notes} />
-                                </Pop>
-                            )}
-                            <Input
-                                ref={fileInputRef}
-                                type="file"
-                                hidden
-                                accept=".txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.log,.pdf,.docx,.xml,.yaml,.yml,.html,.htm,.js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.h,.cs,.go,.rs,.rb,.php,.sql,.sh,.css,.ini,.toml,.png,.jpg,.jpeg,.webp,.gif"
-                                onChange={(event) => {
-                                    const file = event.target.files?.[0];
-                                    event.target.value = '';
-                                    if (!file) return;
-                                    if (file.size > 20 * 1024 * 1024) {
-                                        notifyError('This file is larger than 20 MB. Use a smaller file.');
-                                        return;
-                                    }
-                                    attach((target) => chatService.attachUpload(target.id, file));
-                                }}
-                            />
-                            <Container padding="none" flexFill minWidth="0">
-                                {context && (
-                                    <Typography
-                                        size="xxs"
-                                        color={context.warn ? 'warning' : 'muted'}
-                                        truncate
-                                        title={`${context.usedTokens.toLocaleString()} of ${context.capacityTokens.toLocaleString()} tokens used${pending.length > 0 ? ', including what is attached' : ''}`}
-                                    >
-                                        {100 - context.percent}% context left
-                                    </Typography>
-                                )}
-                            </Container>
-                            <Pop
+                        <Pop
                                 label={devices.length > 1 ? `${devices.find((device) => device.id === currentDevice)?.name || 'Pick a computer'} · ${modelLabel}` : modelLabel}
                                 icon={devices.length > 1 ? DEVICE_ICONS[devices.find((device) => device.id === currentDevice)?.kind] || 'FiMonitor' : null}
                                 endIcon="FiCpu"
+                                iconOnly={!wide}
                                 size="xs"
                                 open={pop === 'model'}
                                 onOpen={() => openPop('model')}
@@ -2821,36 +2564,309 @@ const ChatPage = () => {
                                     </Container>
                                 </Container>
                             </Pop>
-                            {busy && !live?.stopping && <Button size="xs" color="error" title="Stop" aria-label="Stop" onClick={stopReply}><Icon name="FiSquare" size="xs" /></Button>}
-                            <Button size="xs" color="primary" title={busy ? 'Send when this reply is finished' : 'Send'} aria-label="Send" disabled={!text.trim() || noModels || unreachable} onClick={() => sendText(text)} {...guide.tip('chat.send')}><Icon name="FiArrowUp" size="xs" /></Button>
-                        </Container>
-                    </Card>
-                </Centered>
-                </Container>
-            </Container>
-            <Pop
-                fab
-                title="Instructions for this chat"
-                badge={articles.length > 0 ? String(articles.length) : null}
-                badgeColor="primary"
-                icon="FiSliders"
-                open={pop === 'setup'}
-                onOpen={() => openPop('setup')}
-                onClose={closePop}
-                width={view === 'skills' ? '1040px' : '480px'}
-                tall
-            >
+                        <Container padding="none" flexFill minWidth="0" />
+                        {chat && (
+                            <Pop
+                                label=""
+                                icon="FiMoreHorizontal"
+                                title="More"
+                                open={pop === 'more'}
+                                onOpen={() => { setDraftTitle(chat.title); openPop('more'); }}
+                                onClose={closePop}
+                                disabled={busy}
+                                width={view === 'files' ? '440px' : '270px'}
+                            >
+                                {view === 'rename' && (
+                                    <>
+                                        <Input
+                                            label="Chat name"
+                                            size="sm"
+                                            width="100%"
+                                            maxLength={120}
+                                            value={draftTitle}
+                                            onChange={(event) => setDraftTitle(event.target.value)}
+                                            onKeyDown={(event) => event.key === 'Enter' && rename()}
+                                        />
+                                        <Container layout="flex" justify="end" gap="xs" padding="none" width="100%">
+                                            <Button size="sm" variant="ghost" onClick={() => setView('main')}>Back</Button>
+                                            <Button size="sm" disabled={!draftTitle.trim()} onClick={rename}>Save</Button>
+                                        </Container>
+                                    </>
+                                )}
+                                {view === 'files' && <FileBrowser mode="save" onPick={saveExport} onBack={() => setView('main')} />}
+                                {view === 'main' && (
+                                    <Container layout="flex-column" gap="none" padding="none" width="100%">
+                                        <Row icon="FiEdit" label="Rename" onClick={() => setView('rename')} />
+                                        {chat.messages.length > 0 && (
+                                            <>
+                                                <Row icon="FiDownload" label="Download as Markdown" onClick={() => exportAs('markdown')} />
+                                                <Row icon="FiDownload" label="Download as JSONL" onClick={() => exportAs('jsonl')} />
+                                                <Row icon="FiHardDrive" label="Save Markdown to my files" onClick={() => exportAs('markdown', true)} />
+                                                <Row icon="FiHardDrive" label="Save JSONL to my files" onClick={() => exportAs('jsonl', true)} />
+                                            </>
+                                        )}
+                                        <Row icon="FiTrash2" iconColor="error" label="Delete chat" onClick={removeChat} />
+                                    </Container>
+                                )}
+                            </Pop>
+                        )}
+                        <Container padding="none" width="60px" minWidth="60px" />
+                    </Container>
+                    <Divider />
+                    <Container
+                        layout="block"
+                        padding="none"
+                        width="100%"
+                        flexFill
+                        minHeight="0"
+                        overflow="auto"
+                        onScroll={(event) => {
+                            const box = event.currentTarget;
+                            followRef.current = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+                        }}
+                    >
+                    <Centered gap="xl">
+                        {chat?.summary && (
+                            <Fold icon="FiInfo" label="This chat continues from an earlier one. Show the summary it started with.">
+                                <Markdown text={chat.summary} />
+                            </Fold>
+                        )}
+                        {opening && <Notice busy>Opening this chat…</Notice>}
+                        {shown.length === 0 && !busy && !opening && (
+                            <Container layout="flex-column" gap="md" padding="none" marginTop="3xl" width="100%">
+                                <Typography as="h2" size="lg" weight="semibold" font="secondary">What would you like to work on?</Typography>
+                                {unreachable ? (
+                                    <Notice icon="FiAlertCircle" tone="warning">{unreachableText}</Notice>
+                                ) : noModels ? (
+                                    <Notice icon="FiInfo" actions={<Button size="sm" onClick={() => navigate('/models')}>Open Models</Button>}>
+                                        No model is installed on this device yet. Download one first.
+                                    </Notice>
+                                ) : (
+                                    <>
+                                        <Typography size="sm" color="muted">Nothing needs to be chosen first. You can also attach a document and ask about it.</Typography>
+                                        <Container layout="flex" gap="sm" padding="none">
+                                            <Button size="sm" onClick={() => sendText(FIRST_MESSAGE)}>Try: “{FIRST_MESSAGE}”</Button>
+                                        </Container>
+                                    </>
+                                )}
+                            </Container>
+                        )}
+                        {shown.map((message, index) => (
+                            <React.Fragment key={message.id}>
+                                {chat?.memory && message.index === chat.memoryThrough && (
+                                    <Container layout="flex" align="center" gap="xs" padding="none" width="100%" wrap={false}>
+                                        <Container padding="none" flexFill><Divider size="xs" /></Container>
+                                        <Button size="xs" variant="ghost" genieTrigger="click" genie={{ trigger: 'click', width: '420px', padding: 'sm', content: <MemoryView text={chat.memory} /> }} title="The messages above are still here for you. The model now gets a short memory of them instead, so the chat fits what it can read. Choose to read the memory.">
+                                            <Icon name="FiArchive" size="xs" />Context compressed: the model keeps a memory of the messages above
+                                        </Button>
+                                        <Container padding="none" flexFill><Divider size="xs" /></Container>
+                                    </Container>
+                                )}
+                                <Message
+                                    message={message}
+                                    isLast={index === shown.length - 1}
+                                    busy={busy}
+                                    onRegenerate={() => runTurn(chat, { regenerate: true }, null)}
+                                    onEdit={(messageIndex, content) => runTurn(chat, { content, editIndex: messageIndex }, content)}
+                                />
+                            </React.Fragment>
+                        ))}
+                        {live && (
+                            <Container layout="flex-column" gap="sm" padding="none" width="100%">
+                                {currentModel && <Typography size="xxs" color="muted">{modelLabel}</Typography>}
+                                {live.steps?.length > 0 && <Steps steps={live.steps} live={!live.stopping && Boolean(live.note)} />}
+                                {live.draft && !live.stopping && <DraftView text={live.draft} />}
+                                {live.permission && (
+                                    <Notice
+                                        icon="FiShield"
+                                        tone="warning"
+                                        mono
+                                        detail={live.permission.input}
+                                        actions={[['once', 'Allow once', 'primary'], ['always', 'Always in this chat', 'primary'], ['no', 'Refuse', 'error']].map(([answer, label, color]) => (
+                                            <Button key={answer} size="xs" color={color} disabled={Boolean(live.permission.sending)} onClick={() => {
+                                                const question = live.permission.id;
+                                                const same = (now) => now?.permission?.id === question;
+                                                setLive((now) => (same(now) ? { ...now, permission: { ...now.permission, sending: true } } : now));
+                                                chatService.answerPermission(chat.id, question, answer).then(
+                                                    () => setLive((now) => (same(now) ? { ...now, permission: null } : now)),
+                                                    (error) => {
+                                                        setLive((now) => (same(now) ? { ...now, permission: { ...now.permission, sending: false } } : now));
+                                                        notifyError(describeError(error, 'Your answer could not be sent. Try again.'));
+                                                    }
+                                                );
+                                            }}>{label}</Button>
+                                        ))}
+                                    >
+                                        {live.permission.tool} can change things. Allow it to run?
+                                    </Notice>
+                                )}
+                                {live.thinking && <Thinking text={live.thinking} startOpen={!live.stopping} />}
+                                {live.content && <BlockContext.Provider value={LIVE_BLOCKS}><Markdown text={live.content} /></BlockContext.Provider>}
+                                {live.content && live.stopping && <Notice icon="FiSquare">Stopped before it finished.</Notice>}
+                                {live.content && live.note && !live.stopping && <Notice busy>{live.note}</Notice>}
+                                {!live.content && <Notice busy>{liveStatus(live)}</Notice>}
+                                {!live.stopping && <LiveClock />}
+                            </Container>
+                        )}
+                        {live && (chat?.queued || []).map((item, index) => (
+                            <Container key={`${index}-${item}`} layout="flex-column" gap="xs" padding="none" width="100%" align="end">
+                                <Card backgroundColor="surface-alt" bordered={false} layout="flex-column" gap="xs" padding="md" maxWidth="80%"><PlainText text={item} /></Card>
+                                <Typography size="xxs" color="muted">Waiting. It is sent when the reply above is finished.</Typography>
+                            </Container>
+                        ))}
+                        <Container ref={bottomRef} padding="none" />
+                    </Centered>
+                    </Container>
+                <Centered>
+                    {context?.warn && !busy && chat.messages.length > 0 && (
+                        <Notice icon="FiArchive" tone="warning" role="status">This chat is {context.percent}% full. Older messages are compressed into a memory as you go, so you can keep going here.</Notice>
+                    )}
+
+                    <Card layout="flex-column" gap="xs" padding="md" width="100%">
+                        {working && pop !== 'setup' && <Notice busy>{working}</Notice>}
+                        {pending.length > 0 && (
+                            <Container layout="flex" wrap align="center" gap="xs" padding="none">
+                                {pending.map((file) => (
+                                    <Button
+                                        key={file.id}
+                                        size="xs"
+                                        title={`${file.path || file.name}. Click to remove.`}
+                                        onClick={async () => setChat((await chatService.removeAttachment(chat.id, file.id)).chat)}
+                                    >
+                                        <Icon name="FiFileText" size="xs" />{file.name}<Icon name="FiX" size="xs" />
+                                    </Button>
+                                ))}
+                            </Container>
+                        )}
+                        <Typography as="div" size="sm" width="100%">
+                        <Input
+                            multiline
+                            rows={2}
+                            size="sm"
+                            inheritText
+                            dictation
+                            onDictationError={notifyError}
+                            width="100%"
+                            variant="underline"
+                            backgroundColor="surface"
+                            placeholder={unreachable ? unreachableText : noModels ? 'Download a model on the Models page first' : 'Write a message. Enter sends, Shift+Enter starts a new line.'}
+                            value={text}
+                            disabled={noModels || unreachable}
+                            onChange={(event) => setText(event.target.value)}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                                    event.preventDefault();
+                                    sendText(text);
+                                }
+                            }}
+                        />
+                        </Typography>
+                        <Container layout="flex" wrap={false} align="center" gap="xs" padding="none" width="100%">
+                            <Pop
+                                label="Attach"
+                                icon="FiPaperclip"
+                                iconOnly
+                                size="xs"
+                                open={pop === 'attach'}
+                                onOpen={() => openPop('attach')}
+                                onClose={closePop}
+                                disabled={busy || Boolean(working) || noModels || unreachable}
+                                width={view === 'files' ? '440px' : '240px'}
+                            >
+                                {view === 'files' ? (
+                                    <FileBrowser mode="read" onPick={(path) => attach((target) => chatService.attachFile(target.id, path))} onBack={() => setView('main')} />
+                                ) : (
+                                    <Container layout="flex-column" gap="none" padding="none" width="100%">
+                                        <Row icon="FiMonitor" label="From this computer" onClick={() => { closePop(); fileInputRef.current?.click(); }} />
+                                        <Row icon="FiHardDrive" label="From my files" onClick={() => setView('files')} />
+                                    </Container>
+                                )}
+                            </Pop>
+                            <Button
+                                size="xs"
+                                variant="ghost"
+                                selected={searchOn && modelUsesTools}
+                                disabled={!webSearch || !modelUsesTools}
+                                title={!webSearch ? 'Web search is not set up on the server' : !modelUsesTools ? 'This model cannot use tools, so it cannot search the web' : searchOn ? 'Web search is on for this chat. Click to turn it off.' : 'Web search is off for this chat. Click to turn it on.'}
+                                aria-label="Web search"
+                                aria-pressed={searchOn && modelUsesTools}
+                                onClick={toggleSearch}
+                            >
+                                <Icon name={searchOn && modelUsesTools ? 'FiGlobe' : 'FiSlash'} size="xs" />
+                            </Button>
+                            {skills.length > 0 && (
+                                <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    selected={pop === 'setup' && view === 'skills'}
+                                    title="Choose the skills this chat uses"
+                                    aria-label="Skills"
+                                    onClick={() => {
+                                        if (pop === 'setup' && view === 'skills') closePop();
+                                        else {
+                                            openPop('setup');
+                                            setView('skills');
+                                        }
+                                    }}
+                                >
+                                    <Icon name="FiZap" size="xs" />
+                                </Button>
+                            )}
+                            {(tools.length > 0 || webSearch) && (
+                                <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    selected={pop === 'setup' && view === 'tools'}
+                                    title="Choose the tools models may use in this chat"
+                                    aria-label="Tools"
+                                    onClick={() => {
+                                        if (pop === 'setup' && view === 'tools') closePop();
+                                        else {
+                                            openPop('setup');
+                                            setView('tools');
+                                        }
+                                    }}
+                                >
+                                    <Icon name="FiTool" size="xs" />
+                                </Button>
+                            )}
+                            {(chat?.notes || []).length > 0 && (
+                                <Pop
+                                    label={`Notes the model kept (${chat.notes.length})`}
+                                    icon="FiBookmark"
+                                    iconOnly
+                                    size="xs"
+                                    open={pop === 'notes'}
+                                    onOpen={() => openPop('notes')}
+                                    onClose={closePop}
+                                    width="360px"
+                                >
+                                    <NotesView notes={chat.notes} />
+                                </Pop>
+                            )}
+                            <Pop
+                                label="Instructions for this chat"
+                                icon="FiSliders"
+                                iconOnly
+                                size="xs"
+                                mark={articles.length > 0 ? <Badge size="xxs" color="primary">{articles.length}</Badge> : null}
+                                open={pop === 'setup'}
+                                onOpen={() => openPop('setup')}
+                                onClose={closePop}
+                                width={view === 'skills' ? '1040px' : '480px'}
+                                tall
+                            >
                 {view === 'files' && <FileBrowser mode="read" onPick={articleFromFile} onBack={() => setView('main')} />}
                 {view === 'saved' && <SavedInstructions onAdd={addArticle} onBack={() => setView('main')} full={articlesFull} />}
                 {view === 'tools' && (
                     <Container layout="flex-column" gap="xs" padding="none" width="100%">
                         <Container layout="flex" wrap={false} align="center" justify="between" gap="xs" padding="none" width="100%">
-                            <Button size="xxs" variant="ghost" onClick={() => setView('main')}><Icon name="FiChevronLeft" size="xs" />Tools</Button>
-                            <Button size="xxs" variant="ghost" onClick={() => navigate('/tools')}>Manage tools</Button>
+                            <Button size="xs" variant="ghost" onClick={() => setView('main')}><Icon name="FiChevronLeft" size="xs" />Tools</Button>
+                            <Button size="xs" variant="ghost" onClick={() => navigate('/tools')}>Manage tools</Button>
                         </Container>
                         {modelUsesTools
                             ? <Typography size="xxs" color="muted">Calculator, date and time and reading a web page are always on. Web search has its own button by the message box.</Typography>
-                            : <Typography size="xxs" color="warning">This model cannot use tools. Pick one without the No tools mark.</Typography>}
+                            : <Typography size="xs" color="warning">This model cannot use tools. Pick one without the No tools mark.</Typography>}
                         {connectedTools.length === 0
                             ? <Typography size="xs" color="muted">No tools are connected yet. Add one under Manage tools.</Typography>
                             : modelUsesTools && <Typography size="xxs" color="muted">{savedNote}</Typography>}
@@ -2868,11 +2884,11 @@ const ChatPage = () => {
                 {view === 'skills' && (
                     <Container layout="flex-column" gap="xs" padding="none" width="100%">
                         <Container layout="flex" wrap={false} align="center" justify="between" gap="xs" padding="none" width="100%">
-                            <Button size="xxs" variant="ghost" onClick={() => setView('main')}><Icon name="FiChevronLeft" size="xs" />Skills</Button>
-                            <Button size="xxs" variant="ghost" disabled={!draftSetup.skills} onClick={() => switchSetup({ skills: null })}>Use defaults</Button>
+                            <Button size="xs" variant="ghost" onClick={() => setView('main')}><Icon name="FiChevronLeft" size="xs" />Skills</Button>
+                            <Button size="xs" variant="ghost" disabled={!draftSetup.skills} onClick={() => switchSetup({ skills: null })}>Use defaults</Button>
                         </Container>
                         {activeSkills.length >= maxSkills
-                            ? <Typography size="xxs" color="warning">{`${activeSkills.length} of ${maxSkills} skills are on, which is the most a chat holds, so the other switches are off. Turn one off to add another.`}</Typography>
+                            ? <Typography size="xs" color="warning">{`${activeSkills.length} of ${maxSkills} skills are on, which is the most a chat holds, so the other switches are off. Turn one off to add another.`}</Typography>
                             : <Typography size="xxs" color="muted">{`${activeSkills.length} of ${maxSkills} on. ${savedNote} A skill is instructions, not a tool: the model reads it with every message, so turn on only what this chat needs.`}</Typography>}
                         <Select
                             size="md"
@@ -2887,11 +2903,11 @@ const ChatPage = () => {
                             aria-label="Skills on in this chat"
                         />
                         <Container layout="flex" wrap={false} align="center" justify="between" gap="xs" padding="none" width="100%">
-                            <ButtonGroup size="xxs">
-                                <Button size="xxs" variant={skillShelf === 'library' ? 'primary' : 'secondary'} onClick={() => setSkillShelf('library')}>{`Library · ${skills.length - mySkillCount}`}</Button>
-                                <Button size="xxs" variant={skillShelf === 'mine' ? 'primary' : 'secondary'} onClick={() => setSkillShelf('mine')}>{`My skills · ${mySkillCount}`}</Button>
+                            <ButtonGroup size="xs">
+                                <Button size="xs" variant={skillShelf === 'library' ? 'primary' : 'secondary'} onClick={() => setSkillShelf('library')}>{`Library · ${skills.length - mySkillCount}`}</Button>
+                                <Button size="xs" variant={skillShelf === 'mine' ? 'primary' : 'secondary'} onClick={() => setSkillShelf('mine')}>{`My skills · ${mySkillCount}`}</Button>
                             </ButtonGroup>
-                            {skillShelf === 'mine' && <Button size="xxs" variant="ghost" onClick={() => navigate('/tools')}><Icon name="FiPlus" size="xs" />Add a skill</Button>}
+                            {skillShelf === 'mine' && <Button size="xs" variant="ghost" onClick={() => navigate('/tools')}><Icon name="FiPlus" size="xs" />Add a skill</Button>}
                         </Container>
                         {skillRows.length === 0
                             ? <Typography size="xs" color="muted">You have not added any skills of your own yet. Add one by its address under Tools, and it shows here.</Typography>
@@ -2953,10 +2969,10 @@ const ChatPage = () => {
                                             onChange={(event) => changeArticle(index, { name: event.target.value })}
                                         />
                                     </Container>
-                                    <Button size="xxs" variant="ghost" title="Save for other chats" aria-label="Save for other chats" disabled={!article.text.trim()} onClick={() => keepArticle(article, index)}>
+                                    <Button size="xs" variant="ghost" title="Save for other chats" aria-label="Save for other chats" disabled={!article.text.trim()} onClick={() => keepArticle(article, index)}>
                                         <Icon name="FiBookmark" />
                                     </Button>
-                                    <Button size="xxs" variant="ghost" title="Remove from this chat" aria-label="Remove from this chat" onClick={() => removeArticle(index)}>
+                                    <Button size="xs" variant="ghost" title="Remove from this chat" aria-label="Remove from this chat" onClick={() => removeArticle(index)}>
                                         <Icon name="FiX" />
                                     </Button>
                                 </Container>
@@ -3009,7 +3025,42 @@ const ChatPage = () => {
                         </Container>
                     </>
                 )}
-            </Pop>
+                            </Pop>
+                            <Input
+                                ref={fileInputRef}
+                                type="file"
+                                hidden
+                                accept=".txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.log,.pdf,.docx,.xml,.yaml,.yml,.html,.htm,.js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.h,.cs,.go,.rs,.rb,.php,.sql,.sh,.css,.ini,.toml,.png,.jpg,.jpeg,.webp,.gif"
+                                onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    event.target.value = '';
+                                    if (!file) return;
+                                    if (file.size > 20 * 1024 * 1024) {
+                                        notifyError('This file is larger than 20 MB. Use a smaller file.');
+                                        return;
+                                    }
+                                    attach((target) => chatService.attachUpload(target.id, file));
+                                }}
+                            />
+                            <Container padding="none" flexFill minWidth="0">
+                                {context && (
+                                    <Typography
+                                        size="xxs"
+                                        color={context.warn ? 'warning' : 'muted'}
+                                        truncate
+                                        title={`${context.usedTokens.toLocaleString()} of ${context.capacityTokens.toLocaleString()} tokens used${pending.length > 0 ? ', including what is attached' : ''}`}
+                                    >
+                                        {100 - context.percent}% context left
+                                    </Typography>
+                                )}
+                            </Container>
+                            {busy && !live?.stopping && <Button size="sm" color="secondary" variant="solid" title="Stop" aria-label="Stop" onClick={stopReply}><Icon name="FiSquare" size="xs" /></Button>}
+                            <Button size="sm" color={busy ? 'primary' : 'secondary'} variant={busy ? 'ghost' : 'solid'} title={busy ? 'Send when this reply is finished' : 'Send'} aria-label="Send" disabled={!text.trim() || noModels || unreachable} onClick={() => sendText(text)} {...guide.tip('chat.send')}><Icon name="FiArrowUp" size="xs" /></Button>
+                        </Container>
+                    </Card>
+                </Centered>
+                </Container>
+            </Container>
             </BlockContext.Provider>
         </Page>
     );

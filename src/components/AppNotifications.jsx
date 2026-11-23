@@ -87,19 +87,19 @@ export const NotificationsCard = ({ subscribe = null }) => {
     const notices = list || [];
 
     const details = (
-        <Container layout="flex-column" gap="sm" padding="md" width="380px" maxWidth="90vw" backgroundColor="background" background="plus" backgroundFade="bottom">
+        <Container layout="flex-column" gap="sm" padding="md" width="380px" maxWidth="90vw" backgroundColor="background">
             <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%">
-                <Typography size="sm" weight="semibold">Notifications</Typography>
+                <Typography as="h2" size="md" weight="semibold" font="secondary">Notifications</Typography>
                 <Container layout="flex" gap="xs" padding="none" wrap={false}>
-                    <Button size="xs" color="secondary" disabled={unread === 0} onClick={() => act(appService.markNotificationsRead())}>
-                        <Icon name="FiCheck" size="xs" />Mark all read
+                    <Button size="sm" disabled={unread === 0} onClick={() => act(appService.markNotificationsRead())}>
+                        <Icon name="FiCheck" />Mark all read
                     </Button>
-                    <Button size="xs" color="error" disabled={notices.length === 0} onClick={() => act(appService.clearNotifications())}>
-                        <Icon name="FiTrash2" size="xs" />Delete all
+                    <Button size="sm" color="error" disabled={notices.length === 0} onClick={() => act(appService.clearNotifications())}>
+                        <Icon name="FiTrash2" />Delete all
                     </Button>
                 </Container>
             </Container>
-            {notices.length === 0 && <Typography size="xs" color="muted">Nothing here. Notices you miss while you are away are kept for 30 days.</Typography>}
+            {notices.length === 0 && <Typography size="xxs" color="muted">Nothing here. Notices you miss while you are away are kept for 30 days.</Typography>}
             <Container layout="flex-column" gap="xs" padding="none" width="100%" maxHeight="50vh" overflow="auto" wrap={false}>
                 {notices.map((notice) => {
                     const [icon, color] = LEVEL_ICONS[notice.level] || LEVEL_ICONS.info;
@@ -127,17 +127,17 @@ export const NotificationsCard = ({ subscribe = null }) => {
     );
 
     return (
-        <Card layout="flex-column" gap="xs" padding="md" width="100%" minWidth="0" background="plus" backgroundFade="left" genie={{ content: details, trigger: 'click', padding: 'none', backgroundColor: 'background' }} role="button" tabIndex={0} aria-label="Notifications">
+        <Card layout="flex-column" gap="xs" padding="md" width="100%" minWidth="0" genie={{ content: details, trigger: 'click', padding: 'none', backgroundColor: 'background' }} role="button" tabIndex={0} aria-label="Notifications">
             <Container layout="flex" justify="between" align="center" gap="sm" padding="none" width="100%" wrap={false}>
                 <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>
-                    <Icon name="FiBell" size="xs" color="primary" />
+                    <Icon name="FiBell" size="xs" />
                     <Typography as="h2" size="sm" weight="semibold">Notifications</Typography>
                     {unread > 0 && <Badge size="xs" color="primary">{unread} new</Badge>}
                 </Container>
                 <Typography size="xxs" color="muted">{notices.length > 0 ? `${notices.length} kept · open to manage` : ''}</Typography>
             </Container>
-            {list === null && <Typography size="xs" color="muted">Loading…</Typography>}
-            {list !== null && notices.length === 0 && <Typography size="xs" color="muted">Nothing new. Notices you miss while you are away are kept here.</Typography>}
+            {list === null && <Typography size="xxs" color="muted">Loading…</Typography>}
+            {list !== null && notices.length === 0 && <Typography size="xxs" color="muted">Nothing new. Notices you miss while you are away are kept here.</Typography>}
             {notices.slice(0, 3).map((notice) => {
                 const [icon, color] = LEVEL_ICONS[notice.level] || LEVEL_ICONS.info;
                 return (
@@ -194,15 +194,15 @@ export const NotificationsMenu = () => {
         <Container layout="flex-column" gap="xs" width="100%">
             <Container layout="flex" justify="between" align="center" gap="sm" padding="none" width="100%" wrap={false}>
                 <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>
-                    <Typography as="p" size="xs" weight="medium">NOTIFICATIONS</Typography>
+                    <Typography as="p" size="xxs" color="muted">Notifications</Typography>
                     {unread > 0 && <Badge size="xs" color="primary">{unread} new</Badge>}
                 </Container>
                 <Container layout="flex" gap="xs" padding="none" wrap={false}>
-                    <Button size="xs" variant="ghost" disabled={unread === 0} onClick={() => act(appService.markNotificationsRead())}>
-                        <Icon name="FiCheck" size="xs" />Mark read
+                    <Button size="xxs" variant="ghost" disabled={unread === 0} onClick={() => act(appService.markNotificationsRead())}>
+                        <Icon name="FiCheck" />Mark read
                     </Button>
-                    <Button size="xs" variant="ghost" color="error" disabled={notices.length === 0 && showing.length === 0} onClick={() => { clearAllNotifications(); act(appService.clearNotifications()); }}>
-                        <Icon name="FiTrash2" size="xs" />Clear all
+                    <Button size="xxs" variant="ghost" color="error" disabled={notices.length === 0 && showing.length === 0} onClick={() => { clearAllNotifications(); act(appService.clearNotifications()); }}>
+                        <Icon name="FiTrash2" />Clear all
                     </Button>
                 </Container>
             </Container>
@@ -215,8 +215,8 @@ export const NotificationsMenu = () => {
                             <Typography size="xs" weight={notice.read ? 'normal' : 'semibold'} truncate>{notice.message}</Typography>
                         </Container>
                         {whereOf(notice) && (
-                            <Button size="xs" color="secondary" title="Open what this is about" aria-label={`Open: ${notice.message}`} onClick={() => { if (!notice.read) act(appService.markNotificationsRead(notice.id)); navigate(whereOf(notice)); }}>
-                                <Icon name="FiArrowRight" size="xs" />Open
+                            <Button size="xxs" variant="ghost" title="Open what this is about" aria-label={`Open: ${notice.message}`} onClick={() => { if (!notice.read) act(appService.markNotificationsRead(notice.id)); navigate(whereOf(notice)); }}>
+                                <Icon name="FiArrowRight" />Open
                             </Button>
                         )}
                         <Button size="xxs" variant="ghost" color="error" title="Clear" aria-label="Clear" onClick={() => act(appService.clearNotifications(notice.id))}>
@@ -226,8 +226,8 @@ export const NotificationsMenu = () => {
                 );
             })}
             {notices.length > 3 && (
-                <Button size="xs" variant="ghost" title="See every notification on the dashboard" onClick={() => navigate('/dashboard')}>
-                    {notices.length - 3} more on the dashboard<Icon name="FiArrowRight" size="xs" />
+                <Button size="xs" variant="ghost" align="start" width="100%" title="See every notification on the dashboard" onClick={() => navigate('/dashboard')}>
+                    {notices.length - 3} more on the dashboard<Icon name="FiArrowRight" />
                 </Button>
             )}
         </Container>

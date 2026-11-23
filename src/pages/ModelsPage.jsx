@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Select, ProgressBar, Pagination } from '@components/Components';
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Select, Divider, ProgressBar, CircularProgress, Pagination } from '@components/Components';
 import { useNotification } from '@contexts/NotificationContext';
 import { deviceService, modelService, providerService, describeError, useGuide, onReturn } from '../client/ai.client';
 
@@ -77,8 +77,8 @@ const placeWords = (place) => [
 const PLACE_NOTE = 'An estimate of the memory the model takes while it runs, and what is left of each memory in total. Other open apps use some of what is left.';
 const Placement = ({ model }) => (
     <>
-        {model.fit?.place && <Typography size="xs" color="muted" margin="none" title={PLACE_NOTE}>This computer: {placeWords(model.fit.place)}</Typography>}
-        {model.pooled?.place && <Typography size="xs" color="muted" margin="none" title={`${PLACE_NOTE} Graphics memory is every pooled computer's together; system memory is the primary computer's.`}>Pooled ({model.pooled.names}): {placeWords(model.pooled.place)}</Typography>}
+        {model.fit?.place && <Typography as="p" size="xxs" color="muted" title={PLACE_NOTE}>This computer: {placeWords(model.fit.place)}</Typography>}
+        {model.pooled?.place && <Typography as="p" size="xxs" color="muted" title={`${PLACE_NOTE} Graphics memory is every pooled computer's together; system memory is the primary computer's.`}>Pooled ({model.pooled.names}): {placeWords(model.pooled.place)}</Typography>}
     </>
 );
 
@@ -101,35 +101,43 @@ const Row = ({ children }) => (
     <Container layout="flex" justify="between" align="center" gap="sm" padding="none" width="100%" wrap={false}>{children}</Container>
 );
 
-const Stat = ({ icon, label, value, note }) => (
-    <Card layout="flex" align="center" gap="sm" padding="sm" hover={false} shadow={false} wrap={false} width="100%">
-        <Icon name={icon} size="sm" color="primary" />
-        <Container layout="flex-column" gap="none" padding="none" minWidth="0">
-            <Typography size="xxs" color="muted">{label}</Typography>
-            <Typography size="sm" weight="semibold" truncate>{value}</Typography>
-            {note && <Typography size="xxs" color="muted" truncate>{note}</Typography>}
+const Stat = ({ label, value, note }) => (
+    <Container layout="flex-column" gap="none" padding="none" minWidth="0">
+        <Typography as="p" size="xxs" color="muted">{label}</Typography>
+        <Container layout="flex" align="baseline" gap="xs" padding="none">
+            <Typography as="p" size="sm" weight="medium">{value}</Typography>
+            {note && <Typography as="p" size="xxs" color="muted">{note}</Typography>}
         </Container>
-    </Card>
+    </Container>
 );
 
-const SectionTitle = ({ icon, title, count, children }) => (
-    <Row>
-        <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>
-            <Icon name={icon} size="xs" color="primary" />
-            <Typography as="h2" size="sm" weight="semibold">{title}</Typography>
-            {count !== undefined && <Badge size="xs" color="secondary">{count}</Badge>}
+const SectionTitle = ({ title, count, children }) => (
+    <Container layout="flex" justify="between" align="center" gap="sm" padding="none" width="100%">
+        <Container layout="flex" align="baseline" gap="sm" padding="none" wrap={false}>
+            <Typography as="h2" size="md" weight="semibold" font="secondary">{title}</Typography>
+            {count !== undefined && <Typography as="p" size="xs" color="muted">{count}</Typography>}
         </Container>
         {children}
-    </Row>
+    </Container>
 );
 
-const Empty = ({ icon, title, text }) => (
-    <Card layout="flex" align="center" gap="sm" padding="md" width="100%" hover={false} shadow={false} wrap={false}>
-        <Icon name={icon} size="sm" color="secondary" />
-        <Container layout="flex-column" gap="none" padding="none">
-            <Typography size="sm" weight="semibold">{title}</Typography>
-            <Typography size="xs" color="muted">{text}</Typography>
+const Loading = ({ text }) => (
+    <Container layout="flex" align="center" gap="sm" padding="none" width="100%" wrap={false}>
+        <CircularProgress size="xs" />
+        <Typography as="p" size="xs" color="muted">{text}</Typography>
+    </Container>
+);
+
+const Empty = ({ icon, title, text, children }) => (
+    <Card layout="flex" align="center" justify="between" gap="md" padding="lg" width="100%">
+        <Container layout="flex" align="center" gap="md" padding="none" wrap={false} minWidth="0">
+            <Icon name={icon} size="sm" color="primary" />
+            <Container layout="flex-column" gap="xs" padding="none" minWidth="0">
+                <Typography as="h3" size="sm" weight="semibold">{title}</Typography>
+                <Typography as="p" size="xs">{text}</Typography>
+            </Container>
         </Container>
+        {children}
     </Card>
 );
 
@@ -145,59 +153,64 @@ const DownloadsPanel = ({ jobs, canManage, onResume, onPause, onCancel }) => {
     if (open.length === 0) return null;
 
     return (
-        <Card layout="flex-column" gap="sm" padding="md" width="100%" hover={false}>
-            <SectionTitle icon="FiDownload" title="Downloads" count={open.length}>
-                <Typography size="xxs" color="muted">They carry on if you close this page.</Typography>
+        <Container as="section" layout="flex-column" gap="md" padding="none" width="100%">
+            <SectionTitle title="Downloads" count={open.length}>
+                <Typography as="p" size="xxs" color="muted">They carry on if you close this page.</Typography>
             </SectionTitle>
-            <Container layout="grid" columns="auto-lg" gap="sm" padding="none" width="100%">
-                {open.map((job) => (
-                    <Container key={job.id} layout="flex-column" gap="xs" padding="none" width="100%" minWidth="0">
-                        <Row>
-                            <Typography size="xs" weight="semibold" truncate>{job.model}</Typography>
-                            <Typography size="xxs" color="muted">
-                                {job.status === 'queued' && 'Waiting for its turn'}
-                                {job.status === 'paused' && `Paused at ${job.percent}%`}
-                                {job.status === 'failed' && 'Stopped'}
-                                {job.status === 'downloading' && job.stalled && `Waiting at ${job.percent}%`}
-                                {job.status === 'downloading' && !job.stalled && [
-                                    `${job.percent}%`,
-                                    job.totalBytes ? `${gbFromBytes(job.completedBytes)} of ${gbFromBytes(job.totalBytes)}` : null,
-                                    job.speedBps ? `${(job.speedBps / 1048576).toFixed(1)} MB a second` : null,
-                                    timeLeft(job.etaSeconds)
-                                ].filter(Boolean).join(' · ')}
-                            </Typography>
-                        </Row>
-                        <ProgressBar
-                            value={job.percent}
-                            size="sm"
-                            color={job.status === 'failed' ? 'error' : job.status === 'paused' || job.stalled ? 'warning' : 'primary'}
-                            animated={job.status === 'downloading' && !job.stalled}
-                            width="100%"
-                        />
-                        {job.stalled && (
-                            <Typography size="xxs" color="warning">
-                                No data is arriving. Check the internet connection. The download carries on by itself when
-                                the connection is back, or you can pause it.
-                            </Typography>
-                        )}
-                        {job.error && <Typography size="xxs" color="error">{job.error.message} {job.error.action}</Typography>}
-                        {canManage && (
-                            <Container layout="flex" gap="xs" padding="none">
-                                {job.status === 'downloading' && (
-                                    <Button size="xs" color="secondary" onClick={() => onPause(job)}>Pause</Button>
+            <Card layout="flex-column" gap="lg" padding="lg" width="100%" wrap={false}>
+                {open.map((job, index) => (
+                    <Fragment key={job.id}>
+                        {index > 0 && <Divider />}
+                        <Container layout="flex-column" gap="sm" padding="none" width="100%" minWidth="0">
+                            <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%">
+                                <Container layout="flex-column" gap="none" padding="none" minWidth="0">
+                                    <Typography as="h3" size="sm" weight="semibold" font="monospace">{job.model}</Typography>
+                                    <Typography as="p" size="xs">
+                                        {job.status === 'queued' && 'Waiting for its turn'}
+                                        {job.status === 'paused' && `Paused at ${job.percent}%`}
+                                        {job.status === 'failed' && 'Stopped'}
+                                        {job.status === 'downloading' && job.stalled && `Waiting at ${job.percent}%`}
+                                        {job.status === 'downloading' && !job.stalled && [
+                                            `${job.percent}%`,
+                                            job.totalBytes ? `${gbFromBytes(job.completedBytes)} of ${gbFromBytes(job.totalBytes)}` : null,
+                                            job.speedBps ? `${(job.speedBps / 1048576).toFixed(1)} MB a second` : null,
+                                            timeLeft(job.etaSeconds)
+                                        ].filter(Boolean).join(' · ')}
+                                    </Typography>
+                                </Container>
+                                {canManage && (
+                                    <Container layout="flex" align="center" gap="xs" padding="none">
+                                        {job.status === 'downloading' && (
+                                            <Button size="sm" onClick={() => onPause(job)}>Pause</Button>
+                                        )}
+                                        {(job.status === 'paused' || (job.status === 'failed' && RESUMABLE.includes(job.error?.code))) && (
+                                            <Button size="sm" onClick={() => onResume(job)}>Resume</Button>
+                                        )}
+                                        <Button size="sm" variant="ghost" onClick={() => onCancel(job)}>
+                                            {job.status === 'failed' ? 'Remove from list' : 'Cancel'}
+                                        </Button>
+                                    </Container>
                                 )}
-                                {(job.status === 'paused' || (job.status === 'failed' && RESUMABLE.includes(job.error?.code))) && (
-                                    <Button size="xs" onClick={() => onResume(job)}>Resume</Button>
-                                )}
-                                <Button size="xs" color="secondary" onClick={() => onCancel(job)}>
-                                    {job.status === 'failed' ? 'Remove from list' : 'Cancel'}
-                                </Button>
                             </Container>
-                        )}
-                    </Container>
+                            <ProgressBar
+                                value={job.percent}
+                                size="sm"
+                                color={job.status === 'failed' ? 'error' : job.status === 'paused' || job.stalled ? 'warning' : 'primary'}
+                                animated={job.status === 'downloading' && !job.stalled}
+                                width="100%"
+                            />
+                            {job.stalled && (
+                                <Typography as="p" size="xs" color="warning">
+                                    No data is arriving. Check the internet connection. The download carries on by itself when
+                                    the connection is back, or you can pause it.
+                                </Typography>
+                            )}
+                            {job.error && <Typography as="p" size="xs" color="error">{job.error.message} {job.error.action}</Typography>}
+                        </Container>
+                    </Fragment>
                 ))}
-            </Container>
-        </Card>
+            </Card>
+        </Container>
     );
 };
 
@@ -246,99 +259,107 @@ export const OnlineTab = () => {
         }, 'This service could not be removed.');
     };
 
-    if (providers === null) return <Typography size="xs" color="muted">Loading your online services…</Typography>;
+    if (providers === null) return <Loading text="Loading your online services…" />;
     const ollama = suggested.find((entry) => entry.id === 'ollama');
     const others = suggested.filter((entry) => entry.id !== 'ollama' && !connected(entry.id));
 
     const keyForm = (entry) => (
-        <Card layout="flex-column" gap="xs" padding="md" width="100%" hover={false}>
-            <Container layout="flex" align="center" gap="sm" padding="none">
-                <Icon name={PROVIDER_ICONS[entry.id] || 'FiCloud'} size="sm" color="primary" />
-                <Typography size="sm" weight="semibold">Getting a key for {entry.name}</Typography>
-                <Typography size="xxs" color="muted">{entry.key.cost}</Typography>
-                <Button size="xxs" color="secondary" title="Opens in a new tab" onClick={() => window.open(entry.key.page, '_blank', 'noopener')}>
+        <Card layout="flex-column" gap="md" padding="lg" width="100%" maxWidth="720px" wrap={false}>
+            <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%">
+                <Container layout="flex" align="center" gap="sm" padding="none" wrap={false} minWidth="0">
+                    <Icon name={PROVIDER_ICONS[entry.id] || 'FiCloud'} size="sm" color="primary" />
+                    <Container layout="flex-column" gap="none" padding="none" minWidth="0">
+                        <Typography as="h3" size="sm" weight="semibold">Getting a key for {entry.name}</Typography>
+                        <Typography as="p" size="xxs" color="muted">{entry.key.cost}</Typography>
+                    </Container>
+                </Container>
+                <Button size="sm" title="Opens in a new tab" onClick={() => window.open(entry.key.page, '_blank', 'noopener')}>
                     <Icon name="FiExternalLink" size="xs" />Open the key page
                 </Button>
             </Container>
-            {entry.key.steps.map((step, index) => <Typography key={step} size="xs">{index + 1}. {step}</Typography>)}
+            <Container layout="flex-column" gap="xs" padding="none" width="100%">
+                {entry.key.steps.map((step, index) => <Typography key={step} as="p" size="xs">{index + 1}. {step}</Typography>)}
+            </Container>
             <Container layout="flex" align="end" gap="sm" padding="none" width="100%" wrap={false}>
                 <Input size="sm" label="Key" type="password" value={key} onChange={(e) => setKey(e.target.value)} width="100%" />
-                <Button size="sm" color="primary" disabled={busy === entry.id || key.trim().length < 8} onClick={save}>
+                <Button size="sm" color="secondary" variant="solid" disabled={busy === entry.id || key.trim().length < 8} onClick={save}>
                     <Icon name="FiCheck" size="xs" />{busy === entry.id ? 'Checking…' : 'Connect'}
                 </Button>
-                <Button size="sm" color="secondary" onClick={() => { setChosen(null); setKey(''); }}>Cancel</Button>
+                <Button size="sm" variant="ghost" onClick={() => { setChosen(null); setKey(''); }}>Cancel</Button>
             </Container>
-            <Typography size="xxs" color="muted">The key is stored sealed on Mollama&apos;s server and is never shown again. Chats on these models are sent to {entry.name} and billed to your account there.</Typography>
+            <Typography as="p" size="xxs" color="muted">The key is stored sealed on Mollama&apos;s server and is never shown again. Chats on these models are sent to {entry.name} and billed to your account there.</Typography>
         </Card>
     );
 
     const connectedCard = (provider) => (
-        <Card key={provider.id} layout="flex-column" gap="xs" padding="sm" width="100%" minWidth="0" hover={false}>
+        <Card key={provider.id} layout="flex-column" gap="sm" padding="lg" width="100%" height="100%" minWidth="0" wrap={false}>
             <Row>
-                <Container layout="flex" align="center" gap="xs" padding="none" wrap={false} minWidth="0">
+                <Container layout="flex" align="center" gap="sm" padding="none" wrap={false} minWidth="0">
                     <Icon name={PROVIDER_ICONS[provider.kind] || 'FiCloud'} size="sm" color="primary" />
-                    <Typography size="sm" weight="semibold" truncate>{provider.name}</Typography>
+                    <Typography as="h3" size="sm" weight="semibold">{provider.name}</Typography>
                 </Container>
                 <Badge size="xs" color={PROVIDER_COLORS[provider.health.state] || 'error'}>{provider.health.label}</Badge>
             </Row>
-            <Typography size="xxs" color="muted">{provider.modelCount === 1 ? '1 model' : `${provider.modelCount} models`} in the model picker of every chat</Typography>
-            {provider.health.needs.map((need) => <Typography key={need} size="xxs">{need}</Typography>)}
+            <Typography as="p" size="xs">{provider.modelCount === 1 ? '1 model' : `${provider.modelCount} models`} in the model picker of every chat</Typography>
+            {provider.health.needs.map((need) => <Typography key={need} as="p" size="xs">{need}</Typography>)}
+            <Container padding="none" flexFill />
             <Container layout="flex" align="center" justify="end" gap="xs" padding="none" width="100%">
-                <Button size="xxs" color="secondary" disabled={busy === provider.id} onClick={() => { setChosen(suggested.find((entry) => entry.id === provider.kind)); setKey(''); }}><Icon name="FiKey" size="xs" />Replace key</Button>
-                <Button size="xxs" color="secondary" disabled={busy === provider.id} onClick={() => check(provider)}><Icon name="FiRefreshCw" size="xs" />{busy === provider.id ? 'Checking…' : 'Check'}</Button>
-                <Button size="xxs" color="error" disabled={busy === provider.id} onClick={() => remove(provider)}><Icon name="FiTrash2" size="xs" />Remove</Button>
+                <Button size="sm" variant="ghost" disabled={busy === provider.id} onClick={() => { setChosen(suggested.find((entry) => entry.id === provider.kind)); setKey(''); }}><Icon name="FiKey" size="xs" />Replace key</Button>
+                <Button size="sm" disabled={busy === provider.id} onClick={() => check(provider)}><Icon name="FiRefreshCw" size="xs" />{busy === provider.id ? 'Checking…' : 'Check'}</Button>
+                <Button size="sm" color="error" disabled={busy === provider.id} onClick={() => remove(provider)}><Icon name="FiTrash2" size="xs" />Remove</Button>
             </Container>
         </Card>
     );
 
     return (
-        <Container layout="flex-column" gap="md" padding="none" width="100%">
+        <Container layout="flex-column" gap="xl" padding="none" width="100%">
             {providers.length > 0 && (
-                <>
-                    <SectionTitle icon="FiCloud" title="Connected" count={providers.length} />
-                    <Container layout="grid" columns={3} gap="sm" padding="none" width="100%">
+                <Container as="section" layout="flex-column" gap="md" padding="none" width="100%">
+                    <SectionTitle title="Connected" count={providers.length} />
+                    <Container layout="grid" columns={3} gap="md" padding="none" width="100%" align="stretch">
                         {providers.map(connectedCard)}
                     </Container>
-                </>
+                </Container>
             )}
 
             {ollama && !connected('ollama') && (
-                <>
-                    <SectionTitle icon="FiDownloadCloud" title="Models too large to download" />
-                    <Card layout="flex" align="center" justify="between" gap="md" padding="md" width="100%" hover={false} wrap={false}>
-                        <Container layout="flex" align="center" gap="sm" padding="none" wrap={false} minWidth="0">
-                            <Icon name="SiOllama" size="md" color="primary" />
-                            <Container layout="flex-column" gap="none" padding="none" minWidth="0">
-                                <Typography size="sm" weight="semibold">Run them on Ollama&apos;s computers</Typography>
-                                <Typography size="xs" color="muted">The models marked &quot;Cloud only&quot; in Discover cannot be downloaded. With your own Ollama key they run on Ollama&apos;s computers and work in chats like any other model.</Typography>
+                <Container as="section" layout="flex-column" gap="md" padding="none" width="100%">
+                    <SectionTitle title="Models too large to download" />
+                    <Card layout="flex" align="center" justify="between" gap="md" padding="lg" width="100%">
+                        <Container layout="flex" align="center" gap="md" padding="none" wrap={false} minWidth="0">
+                            <Icon name="SiOllama" size="sm" color="primary" />
+                            <Container layout="flex-column" gap="xs" padding="none" minWidth="0">
+                                <Typography as="h3" size="sm" weight="semibold">Run them on Ollama&apos;s computers</Typography>
+                                <Typography as="p" size="xs">The models marked &quot;Cloud only&quot; in Discover cannot be downloaded. With your own Ollama key they run on Ollama&apos;s computers and work in chats like any other model.</Typography>
                             </Container>
                         </Container>
-                        <Button size="sm" color="primary" onClick={() => { setChosen(ollama); setKey(''); }}><Icon name="FiKey" size="xs" />Add an Ollama key</Button>
+                        <Button size="sm" onClick={() => { setChosen(ollama); setKey(''); }}><Icon name="FiKey" size="xs" />Add an Ollama key</Button>
                     </Card>
-                </>
+                </Container>
             )}
 
             {chosen && keyForm(chosen)}
 
             {others.length > 0 && (
-                <>
-                    <SectionTitle icon="FiGlobe" title="Other providers" />
-                    <Container layout="grid" columns={4} gap="sm" padding="none" width="100%">
+                <Container as="section" layout="flex-column" gap="md" padding="none" width="100%">
+                    <SectionTitle title="Other providers" />
+                    <Container layout="grid" columns={3} gap="md" padding="none" width="100%" align="stretch">
                         {others.map((entry) => (
-                            <Card key={entry.id} layout="flex-column" gap="xs" padding="md" width="100%" minWidth="0" hover={false} shadow={false}>
-                                <Row>
-                                    <Container layout="flex" align="center" gap="sm" padding="none" wrap={false} minWidth="0">
-                                        <Icon name={PROVIDER_ICONS[entry.id] || 'FiCloud'} size="md" color="primary" />
-                                        <Typography size="sm" weight="semibold" truncate>{entry.name}</Typography>
-                                    </Container>
-                                    <Button size="xs" color={chosen?.id === entry.id ? 'secondary' : 'primary'} onClick={() => { setChosen(entry); setKey(''); }}><Icon name="FiKey" size="xs" />Add a key</Button>
-                                </Row>
-                                <Typography size="xs">{entry.does}.</Typography>
-                                <Typography size="xxs" color="muted">{entry.key.cost}</Typography>
+                            <Card key={entry.id} layout="flex-column" gap="sm" padding="lg" width="100%" height="100%" minWidth="0" wrap={false}>
+                                <Container layout="flex" align="center" gap="sm" padding="none" width="100%" wrap={false} minWidth="0">
+                                    <Icon name={PROVIDER_ICONS[entry.id] || 'FiCloud'} size="sm" color="primary" />
+                                    <Typography as="h3" size="sm" weight="semibold">{entry.name}</Typography>
+                                </Container>
+                                <Typography as="p" size="xs">{entry.does}.</Typography>
+                                <Typography as="p" size="xxs" color="muted">{entry.key.cost}</Typography>
+                                <Container padding="none" flexFill />
+                                <Container layout="flex" align="center" justify="end" gap="xs" padding="none" width="100%">
+                                    <Button size="sm" selected={chosen?.id === entry.id} onClick={() => { setChosen(entry); setKey(''); }}><Icon name="FiKey" size="xs" />Add a key</Button>
+                                </Container>
                             </Card>
                         ))}
                     </Container>
-                </>
+                </Container>
             )}
         </Container>
     );
@@ -349,11 +370,6 @@ const CatalogueCard = ({ model, job, canManage, ollamaUp, onDownload }) => {
     const busy = job && ['queued', 'downloading'].includes(job.status);
     let action = null;
 
-    const useOnline = (model.cloudOnly || model.online) && (
-        <Button size="xs" color="secondary" title="Run it on Ollama's computers with your own Ollama key" onClick={() => window.dispatchEvent(new CustomEvent('models-open-online'))}>
-            <Icon name="FiCloud" size="xs" />Use online
-        </Button>
-    );
     if (model.cloudOnly) action = null;
     else if (model.installed) action = <Badge size="xs" color="success">Installed</Badge>;
     else if (busy) action = <Badge size="xs" color="primary">{job.status === 'queued' ? 'Waiting' : `Downloading ${job.percent}%`}</Badge>;
@@ -365,37 +381,53 @@ const CatalogueCard = ({ model, job, canManage, ollamaUp, onDownload }) => {
     else if (canManage) {
         const forPool = !model.fit.fits;
         action = (
-            <Button size="xs" onClick={() => onDownload(model.tag)} disabled={!ollamaUp} title={forPool ? `Too large for this computer alone. It is kept here and runs in chats placed on your pool, with ${model.pool.names} sharing the work.` : undefined} {...guide.tip('models.download')}>
+            <Button size="sm" onClick={() => onDownload(model.tag)} disabled={!ollamaUp} title={forPool ? `Too large for this computer alone. It is kept here and runs in chats placed on your pool, with ${model.pool.names} sharing the work.` : undefined} {...guide.tip('models.download')}>
                 <Icon name="FiDownload" size="xs" />
                 {job?.status === 'paused' || job?.status === 'failed' ? 'Resume' : forPool ? 'Download for pooling' : 'Download'}
             </Button>
         );
     }
+    // Beside a download button this is the quieter choice; with nothing to download it is the card's own action.
+    const useOnline = (model.cloudOnly || model.online) && (
+        <Button size="sm" variant={action?.type === Button ? 'ghost' : null} title="Run it on Ollama's computers with your own Ollama key" onClick={() => window.dispatchEvent(new CustomEvent('models-open-online'))}>
+            <Icon name="FiCloud" size="xs" />Use online
+        </Button>
+    );
+    const can = abilities(model);
 
     return (
-        <Card layout="flex-column" gap="xs" padding="md" width="100%" height="100%" minWidth="0" wrap={false}>
-            <Row>
-                <Typography as="h3" size="sm" weight="semibold" truncate title={model.name}>{model.name}</Typography>
-                {model.pickLabel && <Badge size="xs" color="primary" title={model.pickWhy}>{model.pickLabel}</Badge>}
-            </Row>
-            <Typography size="xxs" color="muted" font="monospace" truncate title="Its name on Ollama">{model.tag}</Typography>
-            <Typography size="xs" color="muted">{model.description}</Typography>
-            <Container layout="flex" gap="xs" padding="none" align="center">
-                <Badge size="xs" color={FIT_COLORS[model.fit.verdict]}>{model.fit.label}</Badge>
-                {model.pool && !model.pool.off && <Badge size="xs" color="primary" title={`Too large for this computer alone, but together these computers can give it ${gb(model.pool.memoryMb)}. A pooled model writes more slowly than one on a single computer.`}>Fits if you pool {model.pool.names}</Badge>}
-                {model.pool?.off && <Badge size="xs" color="warning" title={`It fits when ${model.pool.names} pool, but the pool is off right now. ${model.pool.off}`}>Fits pooled, pool off now</Badge>}
-                {model.pool && model.moe && <Badge size="xs" color="success" title="Only a small part of this model works on each word, so far less crosses between your computers: it writes much faster pooled than a model of the same size that is not a mixture of experts.">Faster when pooled</Badge>}
-                {model.pool && <Typography size="xxs" href="/devices?view=pooling">How to pool</Typography>}
-                {cannotChat(model) && <NoChatBadge />}
-                {abilities(model).map((ability) => <Badge key={ability} size="xs" color="secondary" title={ABILITY_NOTES[ability]}>{ability}</Badge>)}
+        <Card layout="flex-column" gap="sm" padding="lg" width="100%" height="100%" minWidth="0" wrap={false}>
+            <Container layout="flex-column" gap="none" padding="none" width="100%" minWidth="0">
+                <Row>
+                    <Typography as="h3" size="sm" weight="semibold" title={model.name}>{model.name}</Typography>
+                    {model.pickLabel && <Badge size="xs" color="primary" title={model.pickWhy}>{model.pickLabel}</Badge>}
+                </Row>
+                <Typography as="p" size="xxs" color="muted" font="monospace" title="Its name on Ollama">{model.tag}</Typography>
             </Container>
+            <Typography as="p" size="xs">{model.description}</Typography>
+            {(can.length > 0 || cannotChat(model)) && (
+                <Container layout="flex" gap="xs" padding="none" align="center" width="100%">
+                    {cannotChat(model) && <NoChatBadge />}
+                    {can.map((ability) => <Badge key={ability} size="xs" title={ABILITY_NOTES[ability]}>{ability}</Badge>)}
+                </Container>
+            )}
             <Container padding="none" flexFill />
-            <Typography size="xs" margin="none">
-                {model.cloudOnly
-                    ? 'Too large to download. Runs on Ollama with your own key.'
-                    : [`${gb(model.sizeMb)} download`, model.fit.memoryNeededMb ? `needs ${gb(model.fit.memoryNeededMb)} to run` : null, model.fit.tokensPerSecond ? speedWords(model.fit.tokensPerSecond) : null].filter(Boolean).join(' · ')}
-            </Typography>
-            {!model.cloudOnly && <Placement model={model} />}
+            <Container layout="flex-column" gap="xs" padding="none" width="100%" minWidth="0">
+                <Typography as="p" size="xs">
+                    {model.cloudOnly
+                        ? 'Too large to download. Runs on Ollama with your own key.'
+                        : [`${gb(model.sizeMb)} download`, model.fit.memoryNeededMb ? `needs ${gb(model.fit.memoryNeededMb)} to run` : null, model.fit.tokensPerSecond ? speedWords(model.fit.tokensPerSecond) : null].filter(Boolean).join(' · ')}
+                </Typography>
+                {!model.cloudOnly && <Placement model={model} />}
+                <Container layout="flex" gap="xs" padding="none" align="center" width="100%">
+                    <Badge size="xs" color={FIT_COLORS[model.fit.verdict]}>{model.fit.label}</Badge>
+                    {model.pool && !model.pool.off && <Badge size="xs" color="primary" title={`Too large for this computer alone, but together these computers can give it ${gb(model.pool.memoryMb)}. A pooled model writes more slowly than one on a single computer.`}>Fits if you pool {model.pool.names}</Badge>}
+                    {model.pool?.off && <Badge size="xs" color="warning" title={`It fits when ${model.pool.names} pool, but the pool is off right now. ${model.pool.off}`}>Fits pooled, pool off now</Badge>}
+                    {model.pool && model.moe && <Badge size="xs" color="success" title="Only a small part of this model works on each word, so far less crosses between your computers: it writes much faster pooled than a model of the same size that is not a mixture of experts.">Faster when pooled</Badge>}
+                    {model.pool && <Typography size="xxs" margin="none" href="/devices?view=pooling">How to pool</Typography>}
+                </Container>
+            </Container>
+            {busy && <ProgressBar value={job.percent} size="xs" color="primary" animated={job.status === 'downloading' && !job.stalled} width="100%" />}
             {(useOnline || action) && (
                 <Container layout="flex" align="center" justify="end" gap="xs" padding="none" width="100%">
                     {useOnline}
@@ -465,7 +497,7 @@ const DiscoverTab = ({ catalogue, recommended, find, jobs, canManage, ollamaUp, 
         return () => clearTimeout(timer);
     }, [query]);
 
-    if (!catalogue) return <Typography size="xs" color="muted">Working out which models fit this device…</Typography>;
+    if (!catalogue) return <Loading text="Working out which models fit this device…" />;
     const page = catalogue.page || 1;
     const size = catalogue.size || perPage();
     const paged = catalogue.paged ?? catalogue.total ?? 0;
@@ -500,7 +532,7 @@ const DiscoverTab = ({ catalogue, recommended, find, jobs, canManage, ollamaUp, 
         />
     );
     const choice = (label, on, change, key = label) => (
-        <Button key={key} size="xs" color={on ? 'primary' : 'secondary'} selected={on} onClick={change}>{label}</Button>
+        <Button key={key} size="xs" selected={on} onClick={change}>{label}</Button>
     );
     // Every filter in force, each with the way to take it off.
     const active = [
@@ -511,7 +543,7 @@ const DiscoverTab = ({ catalogue, recommended, find, jobs, canManage, ollamaUp, 
     ].filter(Boolean);
     const group = (title, children) => (
         <Container key={title} layout="flex-column" gap="xs" padding="none" width="100%">
-            <Typography size="xxs" color="muted" margin="none">{title}</Typography>
+            <Typography as="p" size="xxs" color="muted">{title}</Typography>
             <Container layout="flex" gap="xs" padding="none" align="center" width="100%">{children}</Container>
         </Container>
     );
@@ -527,28 +559,28 @@ const DiscoverTab = ({ catalogue, recommended, find, jobs, canManage, ollamaUp, 
     );
     const sortPanel = (
         <Container layout="flex-column" gap="xs" padding="sm" width="100%">
-            <Typography size="xxs" color="muted" margin="none">Order</Typography>
+            <Typography as="p" size="xxs" color="muted">Order</Typography>
             {SORTS.map((option) => (
-                <Button key={option.value} size="xs" width="100%" align="start" color={sortChoice() === option.value ? 'primary' : 'secondary'} selected={sortChoice() === option.value} onClick={() => onSort(option.value)}>{option.label}</Button>
+                <Button key={option.value} size="xs" width="100%" align="start" selected={sortChoice() === option.value} onClick={() => onSort(option.value)}>{option.label}</Button>
             ))}
         </Container>
     );
 
     return (
-        <Container layout="flex-column" gap="md" padding="none" width="100%">
+        <Container layout="flex-column" gap="xl" padding="none" width="100%">
             {recommended?.length > 0 && (
-                <>
-                    <SectionTitle icon="FiStar" title="Recommended for this device" count={recommended.length} />
-                    <Container layout="grid" columns="auto-lg" gap="sm" padding="none" width="100%" align="stretch">{recommended.map(card)}</Container>
-                </>
+                <Container as="section" layout="flex-column" gap="md" padding="none" width="100%">
+                    <SectionTitle title="Recommended for this device" count={recommended.length} />
+                    <Container layout="grid" columns={3} gap="md" padding="none" width="100%" align="stretch">{recommended.map(card)}</Container>
+                </Container>
             )}
             {recommended?.length === 0 && (
-                <Typography size="xs" color="muted">
+                <Typography as="p" size="xs" color="muted">
                     No model is a comfortable fit for this device. Smaller ones may still run slowly.
                 </Typography>
             )}
 
-            <Container ref={top} layout="flex-column" gap="xs" padding="none" width="100%">
+            <Container ref={top} layout="flex-column" gap="sm" padding="none" width="100%">
                 <Container layout="flex" gap="xs" padding="none" align="center" width="100%">
                     <Input
                         size="sm"
@@ -561,58 +593,62 @@ const DiscoverTab = ({ catalogue, recommended, find, jobs, canManage, ollamaUp, 
                         minWidth="220px"
                         flexFill
                     />
-                    <Button size="sm" color={active.length > 0 ? 'primary' : 'secondary'} genie={{ trigger: 'click', padding: 'none', width: '360px', content: filterPanel }} genieTrigger="click">
+                    <Button size="sm" selected={active.length > 0} genie={{ trigger: 'click', padding: 'none', width: '360px', content: filterPanel }} genieTrigger="click">
                         <Icon name="FiFilter" size="xs" />Filters{active.length > 0 ? ` (${active.length})` : ''}
                     </Button>
-                    <Button size="sm" color="secondary" genie={{ trigger: 'click', padding: 'none', width: '260px', content: sortPanel }} genieTrigger="click">
+                    <Button size="sm" genie={{ trigger: 'click', padding: 'none', width: '260px', content: sortPanel }} genieTrigger="click">
                         <Icon name="FiBarChart2" size="xs" />{SORTS.find((option) => option.value === sortChoice())?.short}
                     </Button>
                 </Container>
                 {active.length > 0 && (
                     <Container layout="flex" gap="xs" padding="none" align="center" width="100%">
                         {active.map((one) => (
-                            <Button key={one.label} size="xs" color="primary" onClick={one.off} title="Remove this filter">
+                            <Button key={one.label} size="xs" selected onClick={one.off} title="Remove this filter">
                                 {one.label}<Icon name="FiX" size="xs" />
                             </Button>
                         ))}
-                        <Button size="xs" color="secondary" onClick={clear}>Clear all</Button>
+                        <Button size="xs" variant="ghost" onClick={clear}>Clear all</Button>
                     </Container>
                 )}
-                <Typography size="xxs" color="muted" margin="none">{summary}</Typography>
+                <Typography as="p" size="xxs" color="muted">{summary}</Typography>
                 {catalogue.plain && (active.length > 0 || sortChoice() !== 'fit') && (
-                    <Typography size="xxs" color="warning" margin="none">This server is older than this page, so the filters and order chosen here are not applied yet. Restart or update the server.</Typography>
+                    <Typography as="p" size="xxs" color="warning">This server is older than this page, so the filters and order chosen here are not applied yet. Restart or update the server.</Typography>
                 )}
-                {!canManage && <Typography size="xxs" color="muted">Only an admin or owner can download models.</Typography>}
+                {!canManage && <Typography as="p" size="xxs" color="muted">Only an admin or owner can download models.</Typography>}
             </Container>
 
             {catalogue.models.length === 0 && (
-                <Typography size="xs" color="muted">
-                    {catalogue.unavailable ? 'The list could not be loaded from ollama.com. You can still add a model by its name below.' : 'No model in the ollama.com library matched. Try other words or fewer filters, or add a model by its name below.'}
-                </Typography>
+                <Empty
+                    icon={catalogue.unavailable ? 'FiAlertCircle' : 'FiSearch'}
+                    title={catalogue.unavailable ? 'The model list could not be loaded' : 'No model matched'}
+                    text={catalogue.unavailable ? 'The list could not be loaded from ollama.com. You can still add a model by its name below.' : 'No model in the ollama.com library matched. Try other words or fewer filters, or add a model by its name below.'}
+                >
+                    {!catalogue.unavailable && narrowed && <Button size="sm" onClick={clear}>Clear all filters</Button>}
+                </Empty>
             )}
 
             {others.length > 0 && (
-                <>
-                    <SectionTitle icon="FiGrid" title="All models" count={catalogue.total ?? others.length} />
-                    <Container layout="grid" columns="auto-lg" gap="sm" padding="none" width="100%" align="stretch">{others.map(card)}</Container>
-                </>
+                <Container as="section" layout="flex-column" gap="md" padding="none" width="100%">
+                    <SectionTitle title="All models" count={catalogue.total ?? others.length} />
+                    <Container layout="grid" columns={3} gap="md" padding="none" width="100%" align="stretch">{others.map(card)}</Container>
+                </Container>
             )}
 
             {paged > PAGE_SIZES[0] && (
                 <Container layout="flex-column" gap="xs" padding="none" width="100%">
                     <Pagination size="sm" padding="none" page={page} pages={pages} disabled={loading} onPage={(next) => turn(next)} pageSize={size} pageSizes={PAGE_SIZES} onPageSize={(chosen) => turn(1, chosen)}>
-                        <Typography size="xxs" color="muted" margin="none">per page</Typography>
+                        <Typography as="p" size="xxs" color="muted">per page</Typography>
                     </Pagination>
                     <Container layout="flex" justify="end" padding="none" width="100%">
-                        <Typography size="xxs" color="muted" margin="none">Page {page} of {pages} · {paged} models</Typography>
+                        <Typography as="p" size="xxs" color="muted">Page {page} of {pages} · {paged} models</Typography>
                     </Container>
                 </Container>
             )}
 
             {canManage && (
-                <Card layout="flex-column" gap="xs" padding="md" width="100%" hover={false} shadow={false}>
-                    <SectionTitle icon="FiPlus" title="Add a model by name" />
-                    <Typography size="xxs" color="muted">
+                <Card layout="flex-column" gap="sm" padding="lg" width="100%" maxWidth="720px">
+                    <Typography as="h2" size="md" weight="semibold" font="secondary">Add a model by name</Typography>
+                    <Typography as="p" size="xs" color="muted">
                         For a model that is not listed. Type its name exactly as Ollama lists it, for example llama3.2:1b.
                         Mollama cannot tell in advance whether it will fit.
                     </Typography>
@@ -640,7 +676,7 @@ const DiscoverTab = ({ catalogue, recommended, find, jobs, canManage, ollamaUp, 
 };
 
 const InstalledTab = ({ installed, canManage, onDelete, elsewhere = {} }) => {
-    if (!installed) return <Typography size="xs" color="muted">Looking for installed models…</Typography>;
+    if (!installed) return <Loading text="Looking for installed models…" />;
     if (!installed.ollamaAvailable) {
         return <Empty icon="FiAlertCircle" title="Ollama is not running" text="Installed models cannot be listed until it is started." />;
     }
@@ -649,35 +685,40 @@ const InstalledTab = ({ installed, canManage, onDelete, elsewhere = {} }) => {
     }
 
     return (
-        <Container layout="grid" columns="auto-lg" gap="sm" padding="none" width="100%">
+        <Container layout="grid" columns={3} gap="md" padding="none" width="100%" align="stretch">
             {installed.models.map((model) => (
-                <Card key={model.name} layout="flex-column" gap="xs" padding="md" width="100%" height="100%" minWidth="0" wrap={false}>
-                    <Row>
-                        <Typography as="h3" size="sm" weight="semibold" truncate title={model.displayName}>{model.displayName}</Typography>
-                        {canManage && (
-                            <Button size="xxs" variant="ghost" color="error" title="Delete" aria-label={`Delete ${model.displayName}`} onClick={() => onDelete(model)}>
-                                <Icon name="FiTrash2" />
-                            </Button>
-                        )}
-                    </Row>
-                    {model.displayName !== model.name && <Typography size="xxs" color="muted" truncate>{model.name}</Typography>}
-                    {model.description && <Typography size="xs" color="muted">{model.description}</Typography>}
-                    <Container layout="flex" gap="xs" padding="none" align="center">
+                <Card key={model.name} layout="flex-column" gap="sm" padding="lg" width="100%" height="100%" minWidth="0" wrap={false}>
+                    <Container layout="flex-column" gap="none" padding="none" width="100%" minWidth="0">
+                        <Typography as="h3" size="sm" weight="semibold" title={model.displayName}>{model.displayName}</Typography>
+                        {model.displayName !== model.name && <Typography as="p" size="xxs" color="muted" font="monospace">{model.name}</Typography>}
+                    </Container>
+                    {model.description && <Typography as="p" size="xs">{model.description}</Typography>}
+                    <Container layout="flex" gap="xs" padding="none" align="center" width="100%">
                         {model.personal && <Badge size="xs" color="primary">Yours, on {model.basedOn}</Badge>}
                         {cannotChat(model) && <NoChatBadge />}
-                        {abilities(model).map((ability) => <Badge key={ability} size="xs" color="secondary" title={ABILITY_NOTES[ability]}>{ability}</Badge>)}
+                        {abilities(model).map((ability) => <Badge key={ability} size="xs" title={ABILITY_NOTES[ability]}>{ability}</Badge>)}
                         {elsewhere[model.name]?.length > 0 && <Badge size="xs" color="tertiary">Also on {elsewhere[model.name].join(', ')}</Badge>}
                     </Container>
-                    <Typography size="xxs" color="muted">
-                        {[
-                            `${gbFromBytes(model.sizeBytes)} on disk`,
-                            model.fit?.memoryNeededMb ? `needs ${gb(model.fit.memoryNeededMb)} to run` : null,
-                            model.parameterSize,
-                            model.quantization,
-                            model.contextLength ? `reads ${model.contextLength.toLocaleString()} tokens` : null
-                        ].filter(Boolean).join(' · ')}
-                    </Typography>
-                    <Placement model={model} />
+                    <Container padding="none" flexFill />
+                    <Container layout="flex-column" gap="xs" padding="none" width="100%" minWidth="0">
+                        <Typography as="p" size="xs">
+                            {[
+                                `${gbFromBytes(model.sizeBytes)} on disk`,
+                                model.fit?.memoryNeededMb ? `needs ${gb(model.fit.memoryNeededMb)} to run` : null,
+                                model.parameterSize,
+                                model.quantization,
+                                model.contextLength ? `reads ${model.contextLength.toLocaleString()} tokens` : null
+                            ].filter(Boolean).join(' · ')}
+                        </Typography>
+                        <Placement model={model} />
+                    </Container>
+                    {canManage && (
+                        <Container layout="flex" align="center" justify="end" gap="xs" padding="none" width="100%">
+                            <Button size="sm" color="error" title="Delete" aria-label={`Delete ${model.displayName}`} onClick={() => onDelete(model)}>
+                                <Icon name="FiTrash2" size="xs" />Delete
+                            </Button>
+                        </Container>
+                    )}
                 </Card>
             ))}
         </Container>
@@ -685,7 +726,7 @@ const InstalledTab = ({ installed, canManage, onDelete, elsewhere = {} }) => {
 };
 
 const RunningTab = ({ running, canManage, onUnload }) => {
-    if (!running) return <Typography size="xs" color="muted">Checking what is loaded…</Typography>;
+    if (!running) return <Loading text="Checking what is loaded…" />;
     if (running.unavailable) {
         return <Empty icon="FiAlertCircle" title="Ollama is not running" text="Loaded models cannot be listed until it is started." />;
     }
@@ -694,21 +735,26 @@ const RunningTab = ({ running, canManage, onUnload }) => {
     }
 
     return (
-        <Container layout="grid" columns="auto-lg" gap="sm" padding="none" width="100%">
+        <Container layout="grid" columns={3} gap="md" padding="none" width="100%" align="stretch">
             {running.models.map((model) => (
-                <Card key={model.name} layout="flex-column" gap="xs" padding="md" width="100%" minWidth="0" wrap={false}>
-                    <Row>
-                        <Typography as="h3" size="sm" weight="semibold" truncate>{model.displayName}</Typography>
-                        {canManage && <Button size="xs" color="secondary" onClick={() => onUnload(model)}>Unload</Button>}
-                    </Row>
-                    <Container layout="flex" gap="xs" padding="none" align="center">
+                <Card key={model.name} layout="flex-column" gap="sm" padding="lg" width="100%" height="100%" minWidth="0" wrap={false}>
+                    <Typography as="h3" size="sm" weight="semibold">{model.displayName}</Typography>
+                    <Typography as="p" size="xs">{gbFromBytes(model.sizeBytes)} in memory</Typography>
+                    <Container layout="flex" gap="xs" padding="none" align="center" width="100%">
                         {model.healthy && <Badge size="xs" color="success">Fully on GPU</Badge>}
                         {!model.healthy && model.gpuPercent > 0 && (
                             <Badge size="xs" color="warning">Partly on CPU, so slower ({model.gpuPercent}% on GPU)</Badge>
                         )}
                         {model.gpuPercent === 0 && <Badge size="xs" color="warning">On the processor, so slower</Badge>}
-                        <Typography size="xxs" color="muted">{gbFromBytes(model.sizeBytes)} in memory</Typography>
                     </Container>
+                    {canManage && (
+                        <>
+                            <Container padding="none" flexFill />
+                            <Container layout="flex" align="center" justify="end" gap="xs" padding="none" width="100%">
+                                <Button size="sm" onClick={() => onUnload(model)}>Unload</Button>
+                            </Container>
+                        </>
+                    )}
                 </Card>
             ))}
         </Container>
@@ -746,7 +792,6 @@ const ModelFields = ({ form, setForm, bases }) => {
                         <Button
                             key={level.label}
                             size="sm"
-                            color={creativityOf(form.creativity) === level.label ? 'primary' : 'secondary'}
                             selected={creativityOf(form.creativity) === level.label}
                             onClick={() => setForm((current) => ({ ...current, creativity: level.value }))}
                         >
@@ -756,7 +801,7 @@ const ModelFields = ({ form, setForm, bases }) => {
                 </ButtonGroup>
             </Container>
             <Container layout="flex" gap="sm" padding="none">
-                <Button size="sm" color="secondary" onClick={() => setAdvanced((open) => !open)}>
+                <Button size="sm" variant="ghost" onClick={() => setAdvanced((open) => !open)}>
                     {advanced ? 'Hide advanced' : 'Advanced'}
                 </Button>
             </Container>
@@ -780,7 +825,7 @@ const MineTab = ({ installed, canManage, onCreated, onDelete }) => {
     const [form, setForm] = useState(EMPTY_MODEL_FORM);
     const [busy, setBusy] = useState(false);
 
-    if (!installed) return <Typography color="muted">Looking for installed models…</Typography>;
+    if (!installed) return <Loading text="Looking for installed models…" />;
 
     const bases = installed.models.filter((model) => !model.personal);
     const mine = installed.models.filter((model) => model.personal);
@@ -855,8 +900,8 @@ const MineTab = ({ installed, canManage, onCreated, onDelete }) => {
     };
 
     return (
-        <Container layout="flex-column" gap="md" padding="none" width="100%">
-            <Typography size="xs" color="muted">
+        <Container layout="flex-column" gap="xl" padding="none" width="100%">
+            <Typography as="p" size="xs" color="muted">
                 A personal model is an installed model with your own instructions built in, saved under its own name.
                 It takes almost no extra disk space.
                 {!canManage && ' Only an admin or owner can create personal models.'}
@@ -867,14 +912,13 @@ const MineTab = ({ installed, canManage, onCreated, onDelete }) => {
             )}
 
             {canManage && bases.length > 0 && (
-                <Card layout="flex-column" gap="sm" padding="md" width="100%" maxWidth="720px" hover={false}>
-                    <SectionTitle icon="FiPlus" title="New model, starting from" />
-                    <ButtonGroup size="xs" width="100%" justify="start" selectable={false}>
+                <Card layout="flex-column" gap="md" padding="lg" width="100%" maxWidth="720px">
+                    <Typography as="h2" size="md" weight="semibold" font="secondary">New model, starting from</Typography>
+                    <ButtonGroup size="sm" width="100%" justify="start" selectable={false}>
                         {TEMPLATES.map((option) => (
                             <Button
                                 key={option.id}
-                                size="xs"
-                                color={template === option.id ? 'primary' : 'secondary'}
+                                size="sm"
                                 selected={template === option.id}
                                 onClick={() => choose(option)}
                             >
@@ -890,69 +934,74 @@ const MineTab = ({ installed, canManage, onCreated, onDelete }) => {
                                 <Button size="sm" onClick={create} disabled={busy || !form.displayName.trim() || !form.from}>
                                     {busy ? 'Creating…' : 'Create model'}
                                 </Button>
-                                <Button size="sm" color="secondary" onClick={() => setTemplate(null)} disabled={busy}>Cancel</Button>
+                                <Button size="sm" variant="ghost" onClick={() => setTemplate(null)} disabled={busy}>Cancel</Button>
                             </Container>
                         </>
                     )}
                 </Card>
             )}
 
-            {mine.length > 0 && <SectionTitle icon="FiUser" title="Your models" count={mine.length} />}
-            <Container layout="grid" columns="auto-lg" gap="sm" padding="none" width="100%">
-                {mine.map((model) => (
-                    <Card
-                        key={model.name}
-                        layout="flex-column"
-                        gap="xs"
-                        padding="md"
-                        width="100%"
-                        minWidth="0"
-                        wrap={false}
-                        hover={editing !== model.name}
-                        span={editing === model.name ? 'full' : null}
-                    >
-                        <Row>
-                            <Container layout="flex-column" gap="none" padding="none" minWidth="0">
-                                <Typography as="h3" size="sm" weight="semibold" truncate>{model.displayName}</Typography>
-                                <Typography size="xxs" color="muted" truncate>Built on {model.basedOn}</Typography>
-                            </Container>
-                            {canManage && editing !== model.name && (
-                                <Container layout="flex" gap="none" padding="none" wrap={false}>
-                                    <Button size="xxs" variant="ghost" title="Edit" aria-label={`Edit ${model.displayName}`} onClick={() => startEdit(model)}>
-                                        <Icon name="FiEdit2" />
-                                    </Button>
-                                    <Button size="xxs" variant="ghost" color="error" title="Delete" aria-label={`Delete ${model.displayName}`} onClick={() => onDelete(model)}>
-                                        <Icon name="FiTrash2" />
-                                    </Button>
+            {mine.length > 0 && (
+                <Container as="section" layout="flex-column" gap="md" padding="none" width="100%">
+                    <SectionTitle title="Your models" count={mine.length} />
+                    <Container layout="grid" columns={3} gap="md" padding="none" width="100%" align="stretch">
+                        {mine.map((model) => (
+                            <Card
+                                key={model.name}
+                                layout="flex-column"
+                                gap="sm"
+                                padding="lg"
+                                width="100%"
+                                height="100%"
+                                minWidth="0"
+                                wrap={false}
+                                span={editing === model.name ? 'full' : null}
+                            >
+                                <Container layout="flex-column" gap="none" padding="none" width="100%" minWidth="0">
+                                    <Typography as="h3" size="sm" weight="semibold">{model.displayName}</Typography>
+                                    <Typography as="p" size="xxs" color="muted" font="monospace">Built on {model.basedOn}</Typography>
                                 </Container>
-                            )}
-                        </Row>
-                        {editing === model.name ? (
-                            <Container layout="flex-column" gap="sm" padding="none" width="100%" maxWidth="720px">
-                                <ModelFields key={model.name} form={form} setForm={setForm} bases={bases} />
-                                <Container layout="flex" gap="xs" padding="none">
-                                    <Button size="sm" onClick={() => save(model)} disabled={busy || !form.displayName.trim() || !form.from}>
-                                        {busy ? 'Saving…' : 'Save changes'}
-                                    </Button>
-                                    <Button size="sm" color="secondary" onClick={() => setEditing(null)} disabled={busy}>Cancel</Button>
-                                </Container>
-                            </Container>
-                        ) : (
-                            <>
-                                <Container layout="flex-column" gap="none" padding="none" width="100%" maxHeight="120px" overflow="auto">
-                                    {model.system
-                                        ? model.system.split('\n').map((line, index) => <Typography key={index} as="p" size="xs" color="muted">{line || ' '}</Typography>)
-                                        : <Typography size="xs" color="muted">No instructions were given to this model.</Typography>}
-                                </Container>
-                                <Container layout="flex" gap="xs" padding="none" align="center">
-                                    <Badge size="xs" color="secondary">{creativityOf(model.parameters?.temperature ?? 0.7)}</Badge>
-                                    {model.parameters?.num_ctx && <Badge size="xs" color="secondary">Reads {model.parameters.num_ctx.toLocaleString()} tokens</Badge>}
-                                </Container>
-                            </>
-                        )}
-                    </Card>
-                ))}
-            </Container>
+                                {editing === model.name ? (
+                                    <Container layout="flex-column" gap="sm" padding="none" width="100%" maxWidth="720px">
+                                        <ModelFields key={model.name} form={form} setForm={setForm} bases={bases} />
+                                        <Container layout="flex" gap="xs" padding="none">
+                                            <Button size="sm" onClick={() => save(model)} disabled={busy || !form.displayName.trim() || !form.from}>
+                                                {busy ? 'Saving…' : 'Save changes'}
+                                            </Button>
+                                            <Button size="sm" variant="ghost" onClick={() => setEditing(null)} disabled={busy}>Cancel</Button>
+                                        </Container>
+                                    </Container>
+                                ) : (
+                                    <>
+                                        <Container layout="flex-column" gap="none" padding="none" width="100%" maxHeight="120px" overflow="auto">
+                                            {model.system
+                                                ? model.system.split('\n').map((line, index) => <Typography key={index} as="p" size="xs" color="muted">{line || ' '}</Typography>)
+                                                : <Typography as="p" size="xs" color="muted">No instructions were given to this model.</Typography>}
+                                        </Container>
+                                        <Container layout="flex" gap="xs" padding="none" align="center" width="100%">
+                                            <Badge size="xs">{creativityOf(model.parameters?.temperature ?? 0.7)}</Badge>
+                                            {model.parameters?.num_ctx && <Badge size="xs">Reads {model.parameters.num_ctx.toLocaleString()} tokens</Badge>}
+                                        </Container>
+                                        {canManage && (
+                                            <>
+                                                <Container padding="none" flexFill />
+                                                <Container layout="flex" align="center" justify="end" gap="xs" padding="none" width="100%">
+                                                    <Button size="sm" variant="ghost" title="Edit" aria-label={`Edit ${model.displayName}`} onClick={() => startEdit(model)}>
+                                                        <Icon name="FiEdit2" size="xs" />Edit
+                                                    </Button>
+                                                    <Button size="sm" color="error" title="Delete" aria-label={`Delete ${model.displayName}`} onClick={() => onDelete(model)}>
+                                                        <Icon name="FiTrash2" size="xs" />Delete
+                                                    </Button>
+                                                </Container>
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                            </Card>
+                        ))}
+                    </Container>
+                </Container>
+            )}
         </Container>
     );
 };
@@ -1230,66 +1279,61 @@ const ModelsPage = () => {
     const counts = useMemo(() => ({ installed: installed?.models.length ?? null }), [installed]);
 
     return (
-        <Page layout="flex-column" padding="none" gap="none" background="dots" backgroundFade="bottom">
-            <Container layout="flex-column" align="center" gap="none" padding="none" width="100%" height="100vh" wrap={false} overflow="hidden">
-            <Container layout="flex-column" gap="md" padding="lg" width="100%" maxWidth="1360px" wrap={false}>
-                <Row>
-                    <Container layout="flex-column" gap="none" padding="none">
-                        <Typography as="h1" size="2xl" weight="bold" animation="blur" animationDuration={600}>Models</Typography>
-                        <Typography size="xs" color="muted">
-                            {device ? `Find, download and manage AI models on ${device.name}.` : 'Find, download and manage AI models.'}
-                        </Typography>
-                    </Container>
-                    <Button size="sm" color="secondary" disabled={refreshing} title="Refresh models and disk space" onClick={refresh} {...guide.tip('models.refresh')}>
+        <Page
+            title="Models"
+            lead={device ? `Find, download and manage AI models on ${device.name}.` : 'Find, download and manage AI models.'}
+            layout="flex-column"
+            gap="xl"
+            background="dots"
+            backgroundFade="bottom"
+            actions={(
+                <Container layout="flex" gap="sm" padding="none" align="center" justify="end">
+                    {devices?.length > 1 && (
+                        <ButtonGroup size="sm" selectable={false} wrap>
+                            {devices.map((entry) => (
+                                <Button key={entry.id} size="sm" selected={entry.id === deviceId} onClick={() => setDevice(entry)}>
+                                    <Icon name="FiMonitor" size="xs" />{entry.name}
+                                    {deviceService.ready(entry)
+                                        ? <Icon name="FiCheckCircle" size="xs" color="success" title="Ready to use right now" aria-label="Ready to use right now" />
+                                        : <Badge size="xs" color={entry.paused ? 'warning' : entry.online ? 'success' : 'default'}>{entry.paused ? 'Paused' : entry.online ? 'Online' : 'Offline'}</Badge>}
+                                </Button>
+                            ))}
+                        </ButtonGroup>
+                    )}
+                    <Button size="sm" variant="ghost" disabled={refreshing} title="Refresh models and disk space" onClick={refresh} {...guide.tip('models.refresh')}>
                         <Icon name="FiRefreshCw" size="xs" />Refresh
                     </Button>
-                </Row>
-
-                {devices?.length > 1 && (
-                    <Container layout="flex" gap="xs" padding="none" align="center">
-                        {devices.map((entry) => (
-                            <Button key={entry.id} size="sm" color={entry.id === deviceId ? 'primary' : 'secondary'} selected={entry.id === deviceId} onClick={() => setDevice(entry)}>
-                                <Icon name="FiMonitor" size="xs" />{entry.name}
-                                {deviceService.ready(entry)
-                                    ? <Icon name="FiCheckCircle" size="xs" color="success" title="Ready to use right now" aria-label="Ready to use right now" />
-                                    : <Badge size="xs" color={entry.paused ? 'warning' : entry.online ? 'success' : 'default'}>{entry.paused ? 'Paused' : entry.online ? 'Online' : 'Offline'}</Badge>}
-                            </Button>
-                        ))}
-                    </Container>
-                )}
-
-                <Container layout="grid" columns="auto-sm" gap="sm" padding="none" width="100%">
-                    <Stat icon="FiBox" label="Installed" value={installed ? `${installed.models.length} models` : '…'} />
-                    <Stat icon="FiHardDrive" label="Used by models" value={installed?.disk ? gb(installed.disk.usedByModelsMb) : '…'} />
-                    <Stat icon="FiDatabase" label="Free disk" value={installed?.disk ? gb(installed.disk.freeMb) : '…'} />
-                    <Stat
-                        icon="FiCpu"
-                        label={device?.name || 'Device'}
-                        value={catalogue?.hardware?.gpuName || device?.hardware?.gpuName || device?.name || '…'}
-                        note={device?.hardware?.gpuMemoryMb ? `${gb(device.hardware.gpuMemoryMb)} graphics memory` : null}
-                    />
                 </Container>
-
-                <DownloadsPanel jobs={jobs} canManage={canManage} onResume={(job) => download(job.model, job.device || deviceId)} onPause={pause} onCancel={cancel} />
-
-                <Container layout="flex" gap="xs" padding="none" align="center">
-                    {TABS.map((option) => (
-                        <Button
-                            key={option.id}
-                            size="sm"
-                            color={tab === option.id ? 'primary' : 'secondary'}
-                            selected={tab === option.id}
-                            onClick={() => setTab(option.id)}
-                            {...guide.tip(`models.${option.id}`)}
-                        >
-                            {option.label}{option.id === 'installed' && counts.installed !== null ? ` (${counts.installed})` : ''}
-                        </Button>
-                    ))}
-                </Container>
-
+            )}
+        >
+            <Container layout="flex" gap="2xl" padding="none" width="100%" align="start">
+                <Stat label="Installed" value={installed ? `${installed.models.length} models` : '…'} />
+                <Stat label="Used by models" value={installed?.disk ? gb(installed.disk.usedByModelsMb) : '…'} />
+                <Stat label="Free disk" value={installed?.disk ? gb(installed.disk.freeMb) : '…'} />
+                <Stat
+                    label={device?.name || 'Device'}
+                    value={catalogue?.hardware?.gpuName || device?.hardware?.gpuName || device?.name || '…'}
+                    note={device?.hardware?.gpuMemoryMb ? `${gb(device.hardware.gpuMemoryMb)} graphics memory` : null}
+                />
             </Container>
-            <Container layout="flex" justify="center" padding="none" width="100%" flexFill minHeight="0" overflow="auto">
-            <Container layout="flex-column" gap="md" padding="lg" width="100%" maxWidth="1360px" wrap={false}>
+
+            <ButtonGroup size="sm" selectable={false} wrap>
+                {TABS.map((option) => (
+                    <Button
+                        key={option.id}
+                        size="sm"
+                        selected={tab === option.id}
+                        onClick={() => setTab(option.id)}
+                        {...guide.tip(`models.${option.id}`)}
+                    >
+                        {option.label}{option.id === 'installed' && counts.installed !== null ? ` (${counts.installed})` : ''}
+                    </Button>
+                ))}
+            </ButtonGroup>
+
+            <DownloadsPanel jobs={jobs} canManage={canManage} onResume={(job) => download(job.model, job.device || deviceId)} onPause={pause} onCancel={cancel} />
+
+            <Container layout="flex-column" gap="xl" padding="none" width="100%" wrap={false}>
                 {tab === 'online' && <OnlineTab />}
                 {tab !== 'online' && devices?.length === 0 && (
                     <Empty icon="FiMonitor" title="No device is connected to your account" text="Open the Devices page to add a computer. Its models are then managed here." />
@@ -1326,8 +1370,6 @@ const ModelsPage = () => {
                 {device?.online && tab === 'mine' && (
                     <MineTab installed={installed} canManage={canManage} onCreated={refresh} onDelete={deleteModel} />
                 )}
-            </Container>
-            </Container>
             </Container>
         </Page>
     );
