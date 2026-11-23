@@ -390,7 +390,7 @@ const AdminPage = () => {
 
     if (!hasAdminAccess) {
         return (
-            <Page layout="flex" align="center" justify="center" background="dots" backgroundFade="bottom">
+            <Page layout="flex" align="center" justify="center">
                 <State page icon="FiLock" color="error" title="Access denied" message="You need the Admin or Owner role to open this page.">
                     <Button size="sm" onClick={() => navigate('/chat')}><Icon name="FiMessageSquare" />Open Chat</Button>
                 </State>
@@ -432,7 +432,7 @@ const AdminPage = () => {
             title="Admin"
             lead="Check the server, the cache, accounts, logs and email."
             gap="xl"
-            background="dots"
+            background="graph"
             backgroundFade="bottom"
             actions={
                 <>

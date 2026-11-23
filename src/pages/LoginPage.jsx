@@ -14,7 +14,7 @@ import {
 
 // The one frame of the sign-in, sign-up and password pages: the name, what this step is, the form, then the way out.
 export const AuthCard = ({ title, lead = null, maxWidth = '440px', footer = null, children, ...form }) => (
-  <Page layout="flex" align="center" justify="center" background="dots" backgroundFade="radial">
+  <Page layout="flex" align="center" justify="center" background="rings" backgroundFade="radial">
     <Card layout="flex-column" padding="xl" gap="lg" width="100%" maxWidth={maxWidth} wrap={false}>
       <Container layout="flex-column" gap="sm" padding="none" width="100%" wrap={false}>
         <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>

@@ -726,7 +726,7 @@ const ToolsPage = () => {
             : null;
 
     return (
-        <Page title="Tools" lead={lead} actions={mainAction} layout="flex-column" gap="xl" background="dots" backgroundFade="bottom">
+        <Page title="Tools" lead={lead} actions={mainAction} layout="flex-column" gap="xl" background="plus" backgroundFade="bottom">
             <ButtonGroup size="sm" selectable={false} wrap>
                 <Button size="sm" selected={view === 'remote'} onClick={() => pick('remote')}><Icon name="FiGlobe" />Remote{remotes.length > 0 ? ` (${remotes.length})` : ''}</Button>
                 <Button size="sm" selected={view === 'local'} onClick={() => pick('local')}><Icon name="FiMonitor" />Local{locals.length > 0 ? ` (${locals.length})` : ''}</Button>

@@ -108,8 +108,6 @@ const DashboardPage = () => {
             title={`${greeting()}, ${user?.firstName || user?.username || 'there'}`}
             lead={today}
             gap="xl"
-            background="dots"
-            backgroundFade="bottom"
             actions={(
                 <Container layout="flex" align="center" gap="sm" padding="none" wrap={false}>
                     <Button size="sm" onClick={() => navigate('/models')}><Icon name="FiBox" />Models</Button>

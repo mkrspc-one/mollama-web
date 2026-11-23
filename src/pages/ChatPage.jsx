@@ -1541,6 +1541,8 @@ const LiveClock = () => {
 };
 
 // What the model is writing into a function call, shown as it arrives: the end of a program, a page or a figure.
+// How long a chat is open before another, idle model makes way for its own.
+const SWAP_AFTER_MS = 2000;
 const DRAFT_TAIL = 1600;
 // The call arrives as JSON, so the escapes inside its strings are turned back into the characters they stand for.
 const readableDraft = (text) => String(text).replace(/\\n/g, '\n').replace(/\\t/g, '  ').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
@@ -1867,8 +1869,18 @@ const ChatPage = () => {
     };
 
     useEffect(() => {
-        if (modelsLoaded && currentModel) modelService.loadModel(currentModel).catch(() => {});
-    }, [modelsLoaded, currentModel]);
+        if (!modelsLoaded || !currentModel) return undefined;
+        // Another, idle model makes way only for a chat that stays open, so clicking through chats loads nothing.
+        let timer = null;
+        let left = false;
+        modelService.loadModel(currentModel).then((result) => {
+            if (result?.inPlace && !left) timer = setTimeout(() => modelService.loadModel(currentModel, true).catch(() => {}), SWAP_AFTER_MS);
+        }).catch(() => {});
+        return () => {
+            left = true;
+            clearTimeout(timer);
+        };
+    }, [modelsLoaded, currentModel, currentDevice]);
 
     useEffect(() => {
         if (followRef.current) bottomRef.current?.scrollIntoView({ block: 'end' });

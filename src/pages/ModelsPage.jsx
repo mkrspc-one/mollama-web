@@ -1284,7 +1284,7 @@ const ModelsPage = () => {
             lead={device ? `Find, download and manage AI models on ${device.name}.` : 'Find, download and manage AI models.'}
             layout="flex-column"
             gap="xl"
-            background="dots"
+            background="grid"
             backgroundFade="bottom"
             actions={(
                 <Container layout="flex" gap="sm" padding="none" align="center" justify="end">

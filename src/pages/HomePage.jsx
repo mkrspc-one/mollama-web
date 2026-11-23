@@ -500,7 +500,7 @@ const HomePage = () => {
         <Page
             frame
             gap="4xl"
-            background="dots"
+            background="glow"
             backgroundFade="bottom"
             brand={<Wordmark />}
             actions={(
@@ -618,7 +618,7 @@ export const DesktopHome = () => {
     const { user } = useAuth();
     if (user) return <Navigate to="/dashboard" replace />;
     return (
-        <Page layout="flex" align="center" justify="center" background="dots" backgroundFade="radial">
+        <Page layout="flex" align="center" justify="center">
             <Card layout="flex-column" padding="xl" align="center" gap="lg" width="100%" maxWidth="420px">
                 <Wordmark />
                 <Container layout="flex-column" align="center" gap="xs" padding="none" width="100%" wrap={false}>

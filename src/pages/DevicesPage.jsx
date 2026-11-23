@@ -761,7 +761,7 @@ const DevicesPage = () => {
             title="Devices"
             lead={`The computers that run your AI models. Mollama reads each one so it can tell you which models fit.${devices && !canManage ? " Only an admin or owner can correct a device's details." : ''}`}
             gap="xl"
-            background="dots"
+            background="hex"
             backgroundFade="bottom"
             actions={(
                 <Container layout="flex" align="center" gap="sm" padding="none" wrap={false}>

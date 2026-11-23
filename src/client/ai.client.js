@@ -455,7 +455,7 @@ export const modelService = {
     // A removal or download names the computer the person confirmed; the server refuses one that names none.
     deleteModel: (name, deviceId) => api.post('/models/delete', { name }, onDevice(deviceId)),
     unloadModel: (name) => api.post('/models/unload', { name }, onViewed()),
-    loadModel: (name) => api.post('/models/load', name ? { name } : {}, onDevice(chatDevice)),
+    loadModel: (name, swap = false) => api.post('/models/load', { ...(name ? { name } : {}), ...(swap ? { swap } : {}) }, onDevice(chatDevice)),
     createModel: (request) => api.post('/models/create', request, onViewed()),
     updateModel: (request) => api.post('/models/update', request, onViewed()),
 

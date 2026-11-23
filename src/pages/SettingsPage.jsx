@@ -951,8 +951,6 @@ const SettingsPage = () => {
             lead={user?.username ? `Signed in as ${user.username}.` : 'Your account and this install.'}
             layout="flex-column"
             gap="xl"
-            background="dots"
-            backgroundFade="bottom"
         >
             <ButtonGroup size="sm" selectable={false} wrap>
                 {TABS.map((item) => (
