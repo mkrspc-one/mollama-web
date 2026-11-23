@@ -3,7 +3,7 @@ import axios from 'axios';
 import { useAuth } from '@contexts/AuthContext';
 import { useNotification } from '@contexts/NotificationContext';
 import { Button, Container, Icon, Typography } from '@components/Components';
-import { sharedAPI as api, API_BASE_URL, refreshCsrfToken, appService } from './app.client.js';
+import { sharedAPI as api, API_BASE_URL, refreshCsrfToken, appService, holdActive } from './app.client.js';
 
 export const guideService = {
     get: () => api.get('/guide'),
@@ -87,6 +87,8 @@ export const ActivityProvider = ({ children }) => {
         }, 3000);
         return () => clearInterval(timer);
     }, [userId, busy, refresh]);
+    // A reply being written or a model being downloaded counts as being here, so the sign-in is not paused under it.
+    useEffect(() => (userId && busy ? holdActive() : undefined), [userId, busy]);
 
     const stopReply = useCallback(async (chatId) => {
         await api.post(`/chats/${chatId}/stop`, {}).catch(() => {});
@@ -519,16 +521,21 @@ const csrfToken = async () => document.cookie.match(/(?:^|; )csrfToken=([^;]+)/)
 const readEvents = async (response, onEvent) => {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    const release = holdActive();
     let buffer = '';
-    for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-        for (const line of lines) {
-            if (line.trim()) onEvent(JSON.parse(line));
+    try {
+        for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+                if (line.trim()) onEvent(JSON.parse(line));
+            }
         }
+    } finally {
+        release();
     }
 };
 
