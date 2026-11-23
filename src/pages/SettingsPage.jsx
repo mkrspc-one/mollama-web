@@ -609,7 +609,7 @@ const RolesTab = ({ user }) => {
     );
 };
 
-const BUILT_IN = ['modern', 'dark', 'minimal', 'vibrant', 'admin', 'pink'];
+const BUILT_IN = ['modern', 'minimal', 'vibrant', 'admin', 'pink', 'terminal', 'brutalist', 'chalkboard', 'blueprint', 'darkroom'];
 const COLOR_FIELDS = [
     ['primary', 'Primary'], ['primaryAccent', 'Primary accent'],
     ['secondary', 'Secondary'], ['secondaryAccent', 'Secondary accent'],
@@ -796,7 +796,7 @@ const ThemeCard = ({ doc, applied, onApply, onFork, onEdit, onDelete }) => (
 );
 
 const AppearanceTab = ({ user }) => {
-    const { currentTheme, switchTheme, applyCustomTheme, clearCustomTheme, customTheme, themes } = useTheme();
+    const { currentTheme, mode, setMode, switchTheme, applyCustomTheme, clearCustomTheme, customTheme, themes } = useTheme();
     const { success, error: notifyError } = useNotification();
     const [presets, setPresets] = useState([]);
     const [mine, setMine] = useState([]);
@@ -868,7 +868,8 @@ const AppearanceTab = ({ user }) => {
 
     return (
         <Container layout="flex-column" gap="3xl" padding="none" width="100%">
-            <Section title="Built-in themes" note="Use one as it is, or copy it as the start of your own.">
+            <Section title="Built-in themes" note="Use one as it is, or copy it as the start of your own. Every theme has a light and a dark variant.">
+                <Switch size="sm" label={`Use the dark variant of ${themes?.[currentTheme]?.name || 'this theme'}`} checked={mode === 'dark'} onChange={() => setMode(mode === 'dark' ? 'light' : 'dark')} />
                 <Container layout="grid" columns="auto" gap="md" padding="none" width="100%">
                     {BUILT_IN.map((slug) => {
                         const preset = presets.find((doc) => doc.slug === slug);

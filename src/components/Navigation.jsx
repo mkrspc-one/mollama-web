@@ -2,8 +2,10 @@
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@contexts/AuthContext';
 import { useTheme } from '@contexts/ThemeContext';
+import { GALLERY_THEMES } from '../styles/theme.gallery.js';
+import { loadThemeFonts } from '../styles/theme.compiler.js';
 import { NotificationsMenu } from './AppNotifications';
-import { Badge, Button, ButtonGroup, CircularProgress, Container, Divider, FloatingActionButton, Icon, Page, ProgressBar, Typography } from './Components';
+import { Badge, Button, ButtonGroup, CircularProgress, Container, Divider, FloatingActionButton, Icon, Page, ProgressBar, Switch, Typography } from './Components';
 import { useGuide, useActivity } from '../client/ai.client';
 
 // What is running, said with the colour that matches its state: starting and running use the tertiary colour, a wait is amber, a failure is red and a finished job is green.
@@ -103,7 +105,7 @@ export const Navigation = ({
                                ...props
                            }) => {
     const {user, isLoading, logout, hasRole} = useAuth();
-    const {currentTheme, switchTheme, availableThemes, themes} = useTheme();
+    const {currentTheme, mode, setMode, switchTheme, availableThemes, themes} = useTheme();
     const navigate = useNavigate();
 
     // Navigation menu items based on authentication and roles
@@ -361,11 +363,11 @@ export const Navigation = ({
             <Divider margin="none" />
             <Container layout="flex-column" gap="xs" padding="none" width="100%">
                 <Typography as="p" size="xxs" color="muted">Theme</Typography>
-                <ButtonGroup size="xs" wrap>
+                <ButtonGroup size="xs" spaced justify="start" width="100%" maxWidth="440px">
                     {availableThemes.map(themeName => (
                         <Button
                             key={themeName}
-                            size="xs"
+                            theme={themeName}
                             selected={currentTheme === themeName}
                             onClick={() => handleThemeChange(themeName)}
                         >
@@ -373,6 +375,7 @@ export const Navigation = ({
                         </Button>
                     ))}
                 </ButtonGroup>
+                <Switch size="xs" label={`Dark ${themes[currentTheme]?.name || 'theme'}`} checked={mode === 'dark'} onChange={() => setMode(mode === 'dark' ? 'light' : 'dark')} />
             </Container>
 
             {user && (
@@ -404,6 +407,7 @@ export const Navigation = ({
             badge={busyCount + finished.length > 0 ? String(runningCount) : null}
             badgeColor={runningColor}
             theme={theme}
+            onGenieShow={() => GALLERY_THEMES.forEach(loadThemeFonts)}
             genie={{
                 trigger: 'click',
                 content: genieContent,
