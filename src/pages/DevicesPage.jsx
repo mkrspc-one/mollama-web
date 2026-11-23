@@ -20,7 +20,7 @@ const POOL_GUIDE = {
             'Install the Mollama desktop app on every computer you want to pool, and sign in with this account on each.',
             'Put them on the same home network, by cable if you can, or connect two of them with a direct network cable.',
             'Mollama finds the computers that can pool by itself and lists them here.',
-            'Choose each computer\'s part below. The first time, the desktop app on that computer asks before it sets pooling up.',
+            'Choose each computer\'s part in the pooling list. The first time, the desktop app on that computer asks before it sets pooling up.',
             'Choose the primary computer, which holds the model and runs it: the one with the largest graphics card, and room on its disk for the model. Set the others as secondary computers, which lend it their memory.',
             'Download the model on the primary computer, then choose the pool in a chat.'
         ]
@@ -158,14 +158,12 @@ const GuideRows = ({ items, mark = null, size = 'sm' }) => (
     </Container>
 );
 
-const PoolGuide = ({ onBack }) => {
+const PoolGuide = () => {
     const [tab, setTab] = useState('steps');
     const part = POOL_GUIDE[tab];
     return (
         <Container as="section" layout="flex-column" gap="md" padding="none" width="100%" minWidth="0">
-            <Heading title="Pooling, step by step">
-                <Button size="sm" variant="ghost" onClick={onBack}><Icon name="FiArrowLeft" />Back to the summary</Button>
-            </Heading>
+            <Heading title="Pooling, step by step" />
             <ButtonGroup size="sm" justify="start" selectable={false}>
                 {Object.entries(POOL_GUIDE).map(([key, one]) => (
                     <Button key={key} size="sm" selected={tab === key} onClick={() => setTab(key)}>{one.label}</Button>
@@ -180,28 +178,6 @@ const PoolGuide = ({ onBack }) => {
         </Container>
     );
 };
-
-// The same guide as plain text under the pool itself. Wiring is long and is read beside its drawing.
-const POOL_NOTES = ['steps', 'benefits', 'risks', 'tips'];
-const PoolNotes = ({ onDrawings }) => (
-    <Container layout="flex-column" gap="lg" padding="none" width="100%" minWidth="0">
-        {POOL_NOTES.map((key) => (
-            <React.Fragment key={key}>
-                <Divider />
-                <Container layout="flex" align="start" gap="lg" padding="none" width="100%">
-                    <Typography as="h3" size="sm" weight="semibold" width="12rem">{POOL_GUIDE[key].label}</Typography>
-                    <Container padding="none" flexFill minWidth="17rem" maxWidth="760px">
-                        <GuideRows items={POOL_GUIDE[key].items} mark={POOL_MARK[key]} />
-                    </Container>
-                </Container>
-            </React.Fragment>
-        ))}
-        <Divider />
-        <Container layout="flex" padding="none" width="100%">
-            <Button size="sm" onClick={onDrawings}>Show the wiring guide and drawings<Icon name="FiArrowRight" /></Button>
-        </Container>
-    </Container>
-);
 
 // Windows marks a network Public until told otherwise, and Mollama never pools on one. This is how a person changes it.
 const PRIVATE_STEPS = [
@@ -687,7 +663,6 @@ const DevicesPage = () => {
     const [canManage, setCanManage] = useState(false);
     const [failed, setFailed] = useState(false);
     const [pools, setPools] = useState(null);
-    const [drawings, setDrawings] = useState(false);
     // Two views: the computers themselves, and pooling them. The address says which, so other pages can link to pooling.
     const [params, setParams] = useSearchParams();
     const view = params.get('view') === 'pooling' ? 'pooling' : 'computers';
@@ -780,7 +755,6 @@ const DevicesPage = () => {
     };
 
     const addComputer = { trigger: 'click', variant: 'popover', width: '480px', padding: 'lg', content: <AddComputer /> };
-    const pooling = drawings ? <PoolGuide onBack={() => setDrawings(false)} /> : <PoolNotes onDrawings={() => setDrawings(true)} />;
 
     return (
         <Page
@@ -817,8 +791,8 @@ const DevicesPage = () => {
             )}
 
             {view === 'pooling' && (devices?.length > 0
-                ? <PoolSection pools={pools} onPart={setPoolPart} onCheck={checkPools} checking={poolCheck.checking} checkedAt={poolCheck.at}>{pooling}</PoolSection>
-                : pooling)}
+                ? <PoolSection pools={pools} onPart={setPoolPart} onCheck={checkPools} checking={poolCheck.checking} checkedAt={poolCheck.at}><PoolGuide /></PoolSection>
+                : <PoolGuide />)}
 
             {view === 'computers' && devices?.length > 0 && (
                 <Container layout="grid" columns="auto-lg" gap="lg" align="stretch" padding="none" width="100%">
