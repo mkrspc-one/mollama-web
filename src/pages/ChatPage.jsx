@@ -1634,6 +1634,7 @@ const ChatPage = () => {
         }
     }, []);
     const [live, setLive] = useState(null);
+    const [heavy, setHeavy] = useState(null);
     const [pop, setPop] = useState(null);
     const [view, setView] = useState('main');
     const [skillShelf, setSkillShelf] = useState('library');
@@ -1833,7 +1834,9 @@ const ChatPage = () => {
         if (has(wanted)) return wanted;
         const remembered = pickerMemory.choice(deviceId);
         if (has(remembered)) return remembered;
-        return list[0]?.name || null;
+        // With nothing chosen yet, a model that runs well here, never one too large just because it is listed first.
+        const start = list.find((model) => ['gpu', 'cpu'].includes(model.fit?.verdict)) || list.find((model) => model.fit?.fits) || list[0];
+        return start?.name || null;
     };
     const currentModel = models.length > 0 ? pickModel(models, currentDevice, chat?.model || draftModel) : chat?.model || draftModel;
 
@@ -2136,7 +2139,23 @@ const ChatPage = () => {
         return () => clearInterval(timer);
     }, []);
 
+    // A message refused because its model is too large for the computer's memory waits for the person's word.
+    const refuse = (target, body, shownText, error) => {
+        const data = error.response?.data;
+        if (data?.code === 'NOT_ENOUGH_MEMORY') setHeavy({ chatId: target.id, model: target.model || currentModel, body, shownText, detail: data.detail || data.message });
+        else notifyError(describeError(error, 'The message could not be sent.'));
+        if (shownText && !body.regenerate && body.editIndex === undefined) setText(shownText);
+    };
+    const runAnyway = () => {
+        const { body, shownText } = heavy;
+        const fresh = !body.regenerate && body.editIndex === undefined;
+        const content = fresh ? text.trim() || body.content : body.content;
+        if (fresh) setText('');
+        runTurn(chat, { ...body, ...(content ? { content } : {}), anyway: true }, fresh ? content : shownText);
+    };
+
     const runTurn = async (target, body, shownText) => {
+        setHeavy(null);
         const state = { userText: shownText, editIndex: body.editIndex, regenerate: Boolean(body.regenerate), content: '', thinking: '', ahead: null, started: false };
         if (appService.notificationsConnected()) {
             followLive(target, state);
@@ -2150,8 +2169,7 @@ const ChatPage = () => {
                 stopFollowing();
                 const refusedLive = error.response?.status === 400 && /live/i.test(error.response.data?.message || '');
                 if (!refusedLive && error.response) {
-                    notifyError(describeError(error, 'The message could not be sent.'));
-                    if (shownText && !body.regenerate && body.editIndex === undefined) setText(shownText);
+                    refuse(target, body, shownText, error);
                     settle(target);
                     return;
                 }
@@ -2181,8 +2199,7 @@ const ChatPage = () => {
         abortRef.current = null;
 
         if (failure?.response) {
-            notifyError(describeError(failure, 'The message could not be sent.'));
-            if (shownText && !body.regenerate && body.editIndex === undefined) setText(shownText);
+            refuse(target, body, shownText, failure);
         } else if (failure) {
             joinReply(target);
             return;
@@ -2718,6 +2735,19 @@ const ChatPage = () => {
                     </Centered>
                     </Container>
                 <Centered>
+                    {heavy && heavy.chatId === chat?.id && heavy.model === currentModel && !busy && (
+                        <Notice
+                            icon="FiAlertTriangle"
+                            tone="warning"
+                            role="status"
+                            actions={<>
+                                <Button size="xs" onClick={() => setHeavy(null)}>Not now</Button>
+                                <Button size="xs" color="warning" onClick={runAnyway}>Run it anyway</Button>
+                            </>}
+                        >
+                            {heavy.detail} Your message was not sent. Pick a smaller model, or close large apps first.
+                        </Notice>
+                    )}
                     {context?.warn && !busy && chat.messages.length > 0 && (
                         <Notice icon="FiArchive" tone="warning" role="status">This chat is {context.percent}% full. Older messages are compressed into a memory as you go, so you can keep going here.</Notice>
                     )}
