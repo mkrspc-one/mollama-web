@@ -13,6 +13,7 @@ const APP_ICONS = {
     'monday.com': 'TbBrandMonday', GitHub: 'SiGithub', GitLab: 'SiGitlab', Sentry: 'SiSentry', Netlify: 'SiNetlify', Cloudflare: 'SiCloudflare', 'Cloudflare Docs': 'SiCloudflare',
     Supabase: 'SiSupabase', Neon: 'SiNeon', PostHog: 'SiPosthog', Context7: 'SiUpstash', Miro: 'SiMiro', Webflow: 'SiWebflow', Wix: 'SiWix', 'WordPress.com': 'SiWordpress',
     Calendly: 'SiCalendly', Stripe: 'SiStripe', 'Hugging Face': 'SiHuggingface', Zapier: 'SiZapier', Make: 'SiMake',
+    Recraft: 'FiImage', fal: 'FiImage', Runway: 'FiVideo', invideo: 'FiVideo', HeyGen: 'FiVideo', Synthesia: 'FiVideo', Higgsfield: 'FiVideo', ScrapeCreators: 'FiMessageCircle',
     DeepWiki: 'FiBookOpen', Exa: 'FiSearch', Firecrawl: 'FiSearch', Tavily: 'FiSearch',
     Blender: 'SiBlender', 'Chrome DevTools': 'SiGooglechrome', Playwright: 'FiMousePointer', Docker: 'SiDocker', Xcode: 'SiXcode', Godot: 'SiGodotengine', FreeCAD: 'SiFreecad',
     'Ableton Live': 'FiMusic', 'Files on this computer': 'FiFolder', 'Excel files': 'FiGrid', Git: 'SiGit', 'Fetch a web page': 'FiDownloadCloud', Memory: 'FiDatabase',
@@ -769,6 +770,7 @@ const ToolsPage = () => {
                                         )}
                                     >
                                         <Typography as="p" size="xxs" color="muted">{entry.does}.</Typography>
+                                        {entry.cost && <Typography as="p" size="xxs" color="muted">{entry.cost}</Typography>}
                                     </ItemCard>
                                 ))}
                             </Container>
