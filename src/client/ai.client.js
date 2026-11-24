@@ -17,7 +17,7 @@ export const GUIDE_TEXT = {
     'nav.devices': ['Devices', 'What Mollama reads from this computer: graphics card, memory and free disk.'],
     'nav.settings': ['Settings', 'Your account, sign-in security, themes, and how Mollama reaches Ollama.'],
     'chat.send': ['Sending a message', 'The reply is written on this computer and keeps going if you leave the page. You can send another message while it is being written; it waits its turn.'],
-    'chat.new': ['New chat', 'Starts an empty conversation. The earlier ones stay in the list on the left.'],
+    'chat.new': ['New chat', 'Starts an empty conversation. The earlier ones stay in the list behind this button.'],
     'models.installed': ['Installed', 'The models already on this device, with their size on disk.'],
     'models.running': ['Running', 'Models loaded in memory right now. They unload by themselves after a few minutes.'],
     'models.mine': ['My models', 'An installed model with your own instructions built in, saved under its own name.'],
@@ -258,6 +258,9 @@ export const toolService = {
 
 export const deviceService = {
     listDevices: () => api.get('/devices'),
+    // What every computer holds in memory, and taking one model out of it.
+    memory: () => api.get('/devices/memory'),
+    freeMemory: (id, model, options = {}) => api.post(`/devices/${id}/memory`, { model, ...options }),
     pools: () => api.get('/devices/pools'),
     checkPools: () => api.post('/devices/pools/check', {}),
     setPoolRole: (id, role) => api.put(`/devices/${id}/pool`, { role }),

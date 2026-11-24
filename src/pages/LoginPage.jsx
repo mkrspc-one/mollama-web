@@ -39,6 +39,13 @@ export const LoginPage = () => {
     password: ''
   });
   const [isLoading, setIsLoading] = useState(false);
+  // Continuing takes this long only when the server is still starting.
+  const [waking, setWaking] = useState(false);
+  useEffect(() => {
+    if (!isLoading) return undefined;
+    const timer = setTimeout(() => setWaking(true), 4000);
+    return () => { clearTimeout(timer); setWaking(false); };
+  }, [isLoading]);
   const [twoFactorStep, setTwoFactorStep] = useState(false);
   const [twoFactorToken, setTwoFactorToken] = useState('');
   const { login, resume, continueSession, signOutAway } = useAuth();
@@ -103,7 +110,7 @@ export const LoginPage = () => {
     return (
       <AuthCard
         title="You were away for a while"
-        lead="Continue where you left off. No password is needed."
+        lead={waking ? 'The server is starting. This can take a minute or two.' : 'Continue where you left off. No password is needed.'}
         onSubmit={(event) => { event.preventDefault(); carryOn(); }}
         footer={(
           <Button size="sm" variant="ghost" disabled={isLoading} onClick={signOutAway}>

@@ -3,6 +3,188 @@ import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, In
 import { useNotification } from '@contexts/NotificationContext';
 import { deviceService, modelService, providerService, describeError, useGuide, onReturn } from '../client/ai.client';
 
+const MEMORY_EVERY_MS = 4000;
+const STATE_BADGES = { answering: ['Answering', 'success'], waiting: ['Waiting its turn', 'tertiary'], loading: ['Loading', 'warning'], idle: ['Idle', 'default'] };
+const ROLE_BADGES = { main: 'Primary computer', lend: 'Secondary computer' };
+const sizeText = (mb) => (mb >= 1000 ? `${(mb / 1024).toFixed(mb >= 10240 ? 0 : 1)} GB` : `${Math.round(mb)} MB`);
+const spanText = (ms) => {
+    const seconds = Math.max(0, Math.round(ms / 1000));
+    if (seconds < 60) return `${seconds} s`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes} min ${seconds % 60} s`;
+    return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+};
+const clockText = (at) => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+// What a model is doing, in one line.
+const activityText = (model, now) => {
+    if (model.state === 'loading') return model.source === 'pool' ? 'Being loaded across the pool. This can take a few minutes.' : 'Being loaded into memory.';
+    const chat = model.chat ? `“${model.chat.title}”` : 'a chat';
+    if (model.state === 'waiting') return `A reply in ${chat} is waiting its turn.`;
+    if (model.state === 'answering') {
+        const words = model.progress?.words || 0;
+        return `${words > 0 ? `${words.toLocaleString()} words written in` : model.progress?.phase === 'thinking' ? 'Thinking in' : model.progress?.phase === 'searching' || model.progress?.phase === 'reading' ? 'Using the web in' : 'Reading the message in'} ${chat}${model.replies > 1 ? `, and ${model.replies - 1} more` : ''}.`;
+    }
+    const idle = model.usedAt ? `Idle for ${spanText(now - model.usedAt)}, last used at ${clockText(model.usedAt)}` : 'Idle';
+    return model.endsAt && model.endsAt > now ? `${idle}. Leaves memory in ${spanText(model.endsAt - now)}.` : `${idle}.`;
+};
+const placeText = (model) => {
+    const parts = [];
+    if (model.gpuMb > 0) parts.push(`${sizeText(model.gpuMb)} graphics memory`);
+    if (model.ramMb > 0) parts.push(`${sizeText(model.ramMb)} system memory`);
+    if (parts.length === 0 && model.sizeMb) parts.push(model.source === 'pool' ? `${sizeText(model.sizeMb)} model file` : sizeText(model.sizeMb));
+    if (model.source === 'pool') parts.push(model.helpers.length ? `pooled with ${model.helpers.join(', ')}` : 'pooled');
+    if (model.context) parts.push(`${model.context.toLocaleString()} tokens of context`);
+    return parts.join(' · ');
+};
+
+// One model in memory: what it is, what it takes, what it is doing, and the way to remove it.
+export const MemoryRow = ({ model, now, where = null, busy = false, onRemove }) => {
+    const [label, color] = STATE_BADGES[model.state] || STATE_BADGES.idle;
+    const working = model.state === 'answering' || model.state === 'waiting';
+    return (
+        <Container layout="flex" wrap={false} align="start" justify="between" gap="sm" padding="none" width="100%">
+            <Container layout="flex-column" gap="none" padding="none" flexFill minWidth="0">
+                <Container layout="flex" align="center" gap="xs" padding="none" width="100%">
+                    <Typography as="span" size="xs" weight="semibold">{model.displayName}</Typography>
+                    <Badge size="xxs" color={color}>{label}</Badge>
+                    {model.source === 'pool' && <Badge size="xxs" color="tertiary">Pool</Badge>}
+                </Container>
+                <Typography as="p" size="xxs">{activityText(model, now)}</Typography>
+                <Typography as="p" size="xxs" color="muted">{[where, model.name, placeText(model)].filter(Boolean).join(' · ')}</Typography>
+            </Container>
+            <Button
+                size="xs"
+                variant="ghost"
+                color={working ? 'error' : 'primary'}
+                disabled={busy || model.state === 'loading' && model.source !== 'pool'}
+                title={working ? 'Stops the reply it is writing, then removes the model from memory' : 'Removes the model from memory. It loads again when a chat uses it.'}
+                onClick={() => onRemove(model, working)}
+            >
+                {busy ? 'Removing…' : working ? 'Stop and remove' : 'Remove'}
+            </Button>
+        </Container>
+    );
+};
+
+const MemoryMeter = ({ label, totalMb, freeMb }) => {
+    if (!totalMb) return null;
+    const known = freeMb !== null && freeMb !== undefined;
+    const used = known ? Math.max(0, totalMb - freeMb) : 0;
+    const percent = known ? Math.round((used / totalMb) * 100) : 0;
+    return (
+        <Container layout="flex-column" gap="xs" padding="none" flexFill minWidth="180px">
+            <Container layout="flex" wrap={false} align="center" justify="between" gap="xs" padding="none" width="100%">
+                <Typography size="xxs" color="muted">{label}</Typography>
+                <Typography size="xxs">{known ? `${sizeText(freeMb)} free of ${sizeText(totalMb)}` : `${sizeText(totalMb)} in all`}</Typography>
+            </Container>
+            {known && <ProgressBar size="xs" width="100%" value={percent} color={percent >= 90 ? 'error' : percent >= 75 ? 'warning' : 'primary'} aria-label={`${label}: ${percent}% used`} />}
+        </Container>
+    );
+};
+
+// What is in memory on each of the person's computers, kept up to date while it is on screen. With `only`, one computer.
+export const MemoryManager = ({ only = null }) => {
+    const { success, error: notifyError } = useNotification();
+    const [state, setState] = useState(null);
+    const [failed, setFailed] = useState(null);
+    const [busy, setBusy] = useState([]);
+    const [now, setNow] = useState(() => Date.now());
+    const ask = useRef(0);
+
+    const load = useCallback(async () => {
+        const turn = ++ask.current;
+        try {
+            const result = await deviceService.memory();
+            if (turn !== ask.current) return;
+            // The computers' clocks and this one may differ, so times are kept against the server's.
+            setState({ ...result, ahead: result.at - Date.now() });
+            setFailed(null);
+        } catch (error) {
+            // A server without this yet takes the address for a computer's id, or knows no such page.
+            const older = [400, 404].includes(error?.response?.status);
+            if (turn === ask.current) setFailed(older ? 'The server does not have the memory view yet. It works once the server is updated.' : describeError(error, 'What is in memory could not be read.'));
+        }
+    }, []);
+
+    useEffect(() => {
+        load();
+        const poll = setInterval(load, MEMORY_EVERY_MS);
+        const tick = setInterval(() => setNow(Date.now()), 1000);
+        return () => {
+            clearInterval(poll);
+            clearInterval(tick);
+            ask.current += 1;
+        };
+    }, [load]);
+
+    const keyOf = (computer, model) => `${computer.id} ${model.source} ${model.name}`;
+    const remove = async (computer, model, stop) => {
+        const key = keyOf(computer, model);
+        setBusy((list) => [...list, key]);
+        try {
+            const result = await deviceService.freeMemory(computer.id, model.name, { ...(model.source === 'pool' ? { pooled: true } : {}), ...(stop ? { stop: true } : {}) });
+            if (result.removed) success(`${model.displayName} was removed from memory on ${computer.name}.`);
+            else notifyError(`${model.displayName} is still in memory on ${computer.name}. Try again in a moment.`);
+        } catch (error) {
+            notifyError(describeError(error, 'The model could not be removed.'));
+        } finally {
+            setBusy((list) => list.filter((one) => one !== key));
+            load();
+        }
+    };
+
+    if (!state) return failed ? <Typography size="xs" color="error">{failed}</Typography> : <Loading text="Checking what is in memory…" />;
+    const at = now + state.ahead;
+    const computers = state.computers.filter((one) => !only || one.id === only);
+    const idle = computers.flatMap((computer) => computer.models.filter((model) => model.state === 'idle').map((model) => ({ computer, model })));
+    return (
+        <Container layout="flex-column" gap="md" padding="none" width="100%" minWidth="0">
+            {failed && <Typography size="xxs" color="warning">{`${failed} Showing what was last read.`}</Typography>}
+            {computers.length === 0 && <Typography size="xs" color="muted">No computer is linked yet. Add one on the Devices page.</Typography>}
+            {computers.map((computer, index) => (
+                <Fragment key={computer.id}>
+                    {index > 0 && <Divider />}
+                    <Container layout="flex-column" gap="sm" padding="none" width="100%" minWidth="0">
+                        <Container layout="flex" align="center" gap="xs" padding="none" width="100%">
+                            <Icon name="FiMonitor" size="xs" />
+                            <Typography as="h3" size="sm" weight="semibold">{computer.name}</Typography>
+                            {!computer.online && <Badge size="xxs">Offline</Badge>}
+                            {computer.paused && <Badge size="xxs" color="warning">Paused</Badge>}
+                            {ROLE_BADGES[computer.role] && <Badge size="xxs" color="tertiary">{ROLE_BADGES[computer.role]}</Badge>}
+                        </Container>
+                        {computer.online && !computer.paused && (
+                            <>
+                                <Container layout="flex" align="start" gap="md" padding="none" width="100%">
+                                    {computer.gpuShared
+                                        ? <MemoryMeter label="Memory, shared with graphics" totalMb={computer.memory.totalMb} freeMb={computer.memory.freeMb} />
+                                        : (
+                                            <>
+                                                <MemoryMeter label={computer.gpuName || 'Graphics memory'} totalMb={computer.memory.gpuTotalMb} freeMb={computer.memory.gpuFreeMb} />
+                                                <MemoryMeter label="System memory" totalMb={computer.memory.totalMb} freeMb={computer.memory.freeMb} />
+                                            </>
+                                        )}
+                                </Container>
+                                {computer.lending && <Typography as="p" size="xxs" color="muted">{`Lending memory to ${computer.lending.main}, which is running ${computer.lending.displayName}.`}</Typography>}
+                                {!computer.answered && <Typography as="p" size="xxs" color="warning">Ollama did not answer here, so its models cannot be listed right now.</Typography>}
+                                {computer.answered && computer.models.length === 0 && <Typography as="p" size="xs" color="muted">No model is in memory.</Typography>}
+                                {computer.models.map((model) => (
+                                    <MemoryRow key={keyOf(computer, model)} model={model} now={at} busy={busy.includes(keyOf(computer, model))} onRemove={(one, stop) => remove(computer, one, stop)} />
+                                ))}
+                            </>
+                        )}
+                    </Container>
+                </Fragment>
+            ))}
+            <Divider />
+            <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%">
+                <Typography as="p" size="xxs" color="muted">{`An idle model leaves memory after ${state.keepAliveMinutes === 0 ? 'its reply' : `${state.keepAliveMinutes} min`}, a pooled one after ${state.poolIdleMinutes} min.`}</Typography>
+                {idle.length > 1 && <Button size="xs" onClick={() => idle.forEach(({ computer, model }) => remove(computer, model, false))}>{`Remove all ${idle.length} idle`}</Button>}
+            </Container>
+        </Container>
+    );
+};
+
 const TABS = [
     { id: 'discover', label: 'Discover' },
     { id: 'installed', label: 'Installed' },
@@ -725,42 +907,6 @@ const InstalledTab = ({ installed, canManage, onDelete, elsewhere = {} }) => {
     );
 };
 
-const RunningTab = ({ running, canManage, onUnload }) => {
-    if (!running) return <Loading text="Checking what is loaded…" />;
-    if (running.unavailable) {
-        return <Empty icon="FiAlertCircle" title="Ollama is not running" text="Loaded models cannot be listed until it is started." />;
-    }
-    if (running.models.length === 0) {
-        return <Empty icon="FiMoon" title="No model is loaded in memory" text="A model loads when it is used and is unloaded again after a few minutes." />;
-    }
-
-    return (
-        <Container layout="grid" columns={3} gap="md" padding="none" width="100%" align="stretch">
-            {running.models.map((model) => (
-                <Card key={model.name} layout="flex-column" gap="sm" padding="lg" width="100%" height="100%" minWidth="0" wrap={false}>
-                    <Typography as="h3" size="sm" weight="semibold">{model.displayName}</Typography>
-                    <Typography as="p" size="xs">{gbFromBytes(model.sizeBytes)} in memory</Typography>
-                    <Container layout="flex" gap="xs" padding="none" align="center" width="100%">
-                        {model.healthy && <Badge size="xs" color="success">Fully on GPU</Badge>}
-                        {!model.healthy && model.gpuPercent > 0 && (
-                            <Badge size="xs" color="warning">Partly on CPU, so slower ({model.gpuPercent}% on GPU)</Badge>
-                        )}
-                        {model.gpuPercent === 0 && <Badge size="xs" color="warning">On the processor, so slower</Badge>}
-                    </Container>
-                    {canManage && (
-                        <>
-                            <Container padding="none" flexFill />
-                            <Container layout="flex" align="center" justify="end" gap="xs" padding="none" width="100%">
-                                <Button size="sm" onClick={() => onUnload(model)}>Unload</Button>
-                            </Container>
-                        </>
-                    )}
-                </Card>
-            ))}
-        </Container>
-    );
-};
-
 const EMPTY_MODEL_FORM = { displayName: '', from: '', system: '', creativity: 0.7, contextSize: '' };
 
 const ModelFields = ({ form, setForm, bases }) => {
@@ -1015,7 +1161,6 @@ const ModelsPage = () => {
     const [elsewhere, setElsewhere] = useState({});
     const [catalogue, setCatalogue] = useState(null);
     const [installed, setInstalled] = useState(null);
-    const [running, setRunning] = useState(null);
     const [jobs, setJobs] = useState([]);
     const [canManage, setCanManage] = useState(false);
     const statuses = useRef(new Map());
@@ -1087,14 +1232,6 @@ const ModelsPage = () => {
         }
     }, [notifyError]);
 
-    const loadRunning = useCallback(async () => {
-        try {
-            setRunning(await modelService.listRunning());
-        } catch (error) {
-            setRunning({ unavailable: true, models: [] });
-        }
-    }, []);
-
     const loadDevices = useCallback(async () => {
         try {
             const result = await deviceService.listDevices();
@@ -1113,9 +1250,9 @@ const ModelsPage = () => {
     const refresh = useCallback(async () => {
         setRefreshing(true);
         await loadDevices();
-        if (device?.online) await Promise.all([loadInstalled(), loadCatalogue(device.id), loadRecommended(device.id), loadRunning()]);
+        if (device?.online) await Promise.all([loadInstalled(), loadCatalogue(device.id), loadRecommended(device.id)]);
         setRefreshing(false);
-    }, [device, loadDevices, loadInstalled, loadCatalogue, loadRecommended, loadRunning]);
+    }, [device, loadDevices, loadInstalled, loadCatalogue, loadRecommended]);
 
     useEffect(() => {
         return onReturn(() => refreshRef.current());
@@ -1136,7 +1273,6 @@ const ModelsPage = () => {
         setInstalled(null);
         setCatalogue(null);
         setRecommended(null);
-        setRunning(null);
         setJobs([]);
         if (!deviceId || !deviceOnline) return;
         loadInstalled();
@@ -1158,26 +1294,16 @@ const ModelsPage = () => {
         return () => { live = false; };
     }, [devices, deviceId, installed]);
 
-    useEffect(() => {
-        if (tab !== 'running' || !deviceId || !deviceOnline) return undefined;
-        loadRunning();
-        const timer = setInterval(loadRunning, 5000);
-        return () => clearInterval(timer);
-    }, [tab, loadRunning, deviceId, deviceOnline]);
-
     const refreshRef = useRef(() => {});
     useEffect(() => {
         refreshRef.current = refresh;
     }, [refresh]);
 
     useEffect(() => {
-        const reload = () => {
-            refreshRef.current();
-            loadRunning();
-        };
+        const reload = () => refreshRef.current();
         window.addEventListener('ollama-availability-changed', reload);
         return () => window.removeEventListener('ollama-availability-changed', reload);
-    }, [loadRunning]);
+    }, []);
 
     const noteJob = useCallback((job) => {
         const before = statuses.current.get(job.id);
@@ -1264,14 +1390,6 @@ const ModelsPage = () => {
         if (result) {
             success(`${model.displayName} was deleted.`);
             refresh();
-        }
-    };
-
-    const unload = async (model) => {
-        const result = await act(() => modelService.unloadModel(model.name), 'The model could not be unloaded.');
-        if (result) {
-            success(`${model.displayName} was removed from memory.`);
-            loadRunning();
         }
     };
 
@@ -1366,7 +1484,7 @@ const ModelsPage = () => {
                     />
                 )}
                 {device?.online && tab === 'installed' && <InstalledTab installed={installed} canManage={canManage} onDelete={deleteModel} elsewhere={elsewhere} />}
-                {device?.online && tab === 'running' && <RunningTab running={running} canManage={canManage} onUnload={unload} />}
+                {device?.online && tab === 'running' && <MemoryManager only={deviceId} />}
                 {device?.online && tab === 'mine' && (
                     <MineTab installed={installed} canManage={canManage} onCreated={refresh} onDelete={deleteModel} />
                 )}

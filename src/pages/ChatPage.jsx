@@ -15,6 +15,7 @@ import { useNotification } from '@contexts/NotificationContext';
 import { useAuth } from '@contexts/AuthContext';
 import { chatService, deviceService, fileService, modelService, promptService, skillService, pickerMemory, describeError, downloadText, useGuide } from '../client/ai.client';
 import { appService } from '../client/app.client';
+import { MemoryManager, MemoryRow } from './ModelsPage';
 
 const FIT_COLORS = { gpu: 'success', mixed: 'warning', cpu: 'warning', too_large: 'error', cloud: 'primary' };
 const FIRST_MESSAGE = 'Explain what you can help me with in three sentences.';
@@ -93,7 +94,7 @@ const Pop = ({ label, icon, endIcon = null, mark = null, open, onOpen, onClose, 
     return (
         <>
             {fab ? (
-                <FloatingActionButton ref={trigger} icon={icon} position="bottom-right" onClick={toggle} {...button} />
+                <FloatingActionButton ref={trigger} icon={icon} onClick={toggle} {...button} />
             ) : (
                 <Button ref={trigger} size="sm" variant="ghost" selected={open} onClick={toggle} title={iconOnly ? label : undefined} aria-label={iconOnly ? label : undefined} {...button}>
                     {icon && !iconEnd && <Icon name={icon} size="xs" />}
@@ -1616,7 +1617,6 @@ const ChatPage = () => {
     const [modelState, setModelState] = useState(() => ({ device: draftDevice, list: keptModels(draftDevice), loaded: Boolean(pickerMemory.models(draftDevice)) }));
     const modelsAsk = useRef(0);
     const [webSearch, setWebSearch] = useState(false);
-    const [draftSearch, setDraftSearch] = useState(true);
     const [skills, setSkills] = useState([]);
     const [skillSources, setSkillSources] = useState([]);
     const [maxSkills, setMaxSkills] = useState(8);
@@ -1647,7 +1647,6 @@ const ChatPage = () => {
     const [draftTitle, setDraftTitle] = useState('');
     const [exportFile, setExportFile] = useState(null);
     const [wide, setWide] = useState(() => window.innerWidth > 900);
-    const [listOpen, setListOpen] = useState(true);
 
     const abortRef = useRef(null);
     const turnRef = useRef(null);
@@ -1685,7 +1684,7 @@ const ChatPage = () => {
     const busy = Boolean(live);
 
     const openPop = (name) => {
-        setView('main');
+        setView(name === 'setup' ? (skills.length > 0 ? 'skills' : 'main') : 'main');
         setPop(name);
     };
     const closePop = useCallback(() => setPop(null), []);
@@ -1964,11 +1963,27 @@ const ChatPage = () => {
     const mySkillCount = skills.filter((skill) => skill.source === 'mine').length;
     const skillFields = useMemo(() => ({
         skill: { label: 'Skill', component: Typography, props: { weight: 'semibold' } },
-        about: { label: 'About', component: Typography, props: { color: 'muted', size: 'xxs' } },
         project: { label: 'Project', component: Typography, props: { color: 'muted' } },
         works: { label: 'Works', component: Badge, transform: (value) => ({ children: value, color: value === 'Guidance only' ? 'warning' : 'success', title: value === 'Guidance only' ? 'Its guidance works here. Some of its steps need commands or files that Mollama does not have yet.' : 'Everything it asks for is available.' }) },
         tokens: { label: 'Tokens', component: Typography, transform: (value) => ({ children: value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value), color: value > 4000 ? 'warning' : 'muted', title: value > 4000 ? 'A long skill. A small model may not have room for it and its conversation, and may ignore it.' : undefined }) }
     }), []);
+    // A row's own Genie says what the skill is for; the list itself stays one line a skill.
+    const skillGenie = {
+        trigger: 'click',
+        variant: 'popover',
+        width: '420px',
+        padding: 'md',
+        content: (row) => (
+            <Container layout="flex-column" gap="sm" padding="none" width="100%">
+                <Container layout="flex" align="center" gap="xs" padding="none" width="100%">
+                    <Typography as="h3" size="sm" weight="semibold">{row.skill}</Typography>
+                    <Badge size="xxs" color={row.works === 'Guidance only' ? 'warning' : 'success'}>{row.works}</Badge>
+                </Container>
+                <Typography as="p" size="xs">{row.about || 'This skill does not say what it is for.'}</Typography>
+                <Typography as="p" size="xxs" color="muted">{`${row.project} · ${row.tokens.toLocaleString()} tokens${row.works === 'Guidance only' ? ' · some of its steps need commands or files Mollama does not have yet' : ''}`}</Typography>
+            </Container>
+        )
+    };
     // The Data checkboxes see only the shelf on show, so the chosen skills from the other shelf are kept alongside.
     const chooseSkills = (chosen, shown) => {
         const hidden = activeSkills.filter((id) => !skillRows.some((row) => row.id === id));
@@ -1982,25 +1997,11 @@ const ChatPage = () => {
     const toggleSkill = (id) => switchSetup({ skills: activeSkills.includes(id) ? activeSkills.filter((other) => other !== id) : [...activeSkills, id] });
     const savedNote = chat ? 'Saved to this chat as you switch.' : 'Used for this chat from your first message.';
 
-    const searchOn = webSearch && (chat ? chat.webSearch !== false : draftSearch);
-    const toggleSearch = async () => {
-        if (!chat) {
-            setDraftSearch((on) => !on);
-            return;
-        }
-        try {
-            setChat((await chatService.update(chat.id, { webSearch: !searchOn })).chat);
-        } catch (error) {
-            notifyError(describeError(error, 'Web search could not be changed for this chat.'));
-        }
-    };
-
     const ensureChat = async () => {
         if (chat) return chat;
         const body = setupBody();
         if (currentModel) body.model = currentModel;
         if (currentDevice) body.device = currentDevice;
-        body.webSearch = draftSearch;
         const created = (await chatService.create(body)).chat;
         setChat(created);
         goTo(created.id, { replace: true });
@@ -2154,16 +2155,33 @@ const ChatPage = () => {
     // A message refused because its model is too large for the computer's memory waits for the person's word.
     const refuse = (target, body, shownText, error) => {
         const data = error.response?.data;
-        if (data?.code === 'NOT_ENOUGH_MEMORY') setHeavy({ chatId: target.id, model: target.model || currentModel, body, shownText, detail: data.detail || data.message });
+        if (data?.code === 'NOT_ENOUGH_MEMORY') setHeavy({ chatId: target.id, model: target.model || currentModel, body, shownText, detail: data.detail || data.message, loaded: data.loaded || [], fitsEmpty: data.fitsEmpty !== false, at: Date.now(), removing: [] });
         else notifyError(describeError(error, 'The message could not be sent.'));
         if (shownText && !body.regenerate && body.editIndex === undefined) setText(shownText);
     };
-    const runAnyway = () => {
+    // Takes one model out of memory, or all the idle ones, and then sends the message again: the server looks afresh.
+    const heavyKey = (model) => `${model.device} ${model.source} ${model.name}`;
+    const removeHeavy = async (list, stop = false) => {
+        setHeavy((now) => now && { ...now, removing: [...now.removing, ...list.map(heavyKey)] });
+        const gone = [];
+        await Promise.all(list.map(async (model) => {
+            try {
+                const result = await deviceService.freeMemory(model.device, model.name, { ...(model.source === 'pool' ? { pooled: true } : {}), ...(stop ? { stop: true } : {}) });
+                if (result.removed) gone.push(heavyKey(model));
+                else notifyError(`${model.displayName} is still in memory on ${model.deviceName}. Try again in a moment.`);
+            } catch (error) {
+                notifyError(describeError(error, 'The model could not be removed.'));
+            }
+        }));
+        setHeavy((now) => now && { ...now, loaded: now.loaded.filter((model) => !gone.includes(heavyKey(model))), removing: now.removing.filter((key) => !list.some((model) => heavyKey(model) === key)), freed: now.freed || gone.length > 0 });
+        return gone.length === list.length;
+    };
+    const runAnyway = (anyway = true) => {
         const { body, shownText } = heavy;
         const fresh = !body.regenerate && body.editIndex === undefined;
         const content = fresh ? text.trim() || body.content : body.content;
         if (fresh) setText('');
-        runTurn(chat, { ...body, ...(content ? { content } : {}), anyway: true }, fresh ? content : shownText);
+        runTurn(chat, { ...body, ...(content ? { content } : {}), ...(anyway ? { anyway: true } : {}) }, fresh ? content : shownText);
     };
 
     const runTurn = async (target, body, shownText) => {
@@ -2496,7 +2514,7 @@ const ChatPage = () => {
                 <Input type="search" placeholder="Search by title" value={search} onChange={(event) => setSearch(event.target.value)} width="100%" size="sm" />
             )}
             {chatsRead && chats.length === 0 && <Typography size="xs" color="muted">{search ? 'No chat has that title.' : 'Your chats appear here.'}</Typography>}
-            <Container layout="flex-column" gap="xs" padding="none" width="100%">
+            <Container layout="flex-column" wrap={false} gap="xs" padding="none" width="100%" maxHeight="42vh" overflow="auto">
                 {chats.map((item) => (
                     <Row key={item.id} label={item.title} selected={item.id === chat?.id} onClick={() => openChat(item.id)} />
                 ))}
@@ -2504,144 +2522,97 @@ const ChatPage = () => {
         </>
     );
 
+    // On a wide page it floats at the bottom left; on a narrow one, where the message box fills the width, it joins its buttons.
+    const memoryPop = (fab) => (
+        <Pop
+            fab={fab}
+            {...(fab ? { position: 'bottom-left' } : { iconOnly: true, size: 'xs', label: 'Memory' })}
+            icon="FiActivity"
+            title="Memory: what is loaded and what it is doing"
+            aria-label="Memory"
+            open={pop === 'memory'}
+            onOpen={() => openPop('memory')}
+            onClose={closePop}
+            width="600px"
+            tall
+        >
+            <Typography as="h2" size="sm" weight="semibold">Memory</Typography>
+            <MemoryManager />
+        </Pop>
+    );
+
     return (
         <Page layout="block" padding="none">
             <BlockContext.Provider value={{ send: busy ? null : sendText, live: false }}>
-            <Container layout="flex" wrap={false} align="stretch" gap="none" padding="none" width="100%" height="100vh">
-                {wide && listOpen && (
+            <Pop
+                fab
+                position="top-left"
+                icon="FiMessageSquare"
+                title="Chats"
+                aria-label="Chats"
+                open={pop === 'chats'}
+                onOpen={() => { setDraftTitle(chat?.title || ''); openPop('chats'); }}
+                onClose={closePop}
+                width={view === 'files' ? '440px' : '320px'}
+                tall
+            >
+                {view === 'rename' && (
                     <>
-                        <Container layout="flex-column" wrap={false} gap="md" padding="md" width="280px" minWidth="280px" height="100%" backgroundColor="surface">
-                            <Container layout="flex" wrap={false} align="center" gap="xs" padding="none" width="100%">
-                                <Container padding="none" flexFill minWidth="0">
-                                    <Button width="100%" onClick={newChat} {...guide.tip('chat.new')}><Icon name="FiPlus" size="xs" />New chat</Button>
-                                </Container>
-                                <Button size="sm" variant="ghost" round title="Hide chats" aria-label="Hide chats" onClick={() => setListOpen(false)}><Icon name="FiSidebar" size="xs" /></Button>
-                            </Container>
-                            <Container layout="flex-column" wrap={false} gap="sm" padding="none" width="100%" flexFill minHeight="0" overflow="auto">
-                                {chatList}
-                            </Container>
+                        <Input
+                            label="Chat name"
+                            size="sm"
+                            width="100%"
+                            maxLength={120}
+                            value={draftTitle}
+                            onChange={(event) => setDraftTitle(event.target.value)}
+                            onKeyDown={(event) => event.key === 'Enter' && rename()}
+                        />
+                        <Container layout="flex" justify="end" gap="xs" padding="none" width="100%">
+                            <Button size="sm" variant="ghost" onClick={() => setView('main')}>Back</Button>
+                            <Button size="sm" disabled={!draftTitle.trim()} onClick={rename}>Save</Button>
                         </Container>
-                        <Divider orientation="vertical" />
                     </>
                 )}
-
-                <Container layout="flex-column" wrap={false} gap="none" padding="none" flexFill minWidth="0" height="100%">
-                    <Container layout="flex" wrap={false} align="center" gap="sm" padding="md" width="100%" height="56px" minHeight="56px">
-                        {wide && !listOpen && (
+                {view === 'files' && <FileBrowser mode="save" onPick={saveExport} onBack={() => setView('main')} />}
+                {view === 'main' && (
+                    <>
+                        <Button width="100%" onClick={newChat} {...guide.tip('chat.new')}><Icon name="FiPlus" size="xs" />New chat</Button>
+                        {chatList}
+                        {chat && (
                             <>
-                                <Button size="sm" variant="ghost" round title="Show chats" aria-label="Show chats" onClick={() => setListOpen(true)}><Icon name="FiSidebar" size="xs" /></Button>
-                                <Button size="sm" variant="ghost" round title="New chat" aria-label="New chat" onClick={newChat}><Icon name="FiPlus" size="xs" /></Button>
+                                <Divider />
+                                <Container layout="flex-column" gap="none" padding="none" width="100%">
+                                    <Typography size="xxs" color="muted" weight="semibold">This chat</Typography>
+                                    {[
+                                        ['FiEdit', 'Rename', () => setView('rename')],
+                                        ...(chat.messages.length > 0 ? [
+                                            ['FiDownload', 'Download as Markdown', () => exportAs('markdown')],
+                                            ['FiDownload', 'Download as JSONL', () => exportAs('jsonl')],
+                                            ['FiHardDrive', 'Save Markdown to my files', () => exportAs('markdown', true)],
+                                            ['FiHardDrive', 'Save JSONL to my files', () => exportAs('jsonl', true)]
+                                        ] : []),
+                                        ['FiTrash2', 'Delete chat', removeChat, 'error']
+                                    ].map(([icon, label, act, color]) => (
+                                        <Button key={label} size="sm" variant="ghost" color={color || 'primary'} align="start" width="100%" disabled={busy} title={busy ? 'Available when the reply has finished' : label} onClick={act}><Icon name={icon} size="xs" />{label}</Button>
+                                    ))}
+                                </Container>
                             </>
                         )}
-                        {!wide && (
-                            <Pop label="Chats" icon="FiMessageSquare" iconOnly open={pop === 'chats'} onOpen={() => openPop('chats')} onClose={closePop} width="300px">
-                                <Row icon="FiPlus" label="New chat" onClick={newChat} />
-                                {chatList}
-                            </Pop>
-                        )}
+                    </>
+                )}
+            </Pop>
+            {wide && memoryPop(true)}
+            <Container layout="flex" wrap={false} align="stretch" gap="none" padding="none" width="100%" height="100vh">
+                <Container layout="flex-column" wrap={false} gap="none" padding="none" flexFill minWidth="0" height="100%">
+                    <Container layout="flex" wrap={false} align="center" gap="sm" padding="md" width="100%" height="80px" minHeight="80px">
+                        <Container padding="none" width="64px" minWidth="64px" />
                         <Container padding="none" minWidth="0">
-                            <Typography as="h1" size="md" weight="semibold" font="secondary" truncate>{opening ? (chats.find((one) => one.id === routeId)?.title || '') : chat?.title || 'New chat'}</Typography>
+                            <Typography as="h1" size="md" weight="semibold" font="secondary" margin="none" truncate>{opening ? (chats.find((one) => one.id === routeId)?.title || '') : chat?.title || 'New chat'}</Typography>
                         </Container>
-                        <Pop
-                                label={devices.length > 1 ? `${devices.find((device) => device.id === currentDevice)?.name || 'Pick a computer'} · ${modelLabel}` : modelLabel}
-                                icon={devices.length > 1 ? DEVICE_ICONS[devices.find((device) => device.id === currentDevice)?.kind] || 'FiMonitor' : null}
-                                endIcon="FiCpu"
-                                iconOnly={!wide}
-                                size="xs"
-                                open={pop === 'model'}
-                                onOpen={() => openPop('model')}
-                                onClose={closePop}
-                                width={devices.length > 1 ? '600px' : '330px'}
-                            >
-                                <Container layout="flex" wrap={false} align="stretch" gap="sm" padding="none" width="100%">
-                                    {devices.length > 1 && (
-                                        <Container layout="flex-column" gap="none" padding="none" width="50%" minWidth="0">
-                                            <Typography size="xxs" color="muted" weight="semibold">Run on</Typography>
-                                            {devices.map((device) => (
-                                                <Row key={device.id} icon={DEVICE_ICONS[device.kind] || 'FiMonitor'} label={device.name} size="xs" selected={device.id === currentDevice} disabled={!device.online || device.paused} onClick={() => changeDevice(device.id)}>
-                                                    {deviceService.ready(device)
-                                                        ? <Icon name="FiCheckCircle" size="xs" color="success" title="Ready to use right now" aria-label="Ready to use right now" />
-                                                        : device.online && !device.paused && device.ollama?.available && device.ollama.modelCount > 0
-                                                            ? <Badge size="xxs" color="warning" title="The models on this computer cannot chat. Download a chat model on the Models page.">No chat model</Badge>
-                                                            : <Badge size="xxs" color={device.paused ? 'warning' : device.online ? 'success' : 'default'}>{device.paused ? 'Paused' : device.online ? 'Online' : 'Offline'}</Badge>}
-                                                </Row>
-                                            ))}
-                                        </Container>
-                                    )}
-                                    {devices.length > 1 && <Divider orientation="vertical" />}
-                                    <Container layout="flex-column" gap="none" padding="none" flexFill minWidth="0">
-                                        {devices.length > 1 && <Typography size="xxs" color="muted" weight="semibold">Models</Typography>}
-                                        {models.length === 0 && (
-                                            <Typography size="xs" color="muted">
-                                                {!modelsLoaded ? 'Loading the models on this computer…'
-                                                    : modelState.device === currentDevice && modelState.failed ? (
-                                                        !devices.some((device) => device.id === currentDevice) ? 'This computer is no longer on your account. Pick another.'
-                                                        : devices.find((device) => device.id === currentDevice)?.kind === 'cloud' ? 'This online service needs attention. Open Online on the Models page.'
-                                                        : !devices.find((device) => device.id === currentDevice)?.online ? 'This computer is offline. Open the Mollama app on it.'
-                                                        : 'Ollama on this computer did not answer just now. Trying again…')
-                                                    : modelState.device === currentDevice && modelState.others?.length ? `The models here cannot chat: ${modelState.others.join(', ')}. Download a chat model on the Models page.`
-                                                    : 'No model is installed yet.'}
-                                            </Typography>
-                                        )}
-                                        {models.map((model) => (
-                                            <Row key={model.name} label={model.displayName} size="xs" selected={model.name === currentModel} onClick={() => changeModel(model.name)}>
-                                                {model.capabilities?.length > 0 && !model.capabilities.includes('tools') && <Badge size="xxs" color="warning" title="This model cannot use tools or search the web. It answers only from what it already knows.">No tools</Badge>}
-                                                <Badge size="xxs" color={FIT_COLORS[model.fit?.verdict] || 'tertiary'}>{model.fit?.label || 'Fit unknown'}</Badge>
-                                                {model.ready && <Icon name="FiCheckCircle" size="xs" color="success" title="Loaded and ready to use right now" aria-label="Loaded and ready to use right now" />}
-                                            </Row>
-                                        ))}
-                                    </Container>
-                                </Container>
-                            </Pop>
                         <Container padding="none" flexFill minWidth="0" />
-                        {chat && (
-                            <Pop
-                                label=""
-                                icon="FiMoreHorizontal"
-                                title="More"
-                                open={pop === 'more'}
-                                onOpen={() => { setDraftTitle(chat.title); openPop('more'); }}
-                                onClose={closePop}
-                                disabled={busy}
-                                width={view === 'files' ? '440px' : '270px'}
-                            >
-                                {view === 'rename' && (
-                                    <>
-                                        <Input
-                                            label="Chat name"
-                                            size="sm"
-                                            width="100%"
-                                            maxLength={120}
-                                            value={draftTitle}
-                                            onChange={(event) => setDraftTitle(event.target.value)}
-                                            onKeyDown={(event) => event.key === 'Enter' && rename()}
-                                        />
-                                        <Container layout="flex" justify="end" gap="xs" padding="none" width="100%">
-                                            <Button size="sm" variant="ghost" onClick={() => setView('main')}>Back</Button>
-                                            <Button size="sm" disabled={!draftTitle.trim()} onClick={rename}>Save</Button>
-                                        </Container>
-                                    </>
-                                )}
-                                {view === 'files' && <FileBrowser mode="save" onPick={saveExport} onBack={() => setView('main')} />}
-                                {view === 'main' && (
-                                    <Container layout="flex-column" gap="none" padding="none" width="100%">
-                                        <Row icon="FiEdit" label="Rename" onClick={() => setView('rename')} />
-                                        {chat.messages.length > 0 && (
-                                            <>
-                                                <Row icon="FiDownload" label="Download as Markdown" onClick={() => exportAs('markdown')} />
-                                                <Row icon="FiDownload" label="Download as JSONL" onClick={() => exportAs('jsonl')} />
-                                                <Row icon="FiHardDrive" label="Save Markdown to my files" onClick={() => exportAs('markdown', true)} />
-                                                <Row icon="FiHardDrive" label="Save JSONL to my files" onClick={() => exportAs('jsonl', true)} />
-                                            </>
-                                        )}
-                                        <Row icon="FiTrash2" iconColor="error" label="Delete chat" onClick={removeChat} />
-                                    </Container>
-                                )}
-                            </Pop>
-                        )}
-                        <Container padding="none" width="60px" minWidth="60px" />
+                        <Container padding="none" flexFill minWidth="0" />
+                        <Container padding="none" width="64px" minWidth="64px" />
                     </Container>
-                    <Divider />
                     <Container
                         layout="block"
                         padding="none"
@@ -2748,17 +2719,23 @@ const ChatPage = () => {
                     </Container>
                 <Centered>
                     {heavy && heavy.chatId === chat?.id && heavy.model === currentModel && !busy && (
-                        <Notice
-                            icon="FiAlertTriangle"
-                            tone="warning"
-                            role="status"
-                            actions={<>
-                                <Button size="xs" onClick={() => setHeavy(null)}>Not now</Button>
-                                <Button size="xs" color="warning" onClick={runAnyway}>Run it anyway</Button>
-                            </>}
-                        >
-                            {heavy.detail} Your message was not sent. Pick a smaller model, or close large apps first.
-                        </Notice>
+                        <Card layout="flex-column" gap="sm" padding="md" width="100%">
+                            <Notice icon="FiAlertTriangle" tone="warning" role="status">
+                                {heavy.detail} Your message was not sent.
+                            </Notice>
+                            {heavy.loaded.length > 0 && <Typography as="h2" size="xs" weight="semibold">In memory now</Typography>}
+                            {heavy.loaded.map((model) => (
+                                <MemoryRow key={heavyKey(model)} model={model} now={heavy.at} where={model.deviceName} busy={heavy.removing.includes(heavyKey(model))} onRemove={(one, stop) => removeHeavy([one], stop)} />
+                            ))}
+                            <Container layout="flex" align="center" gap="xs" padding="none" width="100%">
+                                {heavy.fitsEmpty && heavy.loaded.some((model) => model.state === 'idle') && (
+                                    <Button size="xs" color="primary" variant="solid" disabled={heavy.removing.length > 0} onClick={async () => { if (await removeHeavy(heavy.loaded.filter((model) => model.state === 'idle'))) runAnyway(false); }}>Remove what is idle and send</Button>
+                                )}
+                                {heavy.fitsEmpty && heavy.freed && <Button size="xs" color="primary" disabled={heavy.removing.length > 0} onClick={() => runAnyway(false)}>Send now</Button>}
+                                <Button size="xs" color="warning" disabled={heavy.removing.length > 0} onClick={() => runAnyway(true)}>Run it anyway</Button>
+                                <Button size="xs" variant="ghost" onClick={() => setHeavy(null)}>Not now</Button>
+                            </Container>
+                        </Card>
                     )}
                     {context?.warn && !busy && chat.messages.length > 0 && (
                         <Notice icon="FiArchive" tone="warning" role="status">This chat is {context.percent}% full. Older messages are compressed into a memory as you go, so you can keep going here.</Notice>
@@ -2824,71 +2801,9 @@ const ChatPage = () => {
                                     </Container>
                                 )}
                             </Pop>
-                            <Button
-                                size="xs"
-                                variant="ghost"
-                                selected={searchOn && modelUsesTools}
-                                disabled={!webSearch || !modelUsesTools}
-                                title={!webSearch ? 'Web search is not set up on the server' : !modelUsesTools ? 'This model cannot use tools, so it cannot search the web' : searchOn ? 'Web search is on for this chat. Click to turn it off.' : 'Web search is off for this chat. Click to turn it on.'}
-                                aria-label="Web search"
-                                aria-pressed={searchOn && modelUsesTools}
-                                onClick={toggleSearch}
-                            >
-                                <Icon name={searchOn && modelUsesTools ? 'FiGlobe' : 'FiSlash'} size="xs" />
-                            </Button>
-                            {skills.length > 0 && (
-                                <Button
-                                    size="xs"
-                                    variant="ghost"
-                                    selected={pop === 'setup' && view === 'skills'}
-                                    title="Choose the skills this chat uses"
-                                    aria-label="Skills"
-                                    onClick={() => {
-                                        if (pop === 'setup' && view === 'skills') closePop();
-                                        else {
-                                            openPop('setup');
-                                            setView('skills');
-                                        }
-                                    }}
-                                >
-                                    <Icon name="FiZap" size="xs" />
-                                </Button>
-                            )}
-                            {(tools.length > 0 || webSearch) && (
-                                <Button
-                                    size="xs"
-                                    variant="ghost"
-                                    selected={pop === 'setup' && view === 'tools'}
-                                    title="Choose the tools models may use in this chat"
-                                    aria-label="Tools"
-                                    onClick={() => {
-                                        if (pop === 'setup' && view === 'tools') closePop();
-                                        else {
-                                            openPop('setup');
-                                            setView('tools');
-                                        }
-                                    }}
-                                >
-                                    <Icon name="FiTool" size="xs" />
-                                </Button>
-                            )}
-                            {(chat?.notes || []).length > 0 && (
-                                <Pop
-                                    label={`Notes the model kept (${chat.notes.length})`}
-                                    icon="FiBookmark"
-                                    iconOnly
-                                    size="xs"
-                                    open={pop === 'notes'}
-                                    onOpen={() => openPop('notes')}
-                                    onClose={closePop}
-                                    width="360px"
-                                >
-                                    <NotesView notes={chat.notes} />
-                                </Pop>
-                            )}
                             <Pop
-                                label="Instructions for this chat"
-                                icon="FiSliders"
+                                label={articles.length > 0 ? `Skills and instructions (${articles.length} added)` : 'Skills and instructions'}
+                                icon="FiZap"
                                 iconOnly
                                 size="xs"
                                 mark={articles.length > 0 ? <Badge size="xxs" color="primary">{articles.length}</Badge> : null}
@@ -2898,37 +2813,19 @@ const ChatPage = () => {
                                 width={view === 'skills' ? '1040px' : '480px'}
                                 tall
                             >
-                {view === 'files' && <FileBrowser mode="read" onPick={articleFromFile} onBack={() => setView('main')} />}
-                {view === 'saved' && <SavedInstructions onAdd={addArticle} onBack={() => setView('main')} full={articlesFull} />}
-                {view === 'tools' && (
-                    <Container layout="flex-column" gap="xs" padding="none" width="100%">
-                        <Container layout="flex" wrap={false} align="center" justify="between" gap="xs" padding="none" width="100%">
-                            <Button size="xs" variant="ghost" onClick={() => setView('main')}><Icon name="FiChevronLeft" size="xs" />Tools</Button>
-                            <Button size="xs" variant="ghost" onClick={() => navigate('/tools')}>Manage tools</Button>
-                        </Container>
-                        {modelUsesTools
-                            ? <Typography size="xxs" color="muted">Calculator, date and time and reading a web page are always on. Web search has its own button by the message box.</Typography>
-                            : <Typography size="xs" color="warning">This model cannot use tools. Pick one without the No tools mark.</Typography>}
-                        {connectedTools.length === 0
-                            ? <Typography size="xs" color="muted">No tools are connected yet. Add one under Manage tools.</Typography>
-                            : modelUsesTools && <Typography size="xxs" color="muted">{savedNote}</Typography>}
-                        {connectedTools.map((tool) => (
-                        <Container key={tool.id} layout="flex" wrap={false} align="center" justify="between" gap="xs" padding="none" width="100%" title={tool.ready ? `${tool.count === 1 ? '1 tool' : `${tool.count} tools`} · ${tool.kind === 'local' ? 'on your computer' : 'online'}` : `${tool.state}. Open Manage tools to see what it needs.`}>
-                            <Container layout="flex-column" gap="none" padding="none" flexFill minWidth="0">
-                                <Typography size="xs" truncate>{tool.name}</Typography>
-                                <Typography size="xxs" color="muted" truncate>{tool.ready ? `${tool.count === 1 ? '1 tool' : `${tool.count} tools`} · ${tool.kind === 'local' ? 'on your computer' : 'online'}` : `${tool.state}. Open Manage tools to see what it needs.`}</Typography>
-                            </Container>
-                            <Switch size="xs" checked={activeTools.includes(tool.id)} disabled={!modelUsesTools || !tool.ready} onChange={() => toggleTool(tool.id)} aria-label={tool.name} />
-                        </Container>
-                        ))}
+                {(view === 'skills' || view === 'main') && (
+                    <Container layout="flex" wrap={false} align="center" justify="between" gap="xs" padding="none" width="100%">
+                        <ButtonGroup size="xs" justify="start" selectable={false}>
+                            {skills.length > 0 && <Button size="xs" selected={view === 'skills'} onClick={() => setView('skills')}>{`Skills · ${activeSkills.length}`}</Button>}
+                            <Button size="xs" selected={view === 'main'} onClick={() => setView('main')}>{`Instructions · ${articles.length}`}</Button>
+                        </ButtonGroup>
+                        {view === 'skills' && <Button size="xs" variant="ghost" disabled={!draftSetup.skills} onClick={() => switchSetup({ skills: null })}>Use defaults</Button>}
                     </Container>
                 )}
+                {view === 'files' && <FileBrowser mode="read" onPick={articleFromFile} onBack={() => setView('main')} />}
+                {view === 'saved' && <SavedInstructions onAdd={addArticle} onBack={() => setView('main')} full={articlesFull} />}
                 {view === 'skills' && (
                     <Container layout="flex-column" gap="xs" padding="none" width="100%">
-                        <Container layout="flex" wrap={false} align="center" justify="between" gap="xs" padding="none" width="100%">
-                            <Button size="xs" variant="ghost" onClick={() => setView('main')}><Icon name="FiChevronLeft" size="xs" />Skills</Button>
-                            <Button size="xs" variant="ghost" disabled={!draftSetup.skills} onClick={() => switchSetup({ skills: null })}>Use defaults</Button>
-                        </Container>
                         {activeSkills.length >= maxSkills
                             ? <Typography size="xs" color="warning">{`${activeSkills.length} of ${maxSkills} skills are on, which is the most a chat holds, so the other switches are off. Turn one off to add another.`}</Typography>
                             : <Typography size="xxs" color="muted">{`${activeSkills.length} of ${maxSkills} on. ${savedNote} A skill is instructions, not a tool: the model reads it with every message, so turn on only what this chat needs.`}</Typography>}
@@ -2963,7 +2860,8 @@ const ChatPage = () => {
                                     variant="list"
                                     data={skillRows}
                                     fieldConfig={skillFields}
-                                    exclude={['id', 'length', 'on', 'suggested']}
+                                    exclude={['id', 'about', 'length', 'on', 'suggested']}
+                                    genie={skillGenie}
                                     pageSize={10}
                                     selector
                                     selectedItems={activeSkills.filter((id) => skillRows.some((row) => row.id === id))}
@@ -2978,25 +2876,6 @@ const ChatPage = () => {
                             What the model should know or follow in this chat. Add as many pieces as you need: typed text, files, or ones you saved earlier.
                         </Typography>
                         {working && <Typography size="xs" color="muted">{working}</Typography>}
-                        {(tools.length > 0 || skills.length > 0 || webSearch) && (
-                            <Container layout="flex-column" gap="none" padding="none" width="100%">
-                                {(tools.length > 0 || webSearch) && (
-                                    <Row icon="FiTool" label="Tools" title="Choose the tools models may use in this chat" onClick={() => setView('tools')}>
-                                        {modelUsesTools
-                                            ? <Typography size="xxs" color="muted">{`${activeTools.filter((id) => connectedTools.some((tool) => tool.id === id)).length} connected on`}</Typography>
-                                            : <Badge size="xxs" color="warning" title="The chosen model cannot use tools or search the web. Pick a model without the No tools mark.">Not with this model</Badge>}
-                                        <Icon name="FiChevronRight" size="xs" />
-                                    </Row>
-                                )}
-                                {skills.length > 0 && (
-                                    <Row icon="FiZap" label="Skills" title="Choose the skills this chat uses" onClick={() => setView('skills')}>
-                                        <Typography size="xxs" color="muted">{`${activeSkills.length} on`}</Typography>
-                                        <Icon name="FiChevronRight" size="xs" />
-                                    </Row>
-                                )}
-                                <Divider margin="xs" />
-                            </Container>
-                        )}
                         {articles.map((article, index) => (
                             <Container key={index} layout="flex-column" gap="xs" padding="none" width="100%">
                                 <Container layout="flex" wrap={false} align="center" gap="xs" padding="none" width="100%">
@@ -3068,6 +2947,54 @@ const ChatPage = () => {
                     </>
                 )}
                             </Pop>
+                            <Pop
+                                label="Tools"
+                                icon="FiTool"
+                                iconOnly
+                                size="xs"
+                                open={pop === 'tools'}
+                                onOpen={() => openPop('tools')}
+                                onClose={closePop}
+                                width="480px"
+                                tall
+                            >
+                    <Container layout="flex-column" gap="xs" padding="none" width="100%">
+                        <Container layout="flex" wrap={false} align="center" justify="between" gap="xs" padding="none" width="100%">
+                            <Typography as="h2" size="sm" weight="semibold">Tools</Typography>
+                            <Button size="xs" variant="ghost" onClick={() => navigate('/tools')}>Manage tools</Button>
+                        </Container>
+                        {modelUsesTools
+                            ? <Typography size="xxs" color="muted">{webSearch ? 'Web search, calculator, date and time and reading a web page are always on.' : 'Calculator, date and time and reading a web page are always on. Web search is not set up on the server.'}</Typography>
+                            : <Typography size="xs" color="warning">This model cannot use tools. Pick one without the No tools mark.</Typography>}
+                        {connectedTools.length === 0
+                            ? <Typography size="xs" color="muted">No tools are connected yet. Add one under Manage tools.</Typography>
+                            : modelUsesTools && <Typography size="xxs" color="muted">{savedNote}</Typography>}
+                        {connectedTools.map((tool) => (
+                        <Container key={tool.id} layout="flex" wrap={false} align="center" justify="between" gap="xs" padding="none" width="100%" title={tool.ready ? `${tool.count === 1 ? '1 tool' : `${tool.count} tools`} · ${tool.kind === 'local' ? 'on your computer' : 'online'}` : `${tool.state}. Open Manage tools to see what it needs.`}>
+                            <Container layout="flex-column" gap="none" padding="none" flexFill minWidth="0">
+                                <Typography size="xs" truncate>{tool.name}</Typography>
+                                <Typography size="xxs" color="muted" truncate>{tool.ready ? `${tool.count === 1 ? '1 tool' : `${tool.count} tools`} · ${tool.kind === 'local' ? 'on your computer' : 'online'}` : `${tool.state}. Open Manage tools to see what it needs.`}</Typography>
+                            </Container>
+                            <Switch size="xs" checked={activeTools.includes(tool.id)} disabled={!modelUsesTools || !tool.ready} onChange={() => toggleTool(tool.id)} aria-label={tool.name} />
+                        </Container>
+                        ))}
+                    </Container>
+                            </Pop>
+                            {!wide && memoryPop(false)}
+                            {(chat?.notes || []).length > 0 && (
+                                <Pop
+                                    label={`Notes the model kept (${chat.notes.length})`}
+                                    icon="FiBookmark"
+                                    iconOnly
+                                    size="xs"
+                                    open={pop === 'notes'}
+                                    onOpen={() => openPop('notes')}
+                                    onClose={closePop}
+                                    width="360px"
+                                >
+                                    <NotesView notes={chat.notes} />
+                                </Pop>
+                            )}
                             <Input
                                 ref={fileInputRef}
                                 type="file"
@@ -3096,6 +3023,57 @@ const ChatPage = () => {
                                     </Typography>
                                 )}
                             </Container>
+                            <Pop
+                                    label={devices.length > 1 ? `${devices.find((device) => device.id === currentDevice)?.name || 'Pick a computer'} · ${modelLabel}` : modelLabel}
+                                    icon={devices.length > 1 ? DEVICE_ICONS[devices.find((device) => device.id === currentDevice)?.kind] || 'FiMonitor' : null}
+                                    endIcon="FiCpu"
+                                    iconOnly={!wide}
+                                    size="xs"
+                                    open={pop === 'model'}
+                                    onOpen={() => openPop('model')}
+                                    onClose={closePop}
+                                    width={devices.length > 1 ? '600px' : '330px'}
+                                >
+                                    <Container layout="flex" wrap={false} align="stretch" gap="sm" padding="none" width="100%">
+                                        {devices.length > 1 && (
+                                            <Container layout="flex-column" gap="none" padding="none" width="50%" minWidth="0">
+                                                <Typography size="xxs" color="muted" weight="semibold">Run on</Typography>
+                                                {devices.map((device) => (
+                                                    <Row key={device.id} icon={DEVICE_ICONS[device.kind] || 'FiMonitor'} label={device.name} size="xs" selected={device.id === currentDevice} disabled={!device.online || device.paused} onClick={() => changeDevice(device.id)}>
+                                                        {deviceService.ready(device)
+                                                            ? <Icon name="FiCheckCircle" size="xs" color="success" title="Ready to use right now" aria-label="Ready to use right now" />
+                                                            : device.online && !device.paused && device.ollama?.available && device.ollama.modelCount > 0
+                                                                ? <Badge size="xxs" color="warning" title="The models on this computer cannot chat. Download a chat model on the Models page.">No chat model</Badge>
+                                                                : <Badge size="xxs" color={device.paused ? 'warning' : device.online ? 'success' : 'default'}>{device.paused ? 'Paused' : device.online ? 'Online' : 'Offline'}</Badge>}
+                                                    </Row>
+                                                ))}
+                                            </Container>
+                                        )}
+                                        {devices.length > 1 && <Divider orientation="vertical" />}
+                                        <Container layout="flex-column" gap="none" padding="none" flexFill minWidth="0">
+                                            {devices.length > 1 && <Typography size="xxs" color="muted" weight="semibold">Models</Typography>}
+                                            {models.length === 0 && (
+                                                <Typography size="xs" color="muted">
+                                                    {!modelsLoaded ? 'Loading the models on this computer…'
+                                                        : modelState.device === currentDevice && modelState.failed ? (
+                                                            !devices.some((device) => device.id === currentDevice) ? 'This computer is no longer on your account. Pick another.'
+                                                            : devices.find((device) => device.id === currentDevice)?.kind === 'cloud' ? 'This online service needs attention. Open Online on the Models page.'
+                                                            : !devices.find((device) => device.id === currentDevice)?.online ? 'This computer is offline. Open the Mollama app on it.'
+                                                            : 'Ollama on this computer did not answer just now. Trying again…')
+                                                        : modelState.device === currentDevice && modelState.others?.length ? `The models here cannot chat: ${modelState.others.join(', ')}. Download a chat model on the Models page.`
+                                                        : 'No model is installed yet.'}
+                                                </Typography>
+                                            )}
+                                            {models.map((model) => (
+                                                <Row key={model.name} label={model.displayName} size="xs" selected={model.name === currentModel} onClick={() => changeModel(model.name)}>
+                                                    {model.capabilities?.length > 0 && !model.capabilities.includes('tools') && <Badge size="xxs" color="warning" title="This model cannot use tools or search the web. It answers only from what it already knows.">No tools</Badge>}
+                                                    <Badge size="xxs" color={FIT_COLORS[model.fit?.verdict] || 'tertiary'}>{model.fit?.label || 'Fit unknown'}</Badge>
+                                                    {model.ready && <Icon name="FiCheckCircle" size="xs" color="success" title="Loaded and ready to use right now" aria-label="Loaded and ready to use right now" />}
+                                                </Row>
+                                            ))}
+                                        </Container>
+                                    </Container>
+                                </Pop>
                             {busy && !live?.stopping && <Button size="sm" color="secondary" variant="solid" title="Stop" aria-label="Stop" onClick={stopReply}><Icon name="FiSquare" size="xs" /></Button>}
                             <Button size="sm" color={busy ? 'primary' : 'secondary'} variant={busy ? 'ghost' : 'solid'} title={busy ? 'Send when this reply is finished' : 'Send'} aria-label="Send" disabled={!text.trim() || noModels || unreachable} onClick={() => sendText(text)} {...guide.tip('chat.send')}><Icon name="FiArrowUp" size="xs" /></Button>
                         </Container>
