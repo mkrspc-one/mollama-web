@@ -434,8 +434,13 @@ const framePalette = (palette, fallbacks = {}) => {
 // A saved page keeps its palette, so it takes the theme of the app it is opened in (Mollama's or FilesystemOne's frame
 // hands it the --app- colours) and today's colours anywhere else.
 const savedFrame = async (content, template, palette) => {
-    const page = await buildFrame(content, template);
-    const variables = framePalette(palette, readAppTheme());
+    const theme = readAppTheme();
+    // The app's variables with today's colours, at the top of the page: an app that opens it later writes its own after
+    // them, so the page follows that app's theme, and it is never without colours anywhere else.
+    const given = `<style>:root{${Object.entries(theme).map(([token, value]) => `--app-${token}:${String(value).replace(/[;{}<>]/g, '')};`).join('')}}</style>`;
+    const atTop = (page) => (/<head\b[^>]*>/i.test(page) ? page.replace(/<head\b[^>]*>/i, (head) => `${head}${given}`) : /<html\b[^>]*>/i.test(page) ? page.replace(/<html\b[^>]*>/i, (root) => `${root}<head>${given}</head>`) : `<!doctype html><html><head><meta charset="utf-8">${given}</head><body>${page}</body></html>`);
+    const page = atTop(await buildFrame(content, template));
+    const variables = framePalette(palette, theme);
     if (!variables) return page;
     const style = `<style>:root,:root[data-theme]{${Object.entries(variables).map(([name, value]) => `--${name}:${value} !important;`).join('')}}</style>`;
     if (/<\/head>/i.test(page)) return page.replace(/<\/head>/i, () => `${style}</head>`);
