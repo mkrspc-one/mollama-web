@@ -1231,7 +1231,9 @@ const isSearchStep = (step) => step.tool === 'web_search' || step.tool === 'web_
 const stepText = (step, active = false) => {
     if (step.tool === 'Skill') {
         if (step.failed) return `Could not open a skill called “${step.input}”`;
-        return active ? `Opening the ${step.input} skill…` : `Opened the ${step.input} skill`;
+        const [skill, part] = String(step.input).split(', part ');
+        const which = `the ${skill} skill${part ? `, part ${part}` : ''}`;
+        return active ? `Opening ${which}…` : `Opened ${which}`;
     }
     if (step.tool === 'Component') {
         if (step.failed) return `Could not find a component called “${step.input}”`;
@@ -1265,7 +1267,8 @@ const ToolStep = ({ step, text }) => {
             </Button>
             {open && (
                 <Container layout="flex-column" gap="none" padding="none" width="100%">
-                    <Typography size="xs" color={color}>Sent: {step.input || 'nothing'}</Typography>
+                    <Typography size="xs" color={color}>Sent: {step.sent ? '' : step.input || 'nothing'}</Typography>
+                    {step.sent && <CodeView code={step.sent} language={String(step.input).split(' ')[0]} />}
                     <Typography size="xs" color={color}>Came back: {step.answer ?? 'not yet'}</Typography>
                 </Container>
             )}
@@ -1548,14 +1551,14 @@ const liveStatus = (live) => {
 };
 
 // How long the reply has been going, so a long step never looks like a page that stopped.
-const LiveClock = () => {
-    const since = useRef(Date.now());
+const LiveClock = ({ since }) => {
+    const opened = useRef(Date.now());
     const [now, setNow] = useState(Date.now());
     useEffect(() => {
         const timer = setInterval(() => setNow(Date.now()), 1000);
         return () => clearInterval(timer);
     }, []);
-    const seconds = Math.floor((now - since.current) / 1000);
+    const seconds = Math.max(0, Math.floor((now - (since || opened.current)) / 1000));
     return <Typography size="xxs" color="muted">Working for {seconds >= 60 ? `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s` : `${seconds}s`}</Typography>;
 };
 
@@ -2031,10 +2034,12 @@ const ChatPage = () => {
         if (event.type === 'queued') setLive((now) => now && { ...now, ahead: event.ahead });
         if (event.type === 'start') setLive((now) => now && { ...now, started: true, ahead: null, sharing: event.sharing || 0, loaded: event.loaded !== false });
         if (event.type === 'note') setLive((now) => now && { ...now, note: event.text || null });
+        if (event.type === 'clock') setLive((now) => now && { ...now, since: Date.now() - event.workedMs });
+        if (event.type === 'context') setLive((now) => now && { ...now, context: event.context });
         if (event.type === 'thinking') setLive((now) => now && { ...now, thinking: now.thinking + event.text });
         if (event.type === 'token') setLive((now) => now && { ...now, content: now.content + event.text });
         if (event.type === 'replace') setLive((now) => now && { ...now, content: event.text });
-        if (event.type === 'tool') setLive((now) => now && { ...now, draft: '', steps: [...(now.steps || []), { tool: event.tool, input: event.input }] });
+        if (event.type === 'tool') setLive((now) => now && { ...now, draft: '', steps: [...(now.steps || []), { tool: event.tool, input: event.input, sent: event.sent }] });
         if (event.type === 'draft') setLive((now) => now && { ...now, draft: (now.draft || '') + event.text });
         if (event.type === 'permission') setLive((now) => now && { ...now, permission: { id: event.id, tool: event.tool, input: event.input } });
         if (event.type === 'toolFailed' || event.type === 'token') setLive((now) => (now?.permission ? { ...now, permission: null } : now));
@@ -2085,7 +2090,7 @@ const ChatPage = () => {
             settle(follow.target);
             return;
         }
-        setLive((now) => now && { ...now, content: '', thinking: '', steps: [], note: undefined, started: false, ahead: null });
+        setLive((now) => now && { ...now, content: '', thinking: '', steps: [], note: undefined, started: false, ahead: null, ...(Number.isFinite(snapshot.workedMs) ? { since: Date.now() - snapshot.workedMs } : {}) });
         snapshot.events.forEach((event) => applyPiece(follow, event));
         follow.seq = snapshot.seq;
         const waiting = follow.buffer.filter((piece) => piece.seq > follow.seq).sort((a, b) => a.seq - b.seq);
@@ -2204,7 +2209,7 @@ const ChatPage = () => {
 
     const runTurn = async (target, body, shownText) => {
         setHeavy(null);
-        const state = { userText: shownText, editIndex: body.editIndex, regenerate: Boolean(body.regenerate), content: '', thinking: '', ahead: null, started: false };
+        const state = { userText: shownText, editIndex: body.editIndex, regenerate: Boolean(body.regenerate), content: '', thinking: '', ahead: null, started: false, since: Date.now() };
         if (appService.notificationsConnected()) {
             followLive(target, state);
             try {
@@ -2511,7 +2516,10 @@ const ChatPage = () => {
         return [...base, { id: 'pending', index: base.length, role: 'user', content: live.userText, attachments: attachments || [] }];
     }, [chat, live]);
 
-    const context = chat?.context;
+    // While a reply is written, what it is using now; otherwise what the next message will carry.
+    const context = live?.context
+        ? { percent: live.context.percent, usedTokens: live.context.used, capacityTokens: live.context.total, warn: live.context.percent >= 90 }
+        : chat?.context;
     const pending = live ? [] : chat?.pendingAttachments || [];
     // A list that could not be read is not an empty one: the computer did not answer, and the page says why.
     const modelsFailed = modelState.device === currentDevice && Boolean(modelState.failed);
@@ -2723,7 +2731,7 @@ const ChatPage = () => {
                                 {live.content && live.stopping && <Notice icon="FiSquare">Stopped before it finished.</Notice>}
                                 {live.content && live.note && !live.stopping && <Notice busy>{live.note}</Notice>}
                                 {!live.content && <Notice busy>{liveStatus(live)}</Notice>}
-                                {!live.stopping && <LiveClock />}
+                                {!live.stopping && <LiveClock since={live.since} />}
                             </Container>
                         )}
                         {live && (chat?.queued || []).map((item, index) => (
@@ -3035,7 +3043,7 @@ const ChatPage = () => {
                                         size="xxs"
                                         color={context.warn ? 'warning' : 'muted'}
                                         truncate
-                                        title={`${context.usedTokens.toLocaleString()} of ${context.capacityTokens.toLocaleString()} tokens used${pending.length > 0 ? ', including what is attached' : ''}`}
+                                        title={`${context.usedTokens.toLocaleString()} of ${context.capacityTokens.toLocaleString()} tokens ${live?.context ? 'used by the reply being written' : `used${pending.length > 0 ? ', including what is attached' : ''}`}`}
                                     >
                                         {100 - context.percent}% context left
                                     </Typography>

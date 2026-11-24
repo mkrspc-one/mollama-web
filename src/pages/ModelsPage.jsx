@@ -1,7 +1,7 @@
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Select, Divider, ProgressBar, CircularProgress, Pagination } from '@components/Components';
 import { useNotification } from '@contexts/NotificationContext';
-import { deviceService, modelService, providerService, describeError, useGuide, onReturn } from '../client/ai.client';
+import { chatService, deviceService, modelService, providerService, describeError, useGuide, onReturn } from '../client/ai.client';
 
 const MEMORY_EVERY_MS = 4000;
 const STATE_BADGES = { answering: ['Answering', 'success'], waiting: ['Waiting its turn', 'tertiary'], loading: ['Loading', 'warning'], idle: ['Idle', 'default'] };
@@ -33,9 +33,66 @@ const placeText = (model) => {
     if (model.gpuMb > 0) parts.push(`${sizeText(model.gpuMb)} graphics memory`);
     if (model.ramMb > 0) parts.push(`${sizeText(model.ramMb)} system memory`);
     if (parts.length === 0 && model.sizeMb) parts.push(model.source === 'pool' ? `${sizeText(model.sizeMb)} model file` : sizeText(model.sizeMb));
+    if (model.source === 'online') parts.push(`runs on ${model.service}'s computers, and ${model.service} does not say how much memory it takes`);
     if (model.source === 'pool') parts.push(model.helpers.length ? `pooled with ${model.helpers.join(', ')}` : 'pooled');
-    if (model.context) parts.push(`${model.context.toLocaleString()} tokens of context`);
+    if (model.context && !model.use) parts.push(`${model.context.toLocaleString()} tokens of context`);
     return parts.join(' · ');
+};
+
+// What takes up a model's context, in the order it is read.
+const CONTEXT_PARTS = [
+    ['instructions', 'Instructions and skills', 'The skills and instructions sent with every message.'],
+    ['functions', 'Functions it can call', 'What each function is and how to call it.'],
+    ['conversation', 'Conversation', 'Your messages and the earlier replies, or the memory that replaced them.'],
+    ['pages', 'Pages it opened', 'Skill pages, skill files and component pages opened in this reply.'],
+    ['results', 'Results it read', 'What tools, searches, files and programs gave back in this reply.'],
+    ['calls', 'Calls it wrote', 'Programs and other calls the model wrote in this reply.'],
+    ['reply', 'The reply so far', 'What it has written to you in this reply, and what Mollama told it on the way.'],
+    ['writing', 'Being written now', 'What it has thought and written in this step.']
+];
+// How much of its context a model is using, and on what.
+const ContextUse = ({ model, now }) => {
+    const { use } = model;
+    const [label, color] = STATE_BADGES[model.state] || STATE_BADGES.idle;
+    const head = (
+        <Container layout="flex" align="center" gap="xs" padding="none" width="100%">
+            <Typography as="h3" size="xs" weight="semibold">{model.displayName}</Typography>
+            <Badge size="xxs" color={color}>{label}</Badge>
+            <Typography size="xxs" color="muted">{model.where}</Typography>
+        </Container>
+    );
+    if (!use) {
+        return (
+            <Container layout="flex-column" gap="xs" padding="none" width="100%" minWidth="0">
+                {head}
+                <Typography as="p" size="xxs" color="muted">{model.state === 'loading' ? activityText(model, now) : 'Its use of context shows once it has answered a message.'}</Typography>
+            </Container>
+        );
+    }
+    const parts = CONTEXT_PARTS.filter(([id]) => use.parts[id] > 0);
+    const notes = [
+        use.now && `${use.keptFree.toLocaleString()} tokens are kept free for what it writes.`,
+        use.room < use.total && `${use.room.toLocaleString()} are set aside in memory now, and more when it needs them.`,
+        use.putAway > 0 && `${use.putAway === 1 ? '1 earlier result was' : `${use.putAway} earlier results were`} put away to save room.`
+    ].filter(Boolean).join(' ');
+    return (
+        <Container layout="flex-column" gap="xs" padding="none" width="100%" minWidth="0">
+            {head}
+            <Container layout="flex" wrap={false} align="center" justify="between" gap="xs" padding="none" width="100%">
+                <Typography size="xxs" color="muted">{use.now ? `Step ${use.steps} of its reply${model.chat ? ` in “${model.chat.title}”` : ''}` : `At the end of its last reply${use.chat ? `, in “${use.chat.title}”` : ''}`}</Typography>
+                <Typography size="xxs">{`${use.left.toLocaleString()} free of ${use.total.toLocaleString()} tokens`}</Typography>
+            </Container>
+            <ProgressBar size="xs" width="100%" value={use.percent} color={use.percent >= 90 ? 'error' : use.percent >= 75 ? 'warning' : 'primary'} aria-label={`Context: ${use.percent}% used`} />
+            {parts.map(([id, label, title]) => (
+                <Container key={id} layout="flex" wrap={false} align="center" gap="sm" padding="none" width="100%" title={title}>
+                    <Container padding="none" width="140px" minWidth="140px"><Typography size="xxs">{label}</Typography></Container>
+                    <Container padding="none" flexFill minWidth="0"><ProgressBar size="xs" width="100%" value={use.parts[id]} max={use.total} color="primary" aria-label={`${label}: ${use.parts[id].toLocaleString()} tokens`} /></Container>
+                    <Container padding="none" width="52px" minWidth="52px"><Typography size="xxs" align="right">{use.parts[id].toLocaleString()}</Typography></Container>
+                </Container>
+            ))}
+            {notes && <Typography as="p" size="xxs" color="muted">{notes}</Typography>}
+        </Container>
+    );
 };
 
 // One model in memory: what it is, what it takes, what it is doing, and the way to remove it.
@@ -53,16 +110,16 @@ export const MemoryRow = ({ model, now, where = null, busy = false, onRemove }) 
                 <Typography as="p" size="xxs">{activityText(model, now)}</Typography>
                 <Typography as="p" size="xxs" color="muted">{[where, model.name, placeText(model)].filter(Boolean).join(' · ')}</Typography>
             </Container>
-            <Button
+            {(model.source !== 'online' || working) && <Button
                 size="xs"
                 variant="ghost"
                 color={working ? 'error' : 'primary'}
                 disabled={busy || model.state === 'loading' && model.source !== 'pool'}
-                title={working ? 'Stops the reply it is writing, then removes the model from memory' : 'Removes the model from memory. It loads again when a chat uses it.'}
+                title={model.source === 'online' ? 'Stops the reply it is writing' : working ? 'Stops the reply it is writing, then removes the model from memory' : 'Removes the model from memory. It loads again when a chat uses it.'}
                 onClick={() => onRemove(model, working)}
             >
-                {busy ? 'Removing…' : working ? 'Stop and remove' : 'Remove'}
-            </Button>
+                {model.source === 'online' ? busy ? 'Stopping…' : 'Stop' : busy ? 'Removing…' : working ? 'Stop and remove' : 'Remove'}
+            </Button>}
         </Container>
     );
 };
@@ -89,6 +146,7 @@ export const MemoryManager = ({ only = null }) => {
     const [state, setState] = useState(null);
     const [failed, setFailed] = useState(null);
     const [busy, setBusy] = useState([]);
+    const [view, setView] = useState('memory');
     const [now, setNow] = useState(() => Date.now());
     const ask = useRef(0);
 
@@ -123,11 +181,15 @@ export const MemoryManager = ({ only = null }) => {
         const key = keyOf(computer, model);
         setBusy((list) => [...list, key]);
         try {
+            if (model.source === 'online') {
+                await chatService.stop(model.chat.id);
+                return;
+            }
             const result = await deviceService.freeMemory(computer.id, model.name, { ...(model.source === 'pool' ? { pooled: true } : {}), ...(stop ? { stop: true } : {}) });
             if (result.removed) success(`${model.displayName} was removed from memory on ${computer.name}.`);
             else notifyError(`${model.displayName} is still in memory on ${computer.name}. Try again in a moment.`);
         } catch (error) {
-            notifyError(describeError(error, 'The model could not be removed.'));
+            notifyError(describeError(error, model.source === 'online' ? 'The reply could not be stopped.' : 'The model could not be removed.'));
         } finally {
             setBusy((list) => list.filter((one) => one !== key));
             load();
@@ -137,10 +199,29 @@ export const MemoryManager = ({ only = null }) => {
     if (!state) return failed ? <Typography size="xs" color="error">{failed}</Typography> : <Loading text="Checking what is in memory…" />;
     const at = now + state.ahead;
     const computers = state.computers.filter((one) => !only || one.id === only);
+    const services = only ? [] : (state.online || []).map((service) => ({ ...service, models: service.models.map((model) => ({ ...model, service: service.name })) }));
+    const inUse = [...computers, ...services].flatMap((one) => one.models.map((model) => ({ ...model, where: model.source === 'pool' ? `Pool, on ${one.name}` : one.name, key: keyOf(one, model) })));
     const idle = computers.flatMap((computer) => computer.models.filter((model) => model.state === 'idle').map((model) => ({ computer, model })));
     return (
         <Container layout="flex-column" gap="md" padding="none" width="100%" minWidth="0">
+            <ButtonGroup size="xs" justify="start" selectable={false}>
+                <Button size="xs" selected={view === 'memory'} onClick={() => setView('memory')}>Memory</Button>
+                <Button size="xs" selected={view === 'context'} onClick={() => setView('context')}>Context</Button>
+            </ButtonGroup>
             {failed && <Typography size="xxs" color="warning">{`${failed} Showing what was last read.`}</Typography>}
+            {view === 'context' && (
+                <>
+                    <Typography as="p" size="xxs" color="muted">How much of what it can read at once each model is using, and on what. Estimates, set right by the model's own count.</Typography>
+                    {inUse.length === 0 && <Typography as="p" size="xs" color="muted">No model is in use.</Typography>}
+                    {inUse.map((model, index) => (
+                        <Fragment key={model.key}>
+                            {index > 0 && <Divider />}
+                            <ContextUse model={model} now={at} />
+                        </Fragment>
+                    ))}
+                </>
+            )}
+            {view === 'memory' && <>
             {computers.length === 0 && <Typography size="xs" color="muted">No computer is linked yet. Add one on the Devices page.</Typography>}
             {computers.map((computer, index) => (
                 <Fragment key={computer.id}>
@@ -176,11 +257,25 @@ export const MemoryManager = ({ only = null }) => {
                     </Container>
                 </Fragment>
             ))}
+            {services.map((service) => (
+                <Fragment key={service.id}>
+                    <Divider />
+                    <Container layout="flex-column" gap="sm" padding="none" width="100%" minWidth="0">
+                        <Container layout="flex" align="center" gap="xs" padding="none" width="100%">
+                            <Icon name="FiCloud" size="xs" />
+                            <Typography as="h3" size="sm" weight="semibold">{service.name}</Typography>
+                            <Badge size="xxs" color="tertiary">Online</Badge>
+                        </Container>
+                        {service.models.map((model) => <MemoryRow key={keyOf(service, model)} model={model} now={at} busy={busy.includes(keyOf(service, model))} onRemove={(one, stop) => remove(service, one, stop)} />)}
+                    </Container>
+                </Fragment>
+            ))}
             <Divider />
             <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%">
                 <Typography as="p" size="xxs" color="muted">{`An idle model leaves memory after ${state.keepAliveMinutes === 0 ? 'its reply' : `${state.keepAliveMinutes} min`}, a pooled one after ${state.poolIdleMinutes} min.`}</Typography>
                 {idle.length > 1 && <Button size="xs" onClick={() => idle.forEach(({ computer, model }) => remove(computer, model, false))}>{`Remove all ${idle.length} idle`}</Button>}
             </Container>
+            </>}
         </Container>
     );
 };
