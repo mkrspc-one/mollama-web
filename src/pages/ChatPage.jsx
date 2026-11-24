@@ -1215,7 +1215,16 @@ const TOOL_FAILURES = {
     offline: 'that computer is not connected.',
     limited: 'the hourly limit on tool use was reached.',
     blocked: 'only public https addresses can be reached.',
-    unreachable: 'it could not be reached.'
+    unreachable: 'it could not be reached.',
+    cut: 'the model ran out of room while writing the call.'
+};
+// Why a step failed, in its own words: what a program printed last, or the first thing that came back.
+const reasonOf = (step) => {
+    const answer = String(step.answer ?? '').trim();
+    if (step.failed !== 'failed' || !answer) return TOOL_FAILURES[step.failed] || TOOL_FAILURES.unreachable;
+    const errors = answer.match(/\nErrors:\n([\s\S]*?)(\n\n|$)/)?.[1].trim().split('\n').pop().trim();
+    const said = errors || answer.split('\n')[0].replace(/^Nothing was run\.\s*/, 'nothing was run. ');
+    return said.length > 140 ? `${said.slice(0, 140)}…` : said;
 };
 const isSearchStep = (step) => step.tool === 'web_search' || step.tool === 'web_fetch';
 // A step still under way reads as something happening now; a finished one as something done.
@@ -1235,7 +1244,8 @@ const stepText = (step, active = false) => {
     if (step.tool === 'Read a file') return step.failed ? `Could not read ${step.input}` : active ? `Reading ${step.input}…` : `Read ${step.input}`;
     if (step.tool === 'Skill library') return active ? `Looking in the skill library for “${step.input}”…` : `Looked in the skill library for “${step.input}”`;
     if (!isSearchStep(step)) {
-        if (step.failed) return `Could not use ${step.tool}: ${TOOL_FAILURES[step.failed] || TOOL_FAILURES.unreachable}`;
+        if (step.tool === 'Program' && / lines so far$/.test(step.input)) return `Ran out of room, kept ${step.input} and went on`;
+        if (step.failed) return `${step.tool === 'Program' ? 'The program did not work' : `Could not use ${step.tool}`}: ${reasonOf(step)}`;
         return active ? `Using ${step.tool}…` : `Used ${step.tool}`;
     }
     const what = step.tool === 'web_fetch' ? `read ${hostOf(step.input)}` : `search the web for “${step.input}”`;
@@ -1265,19 +1275,27 @@ const ToolStep = ({ step, text }) => {
 
 const Steps = ({ steps, live = false }) => {
     const failed = steps.filter((step) => step.failed).length;
+    // Steps that read the same, one after another, are one line with how many there were.
+    const groups = steps.reduce((all, step, index) => {
+        const text = stepText(step, live && index === steps.length - 1);
+        const last = all[all.length - 1];
+        if (step.failed && last?.text === text) all[all.length - 1] = { ...last, step, times: last.times + 1 };
+        else all.push({ step, text, times: 1 });
+        return all;
+    }, []);
     const label = live ? stepText(steps[steps.length - 1], true) : `${steps.length} ${steps.length === 1 ? 'step' : 'steps'}${failed > 0 ? `, ${failed} failed` : ''}`;
     return (
         <Fold icon={failed > 0 ? 'FiAlertTriangle' : 'FiTool'} label={label} startOpen={live}>
-            {steps.map((step, index) => (
+            {groups.map(({ step, text, times }, index) => (
                 <Container key={index} layout="flex" wrap={false} align="center" gap="xs" padding="none">
                     <Icon name={step.failed ? 'FiAlertTriangle' : step.tool === 'Skill' || step.tool === 'Skill library' || step.tool === 'Skill file' ? 'FiZap' : !isSearchStep(step) ? 'FiTool' : step.tool === 'web_fetch' ? 'FiFileText' : 'FiSearch'} size="xs" color={step.failed ? 'error' : 'text'} />
                     {!isSearchStep(step)
-                        ? <ToolStep step={step} text={stepText(step, live && index === steps.length - 1)} />
+                        ? <ToolStep step={step} text={times > 1 ? `${text} (${times} times)` : text} />
                         : step.failed
-                        ? <Typography size="xs" color="error">{stepText(step, live && index === steps.length - 1)}</Typography>
+                        ? <Typography size="xs" color="error">{times > 1 ? `${text} (${times} times)` : text}</Typography>
                         : step.tool === 'web_fetch'
-                        ? <Typography size="xs" color="muted" href={/^https?:/i.test(step.input) ? step.input : undefined} target="_blank" rel="noreferrer noopener" truncate>{stepText(step, live && index === steps.length - 1)}</Typography>
-                        : <Typography size="xs" color="muted" truncate>{stepText(step, live && index === steps.length - 1)}</Typography>}
+                        ? <Typography size="xs" color="muted" href={/^https?:/i.test(step.input) ? step.input : undefined} target="_blank" rel="noreferrer noopener" truncate>{text}</Typography>
+                        : <Typography size="xs" color="muted" truncate>{text}</Typography>}
                 </Container>
             ))}
         </Fold>
