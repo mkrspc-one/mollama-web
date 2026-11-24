@@ -2016,8 +2016,8 @@ const ChatPage = () => {
     };
     const toggleTool = (id) => switchSetup({ tools: activeTools.includes(id) ? activeTools.filter((other) => other !== id) : [...activeTools, id] });
     // Only a model marked as able to use tools is offered them; one whose abilities are not known yet is given the benefit of the doubt.
-    const modelAbilities = models.find((model) => model.name === currentModel)?.capabilities;
-    const modelUsesTools = !modelAbilities?.length || modelAbilities.includes('tools');
+    const usesTools = (model) => !model?.capabilities?.length || model.capabilities.includes('tools') || (model.capabilities.includes('completion') && Number(model.contextLength) >= 8192);
+    const modelUsesTools = usesTools(models.find((model) => model.name === currentModel));
     // Every skill as a row of the Data component, in name order: its search, column filters, sorting and pages are the
     // Data component's own, and a row's checkbox turns the skill on or off for this chat.
     const skillRows = useMemo(() => skills.filter((skill) => (skillShelf === 'mine') === (skill.source === 'mine')).map((skill) => ({
@@ -3153,7 +3153,9 @@ const ChatPage = () => {
                                             )}
                                             {models.map((model) => (
                                                 <Row key={model.name} label={model.displayName} size="xs" selected={model.name === currentModel} onClick={() => changeModel(model.name)}>
-                                                    {model.capabilities?.length > 0 && !model.capabilities.includes('tools') && <Badge size="xxs" color="warning" title="This model cannot use tools or search the web. It answers only from what it already knows.">No tools</Badge>}
+                                                    {model.capabilities?.length > 0 && !model.capabilities.includes('tools') && (usesTools(model)
+                                                        ? <Badge size="xxs" title="This model was not made for tools, so it is told of them in words and may use them less well.">Tools in words</Badge>
+                                                        : <Badge size="xxs" color="warning" title="This model has too little room to use tools or search the web. It answers only from what it already knows.">No tools</Badge>)}
                                                     <Badge size="xxs" color={FIT_COLORS[model.fit?.verdict] || 'tertiary'}>{model.fit?.label || 'Fit unknown'}</Badge>
                                                     {model.ready && <Icon name="FiCheckCircle" size="xs" color="success" title="Loaded and ready to use right now" aria-label="Loaded and ready to use right now" />}
                                                 </Row>
