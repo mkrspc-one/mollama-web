@@ -390,9 +390,23 @@ const loadSkillFile = (address) => {
 };
 // A page is either a skill's file (template) with its /*NAME*/ markers filled by the Parts, or the text between the
 // tags, whose own markers the Parts fill: a page built by a skill keeps the kit files it holds out of the chat that way.
+// A sealed page has no network, so a page that names p5.js at an address is given the app's own copy in its place.
+// Its code holds page tags as text, which the frame would take for the page's own, so they are written escaped.
+const P5_TAG = '<script\\b[^>]*\\bsrc=["\'][^"\']*\\bp5(?:\\.min)?\\.js["\'][^>]*>\\s*</script>';
+const withLibraries = async (page) => {
+    const text = String(page ?? '');
+    if (!new RegExp(P5_TAG, 'i').test(text)) return text;
+    const { default: source } = await import('p5/lib/p5.min.js?raw');
+    let first = true;
+    return text.replace(new RegExp(P5_TAG, 'gi'), () => {
+        if (!first) return '';
+        first = false;
+        return `<script>${source.replace(/<(?=\/?(?:html|head|body|script)\b)/gi, '\\x3c')}</script>`;
+    });
+};
 const buildFrame = async (content, template) => {
     const own = !isText(template) || !String(template).trim();
-    if (own && !/\/\*[A-Z][A-Z0-9_]*\*\//.test(String(content ?? ''))) return String(content ?? '');
+    if (own && !/\/\*[A-Z][A-Z0-9_]*\*\//.test(String(content ?? ''))) return withLibraries(content);
     let page = own ? String(content ?? '').replace(FRAME_PART, '') : await loadSkillFile(template);
     for (const match of String(content ?? '').matchAll(FRAME_PART)) {
         const part = readAttributes(match[1].replace(/\/\s*$/, ''));
@@ -400,7 +414,7 @@ const buildFrame = async (content, template) => {
         const fill = isText(part.file) ? await loadSkillFile(part.file) : String(match[2] ?? '').replace(/^\s*\n/, '').replace(/\s+$/, '');
         page = page.replace(`/*${part.name}*/`, () => `\n${fill}\n`);
     }
-    return page;
+    return withLibraries(page);
 };
 // palette="ground:background, muted:text 65%" gives the page's own colour variables the app theme's colours: each pair
 // is a variable of the page and a theme colour, with an optional strength.
