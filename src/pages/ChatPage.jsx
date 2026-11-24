@@ -1211,7 +1211,10 @@ const STEP_FAILURES = {
 };
 const TOOL_FAILURES = {
     failed: 'it reported a problem.',
-    refused: 'you did not allow it.',
+    refused: 'it was not allowed in time, or Refuse was chosen.',
+    declined: 'Refuse was chosen.',
+    unanswered: 'there was no answer in time to whether it may run.',
+    stopped: 'the reply was stopped.',
     offline: 'that computer is not connected.',
     limited: 'the hourly limit on tool use was reached.',
     blocked: 'only public https addresses can be reached.',
@@ -1247,6 +1250,9 @@ const stepText = (step, active = false) => {
     if (step.tool === 'Skill library') return active ? `Looking in the skill library for “${step.input}”…` : `Looked in the skill library for “${step.input}”`;
     if (!isSearchStep(step)) {
         if (step.tool === 'Program' && / lines so far$/.test(step.input)) return `Ran out of room, kept ${step.input} and went on`;
+        // What Mollama itself did not run is said in its own words, with why.
+        if (['declined', 'unanswered'].includes(step.failed) && step.answer) return String(step.answer).split('\n')[0];
+        if (['refused', 'declined', 'unanswered', 'stopped'].includes(step.failed)) return `Mollama did not run ${step.tool === 'Program' ? 'the program' : step.tool}: ${TOOL_FAILURES[step.failed]}`;
         if (step.failed) return `${step.tool === 'Program' ? 'The program did not work' : `Could not use ${step.tool}`}: ${reasonOf(step)}`;
         return active ? `Using ${step.tool}…` : `Used ${step.tool}`;
     }
@@ -1303,6 +1309,43 @@ const Steps = ({ steps, live = false }) => {
             ))}
         </Fold>
     );
+};
+
+// Files a model made, offered to be saved. The reply goes on meanwhile.
+const SaveOffers = ({ steps, chatId }) => {
+    const { success, error: notifyError } = useNotification();
+    const [states, setStates] = useState({});
+    const offers = (steps || []).map((step) => step.save).filter(Boolean);
+    const answer = async (save, choice) => {
+        setStates((now) => ({ ...now, [save.id]: 'sending' }));
+        try {
+            const result = await chatService.answerSave(chatId, save.id, choice);
+            setStates((now) => ({ ...now, [save.id]: result.state }));
+            if (result.state === 'saved') success(result.message);
+        } catch (error) {
+            setStates((now) => ({ ...now, [save.id]: error?.response?.status === 404 ? 'gone' : 'waiting' }));
+            notifyError(describeError(error, 'The files could not be saved. Try again.'));
+        }
+    };
+    return offers.map((save) => {
+        const state = states[save.id] || save.state;
+        const names = save.names.length > 4 ? `${save.names.slice(0, 3).join(', ')} and ${save.names.length - 3} more` : save.names.join(', ');
+        if (state === 'dropped') return null;
+        if (state === 'saved') return <Notice key={save.id} icon="FiCheck">{`${names}: saved in ${save.folder}.`}</Notice>;
+        if (state === 'gone') return <Notice key={save.id} icon="FiHardDrive">{`${names}: not saved, and no longer kept. Ask for ${save.names.length === 1 ? 'it' : 'them'} again to save ${save.names.length === 1 ? 'it' : 'them'}.`}</Notice>;
+        return (
+            <Notice
+                key={save.id}
+                icon="FiHardDrive"
+                tone="warning"
+                actions={[['save', 'Save', 'primary'], ['always', 'Always in this chat', 'primary'], ['no', 'Do not save', 'error']].map(([choice, label, color]) => (
+                    <Button key={choice} size="xs" color={color} disabled={state === 'sending'} onClick={() => answer(save, choice)}>{label}</Button>
+                ))}
+            >
+                {`Save ${names} in ${save.folder}? Kept for two hours.`}
+            </Notice>
+        );
+    });
 };
 
 const PlainText = ({ text }) => (
@@ -1473,7 +1516,7 @@ const SavedInstructions = ({ onAdd, onBack, full }) => {
     );
 };
 
-const Message = ({ message, isLast, busy, onRegenerate, onEdit }) => {
+const Message = ({ message, chatId, isLast, busy, onRegenerate, onEdit }) => {
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(message.content);
     const mine = message.role === 'user';
@@ -1486,6 +1529,7 @@ const Message = ({ message, isLast, busy, onRegenerate, onEdit }) => {
                 </Container>
             )}
             {message.steps?.length > 0 && <Steps steps={message.steps} />}
+            {message.steps?.some((step) => step.save) && <SaveOffers steps={message.steps} chatId={chatId} />}
             {message.thinking && <Thinking text={message.thinking} />}
             {editing ? (
                 <Container layout="flex-column" gap="xs" padding="none" width="100%" minWidth="min(480px, 68vw)">
@@ -2041,7 +2085,8 @@ const ChatPage = () => {
         if (event.type === 'replace') setLive((now) => now && { ...now, content: event.text });
         if (event.type === 'tool') setLive((now) => now && { ...now, draft: '', steps: [...(now.steps || []), { tool: event.tool, input: event.input, sent: event.sent }] });
         if (event.type === 'draft') setLive((now) => now && { ...now, draft: (now.draft || '') + event.text });
-        if (event.type === 'permission') setLive((now) => now && { ...now, permission: { id: event.id, tool: event.tool, input: event.input } });
+        if (event.type === 'permission') setLive((now) => now && { ...now, permission: { id: event.id, tool: event.tool, input: event.input, asks: event.asks, minutes: event.minutes } });
+        if (event.type === 'toolSave') setLive((now) => now && { ...now, steps: (now.steps || []).map((step, index, all) => (index === all.length - 1 ? { ...step, save: event.save } : step)) });
         if (event.type === 'toolFailed' || event.type === 'token') setLive((now) => (now?.permission ? { ...now, permission: null } : now));
         if (event.type === 'toolFailed') setLive((now) => now && { ...now, steps: (now.steps || []).map((step, index, all) => (index === all.length - 1 ? { ...step, failed: event.failed } : step)) });
         if (event.type === 'toolAnswer') setLive((now) => now && { ...now, steps: (now.steps || []).map((step, index, all) => (index === all.length - 1 ? { ...step, answer: event.answer } : step)) });
@@ -2690,6 +2735,7 @@ const ChatPage = () => {
                                 )}
                                 <Message
                                     message={message}
+                                    chatId={chat?.id}
                                     isLast={index === shown.length - 1}
                                     busy={busy}
                                     onRegenerate={() => runTurn(chat, { regenerate: true }, null)}
@@ -2701,6 +2747,7 @@ const ChatPage = () => {
                             <Container layout="flex-column" gap="sm" padding="none" width="100%">
                                 {currentModel && <Typography size="xxs" color="muted">{modelLabel}</Typography>}
                                 {live.steps?.length > 0 && <Steps steps={live.steps} live={!live.stopping && Boolean(live.note)} />}
+                                {live.steps?.some((step) => step.save) && <SaveOffers steps={live.steps} chatId={chat?.id} />}
                                 {live.draft && !live.stopping && <DraftView text={live.draft} />}
                                 {live.permission && (
                                     <Notice
@@ -2723,7 +2770,7 @@ const ChatPage = () => {
                                             }}>{label}</Button>
                                         ))}
                                     >
-                                        {live.permission.tool} can change things. Allow it to run?
+                                        {live.permission.asks && live.permission.asks !== 'change things' ? `${live.permission.tool} asks to ${live.permission.asks}.` : `${live.permission.tool} can change things.`} Allow it to run?{live.permission.minutes > 0 ? ` With no answer in ${live.permission.minutes} minutes, Mollama does not run it.` : ''}
                                     </Notice>
                                 )}
                                 {live.thinking && <Thinking text={live.thinking} startOpen={!live.stopping} />}

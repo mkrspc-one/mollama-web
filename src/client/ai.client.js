@@ -564,6 +564,7 @@ export const chatService = {
     removeAttachment: (id, attachmentId) => api.delete(`/chats/${id}/attachments/${attachmentId}`),
 
     stop: (id) => api.post(`/chats/${id}/stop`, {}),
+    answerSave: (id, save, answer) => api.post(`/chats/${id}/saves/${save}`, { answer }, { timeout: 180000 }),
     answerPermission: (id, question, answer) => api.post(`/chats/${id}/permission`, { id: question, answer }),
     // What a reply in progress has sent so far, with the number of its latest piece.
     live: (id) => api.get(`/chats/${id}/live`),
