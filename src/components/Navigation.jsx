@@ -7,6 +7,7 @@ import { loadThemeFonts } from '../styles/theme.compiler.js';
 import { NotificationsMenu } from './AppNotifications';
 import { Badge, Button, ButtonGroup, CircularProgress, Container, Divider, FloatingActionButton, Icon, Page, ProgressBar, Switch, Typography } from './Components';
 import { useGuide, useActivity } from '../client/ai.client';
+import { billingService } from '../client/billing.client.js';
 
 // What is running, said with the colour that matches its state: starting and running use the tertiary colour, a wait is amber, a failure is red and a finished job is green.
 const REPLY_STATES = {
@@ -108,6 +109,14 @@ export const Navigation = ({
     const {currentTheme, mode, setMode, switchTheme, availableThemes, themes} = useTheme();
     const navigate = useNavigate();
 
+    const [billing, setBilling] = useState(false);
+    useEffect(() => {
+        let current = true;
+        if (!user) setBilling(false);
+        else billingService.isOn(user.id || user._id).then((on) => current && setBilling(on));
+        return () => { current = false; };
+    }, [user]);
+
     // Navigation menu items based on authentication and roles
     const getNavigationItems = () => {
         const items = [];
@@ -167,6 +176,16 @@ export const Navigation = ({
                 roles: ['USER', 'CREATOR', 'SUPER_CREATOR', 'ADMIN', 'OWNER'],
                 requireAuth: true
             });
+
+            if (billing) {
+                items.push({
+                    id: 'billing',
+                    label: 'Billing',
+                    icon: 'FiCreditCard',
+                    path: '/billing',
+                    requireAuth: true
+                });
+            }
 
             items.push({
                 id: 'settings',

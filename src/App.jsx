@@ -13,6 +13,7 @@ import AdminPage from './pages/AdminPage';
 import DevicesPage from './pages/DevicesPage';
 import ToolsPage from './pages/ToolsPage';
 import SettingsPage from './pages/SettingsPage';
+import BillingPage from './pages/BillingPage';
 import ModelsPage from './pages/ModelsPage';
 import ChatPage from './pages/ChatPage';
 import { OllamaWatcher } from './components/OllamaWatcher';
@@ -76,6 +77,11 @@ function AppRouter() {
         <Route path="/tools" element={
           <RouteAccessControl path="/tools">
             <ToolsPage />
+          </RouteAccessControl>
+        } />
+        <Route path="/billing" element={
+          <RouteAccessControl path="/billing">
+            <BillingPage />
           </RouteAccessControl>
         } />
         <Route path="/settings" element={

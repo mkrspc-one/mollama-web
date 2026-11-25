@@ -270,6 +270,14 @@ export const trainingService = {
     remove: (id) => api.delete(`/trainings/${id}`)
 };
 
+// Graphics cards rented by the hour from prepaid credit; a rented machine is one of the person's computers.
+export const rentalService = {
+    cards: () => api.get('/rentals/cards'),
+    list: () => api.get('/rentals'),
+    start: (flavor, hours, limit) => api.post('/rentals', { flavor, hours, limit }),
+    end: (id) => api.post(`/rentals/${id}/end`, {})
+};
+
 export const deviceService = {
     listDevices: () => api.get('/devices'),
     // What every computer holds in memory, and taking one model out of it.

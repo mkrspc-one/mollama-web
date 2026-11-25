@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Frame, Select, Divider } from '@components/Components';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useNotification } from '@contexts/NotificationContext';
-import { deviceService, desktopService, skillService, describeError, formatGb, useGuide } from '../client/ai.client';
+import { deviceService, desktopService, rentalService, skillService, describeError, formatGb, useGuide } from '../client/ai.client';
+import { formatMoney } from '../client/billing.client';
 
 const ADD_STEPS = [
     'Download the Mollama desktop app on the computer you want to add.',
@@ -497,7 +498,71 @@ const AppUpdate = () => {
 
 const toMb = (gbText) => (gbText === '' ? null : Math.round(Number(gbText) * 1024));
 
-const DeviceCard = ({ device, canManage, onChanged, onRemove, onPause, here, onSetUp }) => {
+const minutesText = (minutes) => {
+    const whole = Math.max(1, Math.round(minutes));
+    return whole >= 60 ? `${Math.floor(whole / 60)} h ${whole % 60} min` : `${whole} min`;
+};
+
+// Renting a graphics card: the card, how long, and the most it may cost. The whole limit is set aside at once.
+const RentCard = ({ offer, onRented }) => {
+    const { success, error: notifyError } = useNotification();
+    const navigate = useNavigate();
+    const [flavor, setFlavor] = useState(offer.cards[0]?.flavor || '');
+    const [hours, setHours] = useState(String(offer.rules.hours));
+    const [limit, setLimit] = useState(String(offer.rules.limit / 100));
+    const [busy, setBusy] = useState(false);
+    const card = offer.cards.find((one) => one.flavor === flavor);
+    const cents = Math.round(Number(limit) * 100);
+    const problem = !card ? 'No card is free to rent right now. Try again later.'
+        : !Number.isFinite(cents) || cents < card.price ? `The spending limit must cover one hour: at least ${formatMoney(card.price)}.`
+            : cents > offer.balance ? `You have ${formatMoney(offer.balance)} of credit. Add credit, or lower the limit.` : '';
+
+    const rent = async () => {
+        setBusy(true);
+        try {
+            await rentalService.start(flavor, Number(hours), cents);
+            success(`Starting your ${card.name}. It takes a few minutes; you are told when it is ready.`);
+            document.querySelector('[data-genie-backdrop]')?.click();
+            onRented();
+        } catch (error) {
+            notifyError(error?.response?.data?.message || describeError(error, 'The card could not be rented.'));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <Container layout="flex-column" gap="md" padding="none" width="100%">
+            <Typography as="h2" size="md" weight="semibold" font="secondary">Rent a graphics card</Typography>
+            <Typography as="p" size="xs" color="muted">
+                A computer with a strong graphics card, yours by the hour. It appears here as one of your computers; you download models onto it and choose it in a chat.
+            </Typography>
+            <Select size="sm" label="Card" value={flavor} onChange={setFlavor} width="100%"
+                options={offer.cards.map((one) => ({ value: one.flavor, label: `${one.name} · ${one.memoryMb ? `${formatGb(one.memoryMb)} graphics memory · ` : ''}${formatMoney(one.price)} an hour` }))} />
+            <Container layout="grid" columns="2" gap="sm" padding="none" width="100%">
+                <Select size="sm" label="For at most" value={hours} onChange={(value) => setHours(String(value))} width="100%"
+                    options={Array.from({ length: offer.rules.mostHours }, (unused, index) => ({ value: String(index + 1), label: index === 0 ? '1 hour' : `${index + 1} hours` }))} />
+                <Input size="sm" label="Spending limit (US dollars)" value={limit} onChange={(event) => setLimit(event.target.value)} width="100%" />
+            </Container>
+            <Typography as="p" size="xxs" color={problem ? 'error' : 'muted'}>
+                {problem || `${formatMoney(cents)} of your ${formatMoney(offer.balance)} credit is set aside now. You pay by the minute, and what is not used comes back. It ends, and the machine is deleted with everything on it, after ${hours === '1' ? '1 hour' : `${hours} hours`}, when ${formatMoney(cents)} is spent, or after ${offer.rules.idleMinutes} minutes with nothing running, whichever comes first.`}
+            </Typography>
+            <Container layout="flex" gap="xs" padding="none">
+                <Button size="sm" disabled={busy || Boolean(problem)} onClick={rent}><Icon name="FiZap" />{busy ? 'Starting…' : 'Rent'}</Button>
+                <Button size="sm" variant="ghost" onClick={() => navigate('/billing')}><Icon name="FiCreditCard" />Add credit</Button>
+            </Container>
+        </Container>
+    );
+};
+
+const RENTAL_STATES = { starting: 'Starting', running: 'Rented', ending: 'Ending' };
+const rentalNote = (rental) => {
+    if (rental.state === 'starting') return ' Rented by the hour. It is starting, which takes a few minutes; nothing is charged if it never becomes ready.';
+    if (rental.state === 'ending') return ` Its rental has ended because ${rental.why}. It leaves this list once the machine is confirmed deleted.`;
+    return ' Rented by the hour. Ending it deletes the machine and everything on it.';
+};
+
+const DeviceCard = ({ device, canManage, onChanged, onRemove, onPause, here, onSetUp, rental = null, onEndRental }) => {
     const { success, error: notifyError } = useNotification();
     const [editing, setEditing] = useState(false);
     const [busy, setBusy] = useState(false);
@@ -568,15 +633,22 @@ const DeviceCard = ({ device, canManage, onChanged, onRemove, onPause, here, onS
                     </Badge>
                 )}
                 {device.edited && <Badge size="xs" color="warning">Corrected by hand</Badge>}
+                {rental && <Badge size="xs" color={rental.state === 'running' ? 'primary' : 'warning'}>{RENTAL_STATES[rental.state] || 'Rented'}</Badge>}
             </Container>
             <Typography size="xxs" color="muted">
-                {device.kind === 'local' ? 'The computer Mollama is running on.' : 'Linked through the Mollama desktop app.'}
-                {!device.online && ' Open the Mollama desktop app on it to bring it online, or remove it if that computer is no longer yours to use.'}
+                {rental ? rentalNote(rental) : device.kind === 'local' ? 'The computer Mollama is running on.' : 'Linked through the Mollama desktop app.'}
+                {!rental && !device.online && ' Open the Mollama desktop app on it to bring it online, or remove it if that computer is no longer yours to use.'}
                 {device.paused && ' Paused: it stays connected but is given no work, and its models are out of memory, until you resume it.'}
                 {device.online && !device.paused && !ollama.available && (here ? ' Ollama is not running here. Set up Ollama installs it if needed and starts it.' : ' Start Ollama on that computer, or open Mollama on it and choose Set up Ollama.')}
             </Typography>
 
-            {!editing && (
+            {!editing && rental?.state === 'starting' && (
+                <Container layout="flex-column" gap="xs" padding="none" width="100%" flexFill>
+                    <Fact label="Graphics card" value={rental.card.name} note={rental.card.memoryMb ? `${formatGb(rental.card.memoryMb)} of graphics memory` : null} />
+                    <Fact label="Rental" value={`${formatMoney(rental.price)} an hour`} note={`${formatMoney(rental.limit)} set aside`} />
+                </Container>
+            )}
+            {!editing && rental?.state !== 'starting' && (
                 <Container layout="flex-column" gap="xs" padding="none" width="100%" flexFill>
                     <Fact
                         label={hardware.gpuShared ? 'Graphics' : 'Graphics card'}
@@ -603,6 +675,14 @@ const DeviceCard = ({ device, canManage, onChanged, onRemove, onPause, here, onS
                         value={ollama.available ? String(ollama.modelCount) : 'Unknown'}
                         note={ollama.available && ollama.modelCount === 0 ? 'None yet' : null}
                     />
+                    {rental && (
+                        <Fact label="Rental" value={`${formatMoney(rental.price)} an hour`}
+                            note={`${formatMoney(rental.spent)} used of the ${formatMoney(rental.limit)} set aside`} />
+                    )}
+                    {rental?.state === 'running' && rental.endsAt && (
+                        <Fact label="Ends" value={`in ${minutesText((new Date(rental.endsAt) - Date.now()) / 60000)} at the latest`}
+                            note={`sooner at ${formatMoney(rental.limit)}, or after ${rental.idleMinutes} minutes with nothing running`} />
+                    )}
                     {here && <AppUpdate />}
                 </Container>
             )}
@@ -632,7 +712,7 @@ const DeviceCard = ({ device, canManage, onChanged, onRemove, onPause, here, onS
                 <>
                     <Divider />
                     <Container layout="flex" gap="xs" padding="none" width="100%">
-                        {canManage && !editing && (
+                        {canManage && !editing && rental?.state !== 'starting' && (
                             <>
                                 <Button size="xs" variant="ghost" onClick={readAgain} disabled={busy} {...guide.tip('devices.read')}>
                                     <Icon name="FiRefreshCw" />{busy ? 'Reading…' : 'Read this computer again'}
@@ -648,7 +728,8 @@ const DeviceCard = ({ device, canManage, onChanged, onRemove, onPause, here, onS
                                 <Icon name={device.paused ? 'FiPlay' : 'FiPause'} />{device.paused ? 'Resume' : 'Pause'}
                             </Button>
                         )}
-                        {device.kind !== 'local' && !here && <Button size="xs" variant="ghost" color="error" onClick={() => onRemove(device)}><Icon name="FiTrash2" />Remove</Button>}
+                        {device.kind !== 'local' && !here && !rental && <Button size="xs" variant="ghost" color="error" onClick={() => onRemove(device)}><Icon name="FiTrash2" />Remove</Button>}
+                        {rental && rental.state !== 'ending' && <Button size="xs" variant="ghost" color="error" onClick={() => onEndRental(device, rental)}><Icon name="FiPower" />End rental</Button>}
                     </Container>
                 </>
             )}
@@ -663,6 +744,8 @@ const DevicesPage = () => {
     const [canManage, setCanManage] = useState(false);
     const [failed, setFailed] = useState(false);
     const [pools, setPools] = useState(null);
+    const [rentals, setRentals] = useState([]);
+    const [offer, setOffer] = useState(null);
     // Two views: the computers themselves, and pooling them. The address says which, so other pages can link to pooling.
     const [params, setParams] = useSearchParams();
     const view = params.get('view') === 'pooling' ? 'pooling' : 'computers';
@@ -672,6 +755,8 @@ const DevicesPage = () => {
             const result = await deviceService.listDevices();
             setDevices(result.devices);
             deviceService.pools().then(setPools, () => setPools({ groups: [], left: [] }));
+            rentalService.list().then((answer) => setRentals(answer.rentals || []), () => setRentals([]));
+            rentalService.cards().then((answer) => setOffer(answer.on ? answer : null), () => setOffer(null));
             setCanManage(Boolean(result.permissions?.manage));
             setFailed(false);
         } catch (error) {
@@ -741,6 +826,26 @@ const DevicesPage = () => {
         window.desktop?.deviceState?.().then((state) => setHere(state?.deviceId || null));
     }, [devices]);
 
+    // An open rental changes by the minute (what it has cost, how long is left, whether it is ready), so it is read again.
+    const renting = rentals.some((rental) => rental.state !== 'ended');
+    useEffect(() => {
+        if (!renting) return undefined;
+        const timer = setInterval(load, 30000);
+        return () => clearInterval(timer);
+    }, [renting, load]);
+
+    const endRental = async (device, rental) => {
+        if (!(await confirm(`End the rental of ${device.name}? The machine is deleted with every model on it, and the credit not used comes back.`, { confirmLabel: 'End rental', color: 'error' }))) return;
+        try {
+            await rentalService.end(rental.id);
+            if (deviceService.chosen() === device.id) deviceService.choose('');
+            success(`${device.name} is ending. What was not used comes back to your credit once the machine is deleted.`);
+            load();
+        } catch (error) {
+            notifyError(describeError(error, 'The rental could not be ended.'));
+        }
+    };
+
     const setUpOllama = async () => {
         success('Setting up Ollama on this computer. Answer the question Mollama asks, then wait for it to finish.');
         const result = await window.desktop.setUpOllama();
@@ -755,6 +860,7 @@ const DevicesPage = () => {
     };
 
     const addComputer = { trigger: 'click', variant: 'popover', width: '480px', padding: 'lg', content: <AddComputer /> };
+    const rentCard = offer && { trigger: 'click', variant: 'popover', width: '480px', padding: 'lg', content: <RentCard offer={offer} onRented={load} /> };
 
     return (
         <Page
@@ -766,6 +872,7 @@ const DevicesPage = () => {
             actions={(
                 <Container layout="flex" align="center" gap="sm" padding="none" wrap={false}>
                     <Button size="sm" onClick={load}><Icon name="FiRefreshCw" />Refresh</Button>
+                    {rentCard && !renting && <Button size="sm" genie={rentCard}><Icon name="FiZap" />Rent a graphics card</Button>}
                     <Button size="sm" color="secondary" variant="solid" genie={addComputer}><Icon name="FiPlus" />Add a computer</Button>
                 </Container>
             )}
@@ -786,7 +893,10 @@ const DevicesPage = () => {
 
             {devices?.length === 0 && (
                 <Notice title="No device is connected to your account yet." text="Install the Mollama desktop app on a computer and sign in. That computer appears here by itself, and its models can then be used from any of your Mollama apps.">
-                    <Button size="sm" genie={addComputer}><Icon name="FiPlus" />Add a computer</Button>
+                    <Container layout="flex" gap="xs" padding="none">
+                        <Button size="sm" genie={addComputer}><Icon name="FiPlus" />Add a computer</Button>
+                        {rentCard && <Button size="sm" variant="ghost" genie={rentCard}><Icon name="FiZap" />Rent a graphics card</Button>}
+                    </Container>
                 </Notice>
             )}
 
@@ -797,7 +907,8 @@ const DevicesPage = () => {
             {view === 'computers' && devices?.length > 0 && (
                 <Container layout="grid" columns="auto-lg" gap="lg" align="stretch" padding="none" width="100%">
                     {devices.map((device) => (
-                        <DeviceCard key={device.id} device={device} canManage={canManage} onChanged={replaceDevice} onRemove={removeDevice} onPause={pauseDevice} here={device.id === here} onSetUp={setUpOllama} />
+                        <DeviceCard key={device.id} device={device} canManage={canManage} onChanged={replaceDevice} onRemove={removeDevice} onPause={pauseDevice} here={device.id === here} onSetUp={setUpOllama}
+                            rental={rentals.find((rental) => rental.id === device.rental && rental.state !== 'ended') || null} onEndRental={endRental} />
                     ))}
                 </Container>
             )}
