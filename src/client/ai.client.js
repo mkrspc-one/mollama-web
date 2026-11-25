@@ -20,7 +20,6 @@ export const GUIDE_TEXT = {
     'chat.new': ['New chat', 'Starts an empty conversation. The earlier ones stay in the list behind this button.'],
     'models.installed': ['Installed', 'The models already on this device, with their size on disk.'],
     'models.running': ['Running', 'Models loaded in memory right now. They unload by themselves after a few minutes.'],
-    'models.mine': ['My models', 'An installed model with your own instructions built in, saved under its own name.'],
     'models.train': ['Train', 'Teach a small model your own lessons, on one of your own computers.'],
     'models.refresh': ['Refresh', 'Reads the model lists and the free disk space again, for example after a download finished elsewhere.'],
     'models.download': ['Download', 'The download runs on the server, so it carries on if you close this page. Its progress shows at the top.'],
@@ -260,6 +259,10 @@ export const toolService = {
 // Training a model on one of a person's own computers.
 export const trainingService = {
     list: () => api.get('/trainings'),
+    // Every model downloaded on one computer, with whether it can be trained there and why not.
+    models: (device, kind) => api.get(`/trainings/models?device=${device}&kind=${kind}`),
+    // What one model would take of one computer, and whether it fits.
+    check: (device, source, kind) => api.get(`/trainings/base?device=${device}&source=${encodeURIComponent(source)}&kind=${kind}`),
     start: (run) => api.post('/trainings', run),
     stop: (id) => api.post(`/trainings/${id}/stop`, {}),
     remove: (id) => api.delete(`/trainings/${id}`)

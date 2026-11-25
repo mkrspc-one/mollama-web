@@ -1,5 +1,5 @@
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Select, Divider, ProgressBar, CircularProgress, Pagination } from '@components/Components';
+import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Divider, ProgressBar, CircularProgress, Pagination } from '@components/Components';
 import { useNotification } from '@contexts/NotificationContext';
 import { chatService, deviceService, modelService, providerService, trainingService, describeError, useGuide, onReturn } from '../client/ai.client';
 
@@ -284,9 +284,8 @@ const TABS = [
     { id: 'discover', label: 'Discover' },
     { id: 'installed', label: 'Installed' },
     { id: 'running', label: 'Running' },
-    { id: 'mine', label: 'My models' },
-    { id: 'online', label: 'Online' },
-    { id: 'train', label: 'Train' }
+    { id: 'train', label: 'Train' },
+    { id: 'online', label: 'Online' }
 ];
 const PROVIDER_ICONS = { ollama: 'SiOllama', anthropic: 'SiAnthropic', openai: 'FiZap', google: 'SiGooglegemini', moonshot: 'FiMoon', deepseek: 'SiDeepseek', xai: 'SiX', mistral: 'SiMistralai', openrouter: 'SiOpenrouter', groq: 'FiCpu', cerebras: 'FiCpu' };
 const PROVIDER_COLORS = { healthy: 'success', unchecked: 'default', busy: 'warning', empty: 'warning' };
@@ -308,38 +307,6 @@ const ABILITY_NOTES = {
     'Can read images': 'It can look at pictures you attach and answer about them.',
     'Thinks step by step': 'It works a problem through before it answers, which takes longer and is often more accurate.'
 };
-
-const CREATIVITY = [
-    { label: 'Precise', value: 0.2 },
-    { label: 'Balanced', value: 0.7 },
-    { label: 'Inventive', value: 1.2 }
-];
-const creativityOf = (value) => (Number(value) <= 0.3 ? 'Precise' : Number(value) <= 0.9 ? 'Balanced' : 'Inventive');
-
-const TEMPLATES = [
-    {
-        id: 'coding',
-        label: 'Coding helper',
-        displayName: 'Coding helper',
-        system: 'You are a careful programming assistant. Explain what the code does before changing it, keep changes small, and say how to test them.',
-        creativity: 0.2
-    },
-    {
-        id: 'reviewer',
-        label: 'Careful reviewer',
-        displayName: 'Careful reviewer',
-        system: 'You review work for mistakes. List each problem you find, say why it matters, and suggest a fix. If you find nothing wrong, say so plainly.',
-        creativity: 0.1
-    },
-    {
-        id: 'writer',
-        label: 'Friendly writer',
-        displayName: 'Friendly writer',
-        system: 'You write in a warm, clear, plain style. Use short sentences and everyday words. Keep the meaning of what you are given.',
-        creativity: 0.8
-    },
-    { id: 'blank', label: 'Blank', displayName: '', system: '', creativity: 0.7 }
-];
 
 const gb = (megabytes) => {
     if (megabytes === null || megabytes === undefined) return 'Unknown';
@@ -373,7 +340,6 @@ const timeLeft = (seconds) => {
     return `about ${(seconds / 3600).toFixed(1)} hours left`;
 };
 
-const slug = (text) => text.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
 
 const Row = ({ children }) => (
     <Container layout="flex" justify="between" align="center" gap="sm" padding="none" width="100%" wrap={false}>{children}</Container>
@@ -494,41 +460,62 @@ const DownloadsPanel = ({ jobs, canManage, onResume, onPause, onCancel }) => {
 
 // Models that run on another company's computers with the person's own key. Ollama comes first, because it runs the
 // models from the same library that are too large to download; the other services follow.
-// Training: a person teaches a small model on one of their own computers. The desktop app there does the work; this
-// tab gives it the lessons and shows how the run is going and what the model gained and kept.
+// Training: a person teaches a model on one of their own computers. The tab lists every model downloaded on the chosen
+// computer with whether it can be trained there and, if not, exactly why; any other model can be brought in by its name
+// on Hugging Face. The desktop app on that computer does the work, and the result becomes one of its models.
 const TRAIN_LIVE = ['queued', 'setting-up', 'scoring', 'training', 'saving'];
 const TRAIN_STATUS = { queued: ['Waiting', 'default'], 'setting-up': ['Setting up', 'primary'], scoring: ['Asking the model', 'primary'], training: ['Training', 'primary'], saving: ['Saving', 'primary'], done: ['Trained', 'success'], failed: ['Failed', 'error'], stopped: ['Stopped', 'default'] };
+const TRAIN_VERDICTS = {
+    ready: ['Can be trained here', 'success'], card: ['Needs a larger graphics card', 'warning'], memory: ['Needs more memory', 'warning'], place: ['This computer is not ready', 'warning'],
+    terms: ['Its makers ask for a sign-up first', 'default'], kind: ['Not supported yet', 'default'], origin: ['Original not found', 'default'], other: ['Cannot be trained', 'default']
+};
+const TRAIN_EXAMPLE = 'What should you do when you are not sure of an answer?\nSay that I am not sure, and ask one question that would settle it.\n\nHow long should your answers be?\nAs short as they can be while still answering fully.';
 const spanOf = (seconds) => (seconds >= 90 ? `${Math.round(seconds / 60)} min` : `${seconds} s`);
-export const TrainTab = () => {
+export const TrainTab = ({ device }) => {
     const { success, error: notifyError, confirm } = useNotification();
-    const [state, setState] = useState(null);
-    const [form, setForm] = useState({ device: '', base: '', kind: 'habits', name: '', lessons: '' });
+    const [runs, setRuns] = useState(null);
+    const [listed, setListed] = useState(null);
+    const [chosen, setChosen] = useState(null);
+    const [other, setOther] = useState('');
+    const [form, setForm] = useState({ kind: 'habits', name: '', lessons: '' });
+    const [fit, setFit] = useState(null);
     const [busy, setBusy] = useState(false);
 
-    const load = useCallback(() => trainingService.list().then((listed) => {
-        setState(listed);
-        setForm((current) => ({ ...current, device: current.device || listed.computers.find((one) => one.ready)?.id || listed.computers[0]?.id || '', base: current.base || listed.bases[0]?.id || '' }));
-    }).catch((error) => { setState((current) => current || { computers: [], bases: [], kinds: [], trainings: [], limits: {} }); notifyError(describeError(error, 'Your trainings could not be loaded.')); }), []);
-    useEffect(() => { load(); }, [load]);
-    const live = (state?.trainings || []).some((one) => TRAIN_LIVE.includes(one.status));
+    const loadRuns = useCallback(() => trainingService.list().then(setRuns).catch((error) => { setRuns((current) => current || { kinds: [], trainings: [], limits: {} }); notifyError(describeError(error, 'Your trainings could not be loaded.')); }), []);
+    const loadModels = useCallback(() => trainingService.models(device.id, 'habits').then(setListed).catch((error) => { setListed({ computer: { name: device.name, ready: false, reason: null }, models: [] }); notifyError(describeError(error, 'This computer\'s models could not be read.')); }), [device.id]);
+    useEffect(() => { loadRuns(); }, [loadRuns]);
+    useEffect(() => { setListed(null); setChosen(null); loadModels(); }, [loadModels]);
+    const live = (runs?.trainings || []).some((one) => TRAIN_LIVE.includes(one.status));
     useEffect(() => {
         if (!live) return undefined;
-        const timer = setInterval(load, 3000);
+        const timer = setInterval(loadRuns, 3000);
         return () => clearInterval(timer);
-    }, [live, load]);
+    }, [live, loadRuns]);
+    // What the model being looked at would take of this computer: the chosen one, or the one being typed.
+    const looking = chosen?.source || other.trim();
+    useEffect(() => {
+        setFit(null);
+        if (!/^(https?:\/\/huggingface\.co\/)?[\w.-]+\/[\w.-]+\/?$/i.test(looking)) return undefined;
+        let current = true;
+        const timer = setTimeout(() => trainingService.check(device.id, looking, form.kind).then((found) => { if (current) setFit(found); }).catch(() => {}), chosen ? 0 : 600);
+        return () => { current = false; clearTimeout(timer); };
+    }, [device.id, looking, form.kind, Boolean(chosen)]);
 
-    if (state === null) return <Loading text="Loading your trainings…" />;
-    const computer = state.computers.find((one) => one.id === form.device) || null;
-    const base = state.bases.find((one) => one.id === form.base) || null;
-    const kind = state.kinds.find((one) => one.id === form.kind) || null;
+    if (runs === null || listed === null) return <Loading text="Reading this computer's models…" />;
+    const kind = runs.kinds.find((one) => one.id === form.kind) || null;
     const set = (key) => (value) => setForm((current) => ({ ...current, [key]: value?.target ? value.target.value : value }));
+    const pick = (source, label) => {
+        setChosen({ source, label });
+        setForm((current) => ({ ...current, name: current.name || `my-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30)}` }));
+    };
     const start = async () => {
         setBusy(true);
         try {
-            const { unread } = await trainingService.start(form);
-            success(`Training has started on ${computer.name}.${unread ? ` ${unread} ${unread === 1 ? 'lesson' : 'lessons'} could not be read and ${unread === 1 ? 'was' : 'were'} left out.` : ''}`);
+            const { unread } = await trainingService.start({ device: device.id, base: chosen.source, ...form });
+            success(`Training has started on ${device.name}.${unread ? ` ${unread} ${unread === 1 ? 'lesson' : 'lessons'} could not be read and ${unread === 1 ? 'was' : 'were'} left out.` : ''}`);
+            setChosen(null);
             setForm((current) => ({ ...current, name: '', lessons: '' }));
-            await load();
+            await loadRuns();
         } catch (error) {
             notifyError(describeError(error, 'The training could not be started.'));
         }
@@ -537,57 +524,106 @@ export const TrainTab = () => {
     const stop = async (job) => {
         if (!await confirm(`Stop training ${job.name}? What it has learned so far is thrown away.`, { confirmLabel: 'Stop', color: 'error' })) return;
         await trainingService.stop(job.id).catch((error) => notifyError(describeError(error, 'The training could not be stopped.')));
-        load();
+        loadRuns();
     };
     const remove = async (job) => {
         await trainingService.remove(job.id).catch((error) => notifyError(describeError(error, 'This could not be removed from the list.')));
-        load();
+        loadRuns();
     };
     const gained = (job, key, of) => (job.after ? `${job.before ? `${job.before[key]} → ` : ''}${job.after[key]} of ${job.after[of]}` : job.before ? `${job.before[key]} of ${job.before[of]} before training` : null);
+    const words = (form.lessons.match(/\n\s*\n/g) || []).length + (form.lessons.trim() ? 1 : 0);
 
     return (
         <>
-            {state.computers.length === 0 ? (
-                <Empty icon="FiMonitor" title="No computer is connected to your account" text="Training runs on one of your own computers. Add one on the Devices page, with the Mollama desktop app." />
-            ) : (
-                <Card layout="flex-column" gap="md" padding="lg" width="100%" maxWidth="720px" wrap={false}>
-                    <Container layout="flex-column" gap="xs" padding="none" width="100%">
-                        <Typography as="h3" size="sm" weight="semibold">Train a model</Typography>
-                        <Typography as="p" size="xs" color="muted">Give a small model your own lessons. The training runs on your computer's graphics card, through the desktop app, and the result becomes one of that computer's models. Nothing is sent anywhere else.</Typography>
+            <Card layout="flex-column" gap="sm" padding="lg" width="100%" wrap={false}>
+                <Typography as="h3" size="sm" weight="semibold">Teach a model your own lessons</Typography>
+                <Typography as="p" size="xs" color="muted">1. Pick a model below, or bring another one in. 2. Give it lessons: a question and the answer you want, many times over. 3. {device.name} trains it on its own graphics card and adds the result to its models, ready to pick in a chat. Nothing is sent anywhere else.</Typography>
+                {listed.computer.reason && <Typography as="p" size="xs" color={listed.computer.ready ? 'muted' : 'warning'}>{listed.computer.reason}</Typography>}
+            </Card>
+
+            {chosen && (
+                <Card layout="flex-column" gap="md" padding="lg" width="100%" wrap={false}>
+                    <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%">
+                        <Typography as="h3" size="sm" weight="semibold">Teach {chosen.label}</Typography>
+                        <Button size="xs" variant="ghost" onClick={() => setChosen(null)}>Choose another model</Button>
                     </Container>
-                    <Select label="Computer" width="100%" options={state.computers.map((one) => ({ value: one.id, label: one.name }))} value={form.device} onChange={set('device')} />
-                    {computer?.reason && <Typography as="p" size="xs" color={computer.ready ? 'muted' : 'warning'}>{computer.reason}</Typography>}
-                    <Select label="Model to teach" width="100%" options={state.bases.map((one) => ({ value: one.id, label: `${one.label}${one.tried ? '' : ' (not tried yet)'}` }))} value={form.base} onChange={set('base')} />
-                    {base && <Typography as="p" size="xs" color="muted">Downloaded to that computer the first time, about {gb(base.downloadMb)}.</Typography>}
                     <Container layout="flex-column" gap="xs" padding="none" width="100%">
                         <Typography size="sm" weight="semibold">What to teach</Typography>
                         <ButtonGroup size="sm" justify="start" selectable={false}>
-                            {state.kinds.map((one) => <Button key={one.id} size="sm" selected={form.kind === one.id} onClick={() => set('kind')(one.id)}>{one.label}</Button>)}
+                            {runs.kinds.map((one) => <Button key={one.id} size="sm" selected={form.kind === one.id} onClick={() => set('kind')(one.id)}>{one.label}</Button>)}
                         </ButtonGroup>
                         {kind && <Typography as="p" size="xs" color="muted">{kind.about}</Typography>}
+                        {fit?.base && <Typography as="p" size="xs" color="muted">{(fit.base.parameters / 1e9).toFixed(1)}B parameters · about {gb(fit.needs.gpuMb)} on the graphics card · {gb(fit.needs.downloadMb)} downloaded to {device.name} the first time{fit.base.licence ? ` · licence ${fit.base.licence}` : ''}</Typography>}
+                        {fit && !fit.fits && <Typography as="p" size="xs" color="warning">{fit.reason}</Typography>}
                     </Container>
-                    <Input label="Name for the trained model" helpText="Small letters, digits and hyphens, such as my-helper." value={form.name} onChange={set('name')} width="100%" />
                     <Input
                         label="Lessons"
-                        helpText={`A question, then its answer on the next line, and a blank line between lessons. At least ${state.limits.least}. Ask each thing in several wordings: one lesson alone does not stick.`}
+                        helpText={`A question, then its answer on the next line, and a blank line between lessons. At least ${runs.limits.least}. Ask each thing in several wordings: one lesson alone does not stick.${words ? ` ${words} so far.` : ''}`}
                         multiline
                         rows={8}
                         value={form.lessons}
                         onChange={set('lessons')}
                         width="100%"
                     />
+                    {!form.lessons.trim() && (
+                        <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%">
+                            <Typography as="p" size="xs" color="muted">Not sure how lessons look?</Typography>
+                            <Button size="xs" variant="ghost" onClick={() => set('lessons')(TRAIN_EXAMPLE)}>Show me two</Button>
+                        </Container>
+                    )}
+                    <Input label="Name for the trained model" helpText="Small letters, digits and hyphens. It appears under this name among this computer's models." value={form.name} onChange={set('name')} width="100%" />
                     <Container layout="flex" justify="end" padding="none" width="100%">
-                        <Button size="sm" color="primary" disabled={busy || !computer?.ready || !form.base || !form.name.trim() || !form.lessons.trim()} onClick={start}>
+                        <Button size="sm" color="primary" disabled={busy || !fit?.fits || !form.name.trim() || !form.lessons.trim()} onClick={start}>
                             <Icon name="FiPlay" size="xs" />Start training
                         </Button>
                     </Container>
                 </Card>
             )}
-            {state.trainings.map((job) => {
+
+            {!chosen && (
+                <>
+                    <SectionTitle title={`Models on ${device.name}`} count={listed.models.length} />
+                    {listed.models.length === 0 && <Empty icon="FiBox" title="Nothing is downloaded on this computer yet" text="Download a model in Discover, or bring one in below." />}
+                    {listed.models.map((model) => {
+                        const [label, color] = TRAIN_VERDICTS[model.state] || TRAIN_VERDICTS.other;
+                        return (
+                            <Card key={model.name} layout="flex-column" gap="xs" padding="md" width="100%" wrap={false}>
+                                <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%">
+                                    <Container layout="flex" align="center" gap="sm" padding="none" minWidth="0">
+                                        <Typography as="h3" size="sm" weight="semibold" truncate>{model.name}</Typography>
+                                        <Badge size="xs" color={color}>{label}</Badge>
+                                    </Container>
+                                    {model.state === 'ready' && <Button size="xs" color="primary" onClick={() => pick(model.source, model.name.split(':')[0])}>Train this</Button>}
+                                </Container>
+                                <Typography as="p" size="xxs" color="muted">
+                                    {gb(model.sizeMb)} on this computer{model.parameters ? ` · ${(model.parameters / 1e9).toFixed(1)}B parameters` : ''}{model.source ? ` · trained from its makers' original, ${model.source}` : ''}{model.state === 'ready' && model.needs ? ` (${gb(model.needs.downloadMb)} more to download)` : ''}
+                                </Typography>
+                                {model.reason && <Typography as="p" size="xs">{model.reason}</Typography>}
+                                {model.state === 'card' && <Typography as="p" size="xs" color="muted">A rented graphics card with about {gb(model.cardMb)} would train it. Renting one for a run is coming to Mollama.</Typography>}
+                            </Card>
+                        );
+                    })}
+
+                    <Card layout="flex-column" gap="sm" padding="lg" width="100%" wrap={false}>
+                        <Typography as="h3" size="sm" weight="semibold">Bring another model</Typography>
+                        <Typography as="p" size="xs" color="muted">Any chat model published on Hugging Face in its makers' original form can be trained. Open its page there, copy its name (its maker, a slash and its name) or the page's address, and paste it here. It is downloaded to {device.name} when training starts.</Typography>
+                        <Input label="Its name on Hugging Face" helpText="For example Qwen/Qwen2.5-7B-Instruct." value={other} onChange={(value) => setOther(value?.target ? value.target.value : value)} width="100%" />
+                        {fit?.base && <Typography as="p" size="xs" color="muted">{fit.base.label}: {(fit.base.parameters / 1e9).toFixed(1)}B parameters · about {gb(fit.needs.gpuMb)} on the graphics card · {gb(fit.needs.downloadMb)} to download{fit.base.licence ? ` · licence ${fit.base.licence}` : ''}</Typography>}
+                        {fit && !fit.fits && <Typography as="p" size="xs" color="warning">{fit.reason}</Typography>}
+                        {fit && !fit.fits && fit.lacks === 'card' && <Typography as="p" size="xs" color="muted">A rented graphics card with about {gb(fit.needs.gpuMb)} would train it. Renting one for a run is coming to Mollama.</Typography>}
+                        <Container layout="flex" justify="end" padding="none" width="100%">
+                            <Button size="sm" color="primary" disabled={!fit?.fits} onClick={() => pick(fit.base.source, fit.base.label)}>Train this</Button>
+                        </Container>
+                    </Card>
+                </>
+            )}
+
+            {runs.trainings.length > 0 && <SectionTitle title="Your trainings" count={runs.trainings.length} />}
+            {runs.trainings.map((job) => {
                 const [label, color] = TRAIN_STATUS[job.status] || [job.status, 'default'];
                 const running = TRAIN_LIVE.includes(job.status);
                 return (
-                    <Card key={job.id} layout="flex-column" gap="sm" padding="lg" width="100%" maxWidth="720px" wrap={false}>
+                    <Card key={job.id} layout="flex-column" gap="sm" padding="lg" width="100%" wrap={false}>
                         <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%">
                             <Container layout="flex" align="center" gap="sm" padding="none" minWidth="0">
                                 <Typography as="h3" size="sm" weight="semibold" truncate>{job.name}</Typography>
@@ -598,7 +634,7 @@ export const TrainTab = () => {
                                 : <Button size="xs" variant="ghost" title="Remove from this list" aria-label={`Remove ${job.name} from this list`} onClick={() => remove(job)}><Icon name="FiX" size="xs" /></Button>}
                         </Container>
                         <Typography as="p" size="xxs" color="muted">
-                            {state.bases.find((one) => one.id === job.base)?.label || job.base} · {job.kind === 'facts' ? 'Facts' : 'Habits'} · {job.lessons} lessons · {state.computers.find((one) => one.id === job.device)?.name || 'a computer no longer connected'}{job.seconds ? ` · ${spanOf(job.seconds)}` : ''}
+                            {String(job.base).split('/').pop()} · {job.kind === 'facts' ? 'Facts' : 'Habits'} · {job.lessons} lessons{job.seconds ? ` · ${spanOf(job.seconds)}` : ''}
                         </Typography>
                         {running && (
                             <Container layout="flex-column" gap="xs" padding="none" width="100%">
@@ -608,7 +644,7 @@ export const TrainTab = () => {
                         )}
                         {gained(job, 'recalled', 'of') && <Typography as="p" size="xs">Gives back its lessons, nearly word for word: {gained(job, 'recalled', 'of')} asked</Typography>}
                         {gained(job, 'kept', 'keptOf') && <Typography as="p" size="xs">Still knows what it knew: {gained(job, 'kept', 'keptOf')} asked</Typography>}
-                        {job.status === 'done' && <Typography as="p" size="xs" color="muted">Pick {job.name} in a chat on that computer to use it.</Typography>}
+                        {job.status === 'done' && <Typography as="p" size="xs" color="muted">Pick {job.name} in a chat on that computer to use it. It is also under Installed.</Typography>}
                         {job.detail && job.status !== 'done' && <Typography as="p" size="xs" color={job.status === 'failed' ? 'error' : 'muted'}>{job.detail}</Typography>}
                     </Card>
                 );
@@ -1126,251 +1162,6 @@ const InstalledTab = ({ installed, canManage, onDelete, elsewhere = {} }) => {
     );
 };
 
-const EMPTY_MODEL_FORM = { displayName: '', from: '', system: '', creativity: 0.7, contextSize: '' };
-
-const ModelFields = ({ form, setForm, bases }) => {
-    const [advanced, setAdvanced] = useState(form.contextSize !== '');
-    const change = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }));
-    return (
-        <>
-            <Input label="Name" value={form.displayName} onChange={change('displayName')} width="100%" />
-            <Select
-                label="Built on"
-                width="100%"
-                options={bases.map((model) => ({ value: model.name, label: model.displayName }))}
-                value={form.from}
-                onChange={(value) => setForm((current) => ({ ...current, from: value }))}
-            />
-            <Input
-                label="Instructions"
-                helpText="How this model should behave every time it is used."
-                multiline
-                rows={5}
-                value={form.system}
-                onChange={change('system')}
-                width="100%"
-            />
-            <Container layout="flex-column" gap="xs" padding="none" width="100%">
-                <Typography size="sm" weight="semibold">Creativity</Typography>
-                <ButtonGroup size="sm" width="100%" wrap={false} justify="start" selectable={false}>
-                    {CREATIVITY.map((level) => (
-                        <Button
-                            key={level.label}
-                            size="sm"
-                            selected={creativityOf(form.creativity) === level.label}
-                            onClick={() => setForm((current) => ({ ...current, creativity: level.value }))}
-                        >
-                            {level.label}
-                        </Button>
-                    ))}
-                </ButtonGroup>
-            </Container>
-            <Container layout="flex" gap="sm" padding="none">
-                <Button size="sm" variant="ghost" onClick={() => setAdvanced((open) => !open)}>
-                    {advanced ? 'Hide advanced' : 'Advanced'}
-                </Button>
-            </Container>
-            {advanced && (
-                <Input
-                    label="Reading size in tokens (optional)"
-                    helpText="How much text the model can take in at once. Leave empty to use the model's own setting. Larger uses more memory."
-                    value={form.contextSize}
-                    onChange={change('contextSize')}
-                    width="100%"
-                />
-            )}
-        </>
-    );
-};
-
-const MineTab = ({ installed, canManage, onCreated, onDelete }) => {
-    const { success, error: notifyError } = useNotification();
-    const [template, setTemplate] = useState(null);
-    const [editing, setEditing] = useState(null);
-    const [form, setForm] = useState(EMPTY_MODEL_FORM);
-    const [busy, setBusy] = useState(false);
-
-    if (!installed) return <Loading text="Looking for installed models…" />;
-
-    const bases = installed.models.filter((model) => !model.personal);
-    const mine = installed.models.filter((model) => model.personal);
-
-    const choose = (option) => {
-        setEditing(null);
-        setTemplate(option.id);
-        setForm({ ...EMPTY_MODEL_FORM, displayName: option.displayName, from: bases[0]?.name || '', system: option.system, creativity: option.creativity });
-    };
-
-    const startEdit = (model) => {
-        setTemplate(null);
-        setEditing(model.name);
-        setForm({
-            displayName: model.displayName,
-            from: bases.find((base) => base.name === model.basedOn || base.name === `${model.basedOn}:latest`)?.name || model.basedOn || '',
-            system: model.system || '',
-            creativity: model.parameters?.temperature ?? 0.7,
-            contextSize: model.parameters?.num_ctx ? String(model.parameters.num_ctx) : ''
-        });
-    };
-
-    const parametersOf = () => {
-        const parameters = { temperature: Number(form.creativity) };
-        if (form.contextSize === '') return parameters;
-        const size = Number(form.contextSize);
-        if (!Number.isInteger(size) || size < 512 || size > 262144) {
-            notifyError('Reading size must be a whole number from 512 to 262144.');
-            return null;
-        }
-        return { ...parameters, num_ctx: size };
-    };
-
-    const run = async (work, done) => {
-        setBusy(true);
-        try {
-            await work();
-            success(done);
-            setTemplate(null);
-            setEditing(null);
-            onCreated();
-        } catch (error) {
-            notifyError(describeError(error));
-        } finally {
-            setBusy(false);
-        }
-    };
-
-    const create = () => {
-        const name = slug(form.displayName);
-        if (!name) {
-            notifyError('Give your model a name using letters or numbers.');
-            return;
-        }
-        const parameters = parametersOf();
-        if (!parameters) return;
-        const displayName = form.displayName.trim();
-        run(
-            () => modelService.createModel({ name, displayName, from: form.from, system: form.system, parameters }),
-            `${displayName} is ready. It is in your Installed list.`
-        );
-    };
-
-    const save = (model) => {
-        const parameters = parametersOf();
-        if (!parameters) return;
-        const displayName = form.displayName.trim();
-        run(
-            () => modelService.updateModel({ name: model.name, displayName, from: form.from, system: form.system, parameters }),
-            `${displayName} was updated.`
-        );
-    };
-
-    return (
-        <Container layout="flex-column" gap="xl" padding="none" width="100%">
-            <Typography as="p" size="xs" color="muted">
-                A personal model is an installed model with your own instructions built in, saved under its own name.
-                It takes almost no extra disk space.
-                {!canManage && ' Only an admin or owner can create personal models.'}
-            </Typography>
-
-            {canManage && bases.length === 0 && (
-                <Empty icon="FiBox" title="Install a model first" text="A personal model is built on one you have downloaded. Open Discover to get one." />
-            )}
-
-            {canManage && bases.length > 0 && (
-                <Card layout="flex-column" gap="md" padding="lg" width="100%" maxWidth="720px">
-                    <Typography as="h2" size="md" weight="semibold" font="secondary">New model, starting from</Typography>
-                    <ButtonGroup size="sm" width="100%" justify="start" selectable={false}>
-                        {TEMPLATES.map((option) => (
-                            <Button
-                                key={option.id}
-                                size="sm"
-                                selected={template === option.id}
-                                onClick={() => choose(option)}
-                            >
-                                {option.label}
-                            </Button>
-                        ))}
-                    </ButtonGroup>
-
-                    {template && (
-                        <>
-                            <ModelFields key={template} form={form} setForm={setForm} bases={bases} />
-                            <Container layout="flex" gap="xs" padding="none">
-                                <Button size="sm" onClick={create} disabled={busy || !form.displayName.trim() || !form.from}>
-                                    {busy ? 'Creating…' : 'Create model'}
-                                </Button>
-                                <Button size="sm" variant="ghost" onClick={() => setTemplate(null)} disabled={busy}>Cancel</Button>
-                            </Container>
-                        </>
-                    )}
-                </Card>
-            )}
-
-            {mine.length > 0 && (
-                <Container as="section" layout="flex-column" gap="md" padding="none" width="100%">
-                    <SectionTitle title="Your models" count={mine.length} />
-                    <Container layout="grid" columns={3} gap="md" padding="none" width="100%" align="stretch">
-                        {mine.map((model) => (
-                            <Card
-                                key={model.name}
-                                layout="flex-column"
-                                gap="sm"
-                                padding="lg"
-                                width="100%"
-                                height="100%"
-                                minWidth="0"
-                                wrap={false}
-                                span={editing === model.name ? 'full' : null}
-                            >
-                                <Container layout="flex-column" gap="none" padding="none" width="100%" minWidth="0">
-                                    <Typography as="h3" size="sm" weight="semibold">{model.displayName}</Typography>
-                                    <Typography as="p" size="xxs" color="muted" font="monospace">Built on {model.basedOn}</Typography>
-                                </Container>
-                                {editing === model.name ? (
-                                    <Container layout="flex-column" gap="sm" padding="none" width="100%" maxWidth="720px">
-                                        <ModelFields key={model.name} form={form} setForm={setForm} bases={bases} />
-                                        <Container layout="flex" gap="xs" padding="none">
-                                            <Button size="sm" onClick={() => save(model)} disabled={busy || !form.displayName.trim() || !form.from}>
-                                                {busy ? 'Saving…' : 'Save changes'}
-                                            </Button>
-                                            <Button size="sm" variant="ghost" onClick={() => setEditing(null)} disabled={busy}>Cancel</Button>
-                                        </Container>
-                                    </Container>
-                                ) : (
-                                    <>
-                                        <Container layout="flex-column" gap="none" padding="none" width="100%" maxHeight="120px" overflow="auto">
-                                            {model.system
-                                                ? model.system.split('\n').map((line, index) => <Typography key={index} as="p" size="xs" color="muted">{line || ' '}</Typography>)
-                                                : <Typography as="p" size="xs" color="muted">No instructions were given to this model.</Typography>}
-                                        </Container>
-                                        <Container layout="flex" gap="xs" padding="none" align="center" width="100%">
-                                            <Badge size="xs">{creativityOf(model.parameters?.temperature ?? 0.7)}</Badge>
-                                            {model.parameters?.num_ctx && <Badge size="xs">Reads {model.parameters.num_ctx.toLocaleString()} tokens</Badge>}
-                                        </Container>
-                                        {canManage && (
-                                            <>
-                                                <Container padding="none" flexFill />
-                                                <Container layout="flex" align="center" justify="end" gap="xs" padding="none" width="100%">
-                                                    <Button size="sm" variant="ghost" title="Edit" aria-label={`Edit ${model.displayName}`} onClick={() => startEdit(model)}>
-                                                        <Icon name="FiEdit2" size="xs" />Edit
-                                                    </Button>
-                                                    <Button size="sm" color="error" title="Delete" aria-label={`Delete ${model.displayName}`} onClick={() => onDelete(model)}>
-                                                        <Icon name="FiTrash2" size="xs" />Delete
-                                                    </Button>
-                                                </Container>
-                                            </>
-                                        )}
-                                    </>
-                                )}
-                            </Card>
-                        ))}
-                    </Container>
-                </Container>
-            )}
-        </Container>
-    );
-};
-
 const ModelsPage = () => {
     const { success, error: notifyError, confirm } = useNotification();
     const [tab, setTab] = useState('discover');
@@ -1672,14 +1463,13 @@ const ModelsPage = () => {
 
             <Container layout="flex-column" gap="xl" padding="none" width="100%" wrap={false}>
                 {tab === 'online' && <OnlineTab />}
-                {tab === 'train' && <TrainTab />}
-                {!['online', 'train'].includes(tab) && devices?.length === 0 && (
+                {tab !== 'online' && devices?.length === 0 && (
                     <Empty icon="FiMonitor" title="No device is connected to your account" text="Open the Devices page to add a computer. Its models are then managed here." />
                 )}
-                {!['online', 'train'].includes(tab) && device && !device.online && (
+                {tab !== 'online' && device && !device.online && (
                     <Empty icon="FiMonitor" title={`${device.name} is offline`} text="Open the Mollama desktop app on that computer to see and manage its models." />
                 )}
-                {!['online', 'train'].includes(tab) && device?.online && device.paused && (
+                {tab !== 'online' && device?.online && device.paused && (
                     <Empty icon="FiPause" title={`${device.name} is paused`} text="Resume it on the Devices page to see and manage its models." />
                 )}
                 {device?.online && tab === 'discover' && (
@@ -1705,9 +1495,7 @@ const ModelsPage = () => {
                 )}
                 {device?.online && tab === 'installed' && <InstalledTab installed={installed} canManage={canManage} onDelete={deleteModel} elsewhere={elsewhere} />}
                 {device?.online && tab === 'running' && <MemoryManager only={deviceId} />}
-                {device?.online && tab === 'mine' && (
-                    <MineTab installed={installed} canManage={canManage} onCreated={refresh} onDelete={deleteModel} />
-                )}
+                {device?.online && !device.paused && tab === 'train' && <TrainTab device={device} />}
             </Container>
         </Page>
     );
