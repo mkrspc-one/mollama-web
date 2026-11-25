@@ -777,6 +777,9 @@ const csvOf = (rows) => {
     };
     return [keys.join(','), ...rows.map((row) => keys.map((key) => cell(row?.[key])).join(','))].join('\n');
 };
+// Where a reply's time went, in a few words.
+const span = (seconds) => (seconds >= 90 ? `${Math.round(seconds / 60)} min` : `${Math.round(seconds)} s`);
+const timeSpent = (stats) => [`read ${span(stats.readSeconds || 0)}`, `wrote ${span(stats.writeSeconds || 0)}`, ...(stats.toolSeconds ? [`tools ${span(stats.toolSeconds)}`] : []), `${stats.requests} ${stats.requests === 1 ? 'step' : 'steps'}`].join(' · ');
 const assetsOf = (node, found = []) => {
     if (!node || isText(node)) return found;
     if (Array.isArray(node)) {
@@ -1596,6 +1599,9 @@ const Message = ({ message, chatId, isLast, busy, onRegenerate, onEdit }) => {
                     {!mine && <ReplySaveAll content={message.content} />}
                     {!mine && message.stats?.tokensPerSecond && (
                         <Typography size="xxs" color="muted">{message.stats.tokensPerSecond} tokens per second</Typography>
+                    )}
+                    {!mine && message.stats?.requests > 0 && (
+                        <Typography size="xxs" color="muted" title="Where this reply's time went: reading what it was sent, writing, and waiting for tools">{timeSpent(message.stats)}</Typography>
                     )}
                 </Container>
             )}
