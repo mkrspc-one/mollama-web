@@ -1,5 +1,5 @@
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Divider, ProgressBar, CircularProgress, Pagination } from '@components/Components';
+import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Switch, Divider, ProgressBar, CircularProgress, Pagination } from '@components/Components';
 import { useNotification } from '@contexts/NotificationContext';
 import { chatService, deviceService, modelService, providerService, trainingService, describeError, useGuide, onReturn } from '../client/ai.client';
 
@@ -471,6 +471,55 @@ const TRAIN_VERDICTS = {
 };
 const TRAIN_EXAMPLE = 'What should you do when you are not sure of an answer?\nSay that I am not sure, and ask one question that would settle it.\n\nHow long should your answers be?\nAs short as they can be while still answering fully.';
 const spanOf = (seconds) => (seconds >= 90 ? `${Math.round(seconds / 60)} min` : `${seconds} s`);
+const TRAIN_HELD = { '4bit': '4 bits', '8bit': '8 bits', none: 'full precision' };
+// How many lessons the box holds and how long the longest is: what the run's own numbers are worked out from.
+const lessonShape = (text) => {
+    const rows = /^\s*\{/.test(text) ? text.split('\n').filter((line) => line.trim().startsWith('{')) : text.split(/\n\s*\n/).filter((block) => block.trim());
+    return { count: rows.length, longest: rows.reduce((most, row) => Math.max(most, row.length), 0) };
+};
+// A run's main settings in one line.
+const runLine = (set) => `Adapter of size ${set.r}${set.alpha !== set.r ? ` (strength ${set.alpha})` : ''}${set.parts === 'all' ? ' on every layer' : ''}, held at ${TRAIN_HELD[set.quantization] || set.quantization} · ${set.epochs} ${set.epochs === 1 ? 'pass' : 'passes'} · ${set.batch} ${set.batch === 1 ? 'lesson' : 'lessons'} per step${set.accumulate > 1 ? `, ${set.accumulate} steps added up` : ''} · step size ${set.lr}${set.seed !== undefined ? ` · seed ${set.seed}` : ''}`;
+// One setting of a run: its name, where its value came from, what it does in plain words, and its control.
+const TrainSetting = ({ one, value, mine, fitted, locked, onChange, onReset }) => {
+    const [text, setText] = useState(String(value));
+    useEffect(() => { setText((now) => (now.trim() !== '' && Number(now) === value ? now : String(value))); }, [value]);
+    const fits = (number) => Number.isFinite(number) && number >= one.min && number <= one.max && (!one.whole || Number.isInteger(number));
+    const bad = one.type === 'number' && text.trim() !== '' && !fits(Number(text));
+    const type = (event) => {
+        const raw = event?.target ? event.target.value : String(event ?? '');
+        setText(raw);
+        if (raw.trim() !== '' && fits(Number(raw)) && Number(raw) !== value) onChange(Number(raw));
+    };
+    const where = mine ? 'You set this' : fitted ? 'Chosen to fit this graphics card' : one.from === 'kind' ? 'From what you are teaching' : one.from === 'lessons' ? 'Worked out from your lessons' : 'The usual value';
+    return (
+        <Container layout="flex-wrap" align="start" justify="between" gap="sm" padding="none" width="100%">
+            <Container layout="flex-column" gap="xs" padding="none" minWidth="14rem" flexFill>
+                <Container layout="flex-wrap" align="center" gap="xs" padding="none">
+                    <Typography size="xs" weight="semibold">{one.label}</Typography>
+                    <Badge size="xs" color={mine ? 'primary' : fitted ? 'tertiary' : 'default'}>{where}</Badge>
+                </Container>
+                <Typography as="p" size="xxs" color="muted">{one.about}</Typography>
+            </Container>
+            <Container layout="flex-column" align="end" gap="xs" padding="none" minWidth="9rem">
+                {one.type === 'switch' && <Switch size="sm" checked={value === true} disabled={locked} aria-label={one.label} onChange={(next) => onChange(typeof next === 'boolean' ? next : Boolean(next?.target?.checked))} />}
+                {one.type === 'choice' && (
+                    <ButtonGroup size="xs" justify="end" selectable={false}>
+                        {one.options.map(([id, label]) => <Button key={id} size="xs" selected={value === id} disabled={locked} onClick={() => onChange(id)}>{label}</Button>)}
+                    </ButtonGroup>
+                )}
+                {one.type === 'number' && (
+                    <Input type="number" size="xs" width="9rem" value={text} disabled={locked} aria-label={one.label} validationState={bad ? 'error' : 'default'} helpText={bad ? `${one.whole ? 'A whole number from' : 'From'} ${one.min} to ${one.max}` : ''} onChange={type} onBlur={() => { if (text.trim() === '' || bad) setText(String(value)); }} />
+                )}
+                {one.type === 'number' && one.picks && (
+                    <ButtonGroup size="xs" justify="end" selectable={false}>
+                        {one.picks.map(([pick, label]) => <Button key={label} size="xs" selected={value === pick} disabled={locked} onClick={() => onChange(pick)}>{label}</Button>)}
+                    </ButtonGroup>
+                )}
+                {mine && !locked && <Button size="xs" variant="ghost" onClick={onReset}>Back to the usual</Button>}
+            </Container>
+        </Container>
+    );
+};
 export const TrainTab = ({ device }) => {
     const { success, error: notifyError, confirm } = useNotification();
     const [runs, setRuns] = useState(null);
@@ -480,8 +529,12 @@ export const TrainTab = ({ device }) => {
     const [form, setForm] = useState({ kind: 'habits', name: '', lessons: '' });
     const [fit, setFit] = useState(null);
     const [busy, setBusy] = useState(false);
+    const [changed, setChanged] = useState({});
+    const [open, setOpen] = useState(false);
+    const [plan, setPlan] = useState(null);
+    const [planProblem, setPlanProblem] = useState(null);
 
-    const loadRuns = useCallback(() => trainingService.list().then(setRuns).catch((error) => { setRuns((current) => current || { kinds: [], trainings: [], limits: {} }); notifyError(describeError(error, 'Your trainings could not be loaded.')); }), []);
+    const loadRuns = useCallback(() => trainingService.list().then(setRuns).catch((error) => { setRuns((current) => current || { kinds: [], groups: [], settings: [], trainings: [], limits: {} }); notifyError(describeError(error, 'Your trainings could not be loaded.')); }), []);
     const loadModels = useCallback(() => trainingService.models(device.id, 'habits').then(setListed).catch((error) => { setListed({ computer: { name: device.name, ready: false, reason: null }, models: [] }); notifyError(describeError(error, 'This computer\'s models could not be read.')); }), [device.id]);
     useEffect(() => { loadRuns(); }, [loadRuns]);
     useEffect(() => { setListed(null); setChosen(null); loadModels(); }, [loadModels]);
@@ -495,11 +548,21 @@ export const TrainTab = ({ device }) => {
     const looking = chosen?.source || other.trim();
     useEffect(() => {
         setFit(null);
-        if (!/^(https?:\/\/huggingface\.co\/)?[\w.-]+\/[\w.-]+\/?$/i.test(looking)) return undefined;
+        if (chosen || !/^(https?:\/\/huggingface\.co\/)?[\w.-]+\/[\w.-]+\/?$/i.test(looking)) return undefined;
         let current = true;
-        const timer = setTimeout(() => trainingService.check(device.id, looking, form.kind).then((found) => { if (current) setFit(found); }).catch(() => {}), chosen ? 0 : 600);
+        const timer = setTimeout(() => trainingService.check(device.id, looking, form.kind).then((found) => { if (current) setFit(found); }).catch(() => {}), 600);
         return () => { current = false; clearTimeout(timer); };
     }, [device.id, looking, form.kind, Boolean(chosen)]);
+    // The run as it would be right now: every setting's value, how often the adapter is changed, and whether it fits.
+    const shape = useMemo(() => lessonShape(form.lessons), [form.lessons]);
+    useEffect(() => {
+        if (!chosen) { setPlan(null); setPlanProblem(null); return undefined; }
+        let current = true;
+        const timer = setTimeout(() => trainingService.plan({ device: device.id, base: chosen.source, kind: form.kind, ...shape, settings: changed })
+            .then((found) => { if (current) { setPlan(found); setPlanProblem(null); } })
+            .catch((error) => { if (current) setPlanProblem(describeError(error, 'This run could not be worked out.')); }), 300);
+        return () => { current = false; clearTimeout(timer); };
+    }, [device.id, chosen?.source, form.kind, shape.count, shape.longest, changed]);
 
     if (runs === null || listed === null) return <Loading text="Reading this computer's models…" />;
     const kind = runs.kinds.find((one) => one.id === form.kind) || null;
@@ -511,7 +574,7 @@ export const TrainTab = ({ device }) => {
     const start = async () => {
         setBusy(true);
         try {
-            const { unread } = await trainingService.start({ device: device.id, base: chosen.source, ...form });
+            const { unread } = await trainingService.start({ device: device.id, base: chosen.source, ...form, ...(mine > 0 ? { settings: changed } : {}) });
             success(`Training has started on ${device.name}.${unread ? ` ${unread} ${unread === 1 ? 'lesson' : 'lessons'} could not be read and ${unread === 1 ? 'was' : 'were'} left out.` : ''}`);
             setChosen(null);
             setForm((current) => ({ ...current, name: '', lessons: '' }));
@@ -531,7 +594,8 @@ export const TrainTab = ({ device }) => {
         loadRuns();
     };
     const gained = (job, key, of) => (job.after ? `${job.before ? `${job.before[key]} → ` : ''}${job.after[key]} of ${job.after[of]}` : job.before ? `${job.before[key]} of ${job.before[of]} before training` : null);
-    const words = (form.lessons.match(/\n\s*\n/g) || []).length + (form.lessons.trim() ? 1 : 0);
+    const words = shape.count;
+    const mine = Object.keys(changed).length;
 
     return (
         <>
@@ -553,9 +617,54 @@ export const TrainTab = ({ device }) => {
                             {runs.kinds.map((one) => <Button key={one.id} size="sm" selected={form.kind === one.id} onClick={() => set('kind')(one.id)}>{one.label}</Button>)}
                         </ButtonGroup>
                         {kind && <Typography as="p" size="xs" color="muted">{kind.about}</Typography>}
-                        {fit?.base && <Typography as="p" size="xs" color="muted">{(fit.base.parameters / 1e9).toFixed(1)}B parameters · about {gb(fit.needs.gpuMb)} on the graphics card · {gb(fit.needs.downloadMb)} downloaded to {device.name} the first time{fit.base.licence ? ` · licence ${fit.base.licence}` : ''}</Typography>}
-                        {fit && !fit.fits && <Typography as="p" size="xs" color="warning">{fit.reason}</Typography>}
+                        {plan?.base && <Typography as="p" size="xs" color="muted">{(plan.base.parameters / 1e9).toFixed(1)}B parameters · {gb(plan.needs.downloadMb)} downloaded to {device.name} the first time{plan.base.licence ? ` · licence ${plan.base.licence}` : ''}</Typography>}
+                        {plan && !plan.fits && <Typography as="p" size="xs" color="warning">{plan.reason}</Typography>}
                     </Container>
+                    <Container layout="flex-column" gap="xs" padding="none" width="100%">
+                        <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%">
+                            <Typography size="sm" weight="semibold">How it will train</Typography>
+                            <Container layout="flex" align="center" gap="xs" padding="none">
+                                {mine > 0 && <Button size="xs" variant="ghost" onClick={() => setChanged({})}>Back to the usual settings</Button>}
+                                <Button size="xs" variant="ghost" onClick={() => setOpen((now) => !now)}>{open ? 'Hide the settings' : mine > 0 ? `Settings (${mine} changed)` : 'See and change the settings'}</Button>
+                            </Container>
+                        </Container>
+                        {plan && <Typography as="p" size="xs" color="muted">{runLine(plan.settings)}</Typography>}
+                        {plan && (
+                            <Typography as="p" size="xs" color="muted">
+                                {shape.count > 0 ? `${shape.count} of your lessons` : 'Your lessons'}{plan.settings.ordinary > 0 ? ` and ${plan.settings.ordinary} everyday questions the model answers itself` : ''}{plan.updates !== null ? ` · the adapter is changed about ${plan.updates.toLocaleString()} times` : ''}{plan.needs ? ` · about ${gb(plan.needs.gpuMb)} on the graphics card` : ''}
+                            </Typography>
+                        )}
+                        {planProblem && <Typography as="p" size="xs" color="error">{planProblem}</Typography>}
+                        {(plan?.notes || []).map((note) => <Typography key={note} as="p" size="xs" color="warning">{note}</Typography>)}
+                    </Container>
+                    {open && plan && (
+                        <Container layout="flex-column" gap="md" padding="none" width="100%">
+                            <Typography as="p" size="xs" color="muted">These are the settings of Soup, the open-source trainer that {device.name} runs, in plain words. A value you leave alone is chosen for you: from what you are teaching, from your lessons, from what fits this graphics card, or the value that worked in our own tests. The settings Soup itself marks as not working yet are left out.</Typography>
+                            {!plan.canChange && <Typography as="p" size="xs" color="warning">Changing a setting needs a newer Mollama desktop app on {device.name} (1.0.22 or later). Until it is updated, a run uses the values shown here.</Typography>}
+                            {runs.groups.map((group) => (
+                                <Fragment key={group.id}>
+                                    <Divider />
+                                    <Container layout="flex-column" gap="none" padding="none" width="100%">
+                                        <Typography size="sm" weight="semibold">{group.label}</Typography>
+                                        <Typography as="p" size="xs" color="muted">{group.about}</Typography>
+                                    </Container>
+                                    {runs.settings.filter((one) => one.group === group.id).map((one) => (
+                                        <TrainSetting
+                                            key={one.id}
+                                            one={one}
+                                            value={plan.settings[one.id]}
+                                            mine={Object.hasOwn(changed, one.id)}
+                                            fitted={(plan.fitted || []).includes(one.id)}
+                                            locked={!plan.canChange}
+                                            onChange={(value) => setChanged((now) => ({ ...now, [one.id]: value }))}
+                                            onReset={() => setChanged(({ [one.id]: gone, ...rest }) => rest)}
+                                        />
+                                    ))}
+                                </Fragment>
+                            ))}
+                            <Divider />
+                        </Container>
+                    )}
                     <Input
                         label="Lessons"
                         helpText={`A question, then its answer on the next line, and a blank line between lessons. At least ${runs.limits.least}. Ask each thing in several wordings: one lesson alone does not stick.${words ? ` ${words} so far.` : ''}`}
@@ -573,7 +682,7 @@ export const TrainTab = ({ device }) => {
                     )}
                     <Input label="Name for the trained model" helpText="Small letters, digits and hyphens. It appears under this name among this computer's models." value={form.name} onChange={set('name')} width="100%" />
                     <Container layout="flex" justify="end" padding="none" width="100%">
-                        <Button size="sm" color="primary" disabled={busy || !fit?.fits || !form.name.trim() || !form.lessons.trim()} onClick={start}>
+                        <Button size="sm" color="primary" disabled={busy || !plan?.fits || Boolean(planProblem) || !form.name.trim() || !form.lessons.trim()} onClick={start}>
                             <Icon name="FiPlay" size="xs" />Start training
                         </Button>
                     </Container>
@@ -636,6 +745,7 @@ export const TrainTab = ({ device }) => {
                         <Typography as="p" size="xxs" color="muted">
                             {String(job.base).split('/').pop()} · {job.kind === 'facts' ? 'Facts' : 'Habits'} · {job.lessons} lessons{job.seconds ? ` · ${spanOf(job.seconds)}` : ''}
                         </Typography>
+                        {job.settings && <Typography as="p" size="xxs" color="muted">{runLine(job.settings)}</Typography>}
                         {running && (
                             <Container layout="flex-column" gap="xs" padding="none" width="100%">
                                 <ProgressBar size="xs" width="100%" value={job.percent} color="primary" aria-label={`${job.name}: ${job.percent}% done`} />

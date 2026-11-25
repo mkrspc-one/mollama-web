@@ -263,6 +263,8 @@ export const trainingService = {
     models: (device, kind) => api.get(`/trainings/models?device=${device}&kind=${kind}`),
     // What one model would take of one computer, and whether it fits.
     check: (device, source, kind) => api.get(`/trainings/base?device=${device}&source=${encodeURIComponent(source)}&kind=${kind}`),
+    // The run as it would be with these settings: every value, how often the adapter is changed, and whether it fits.
+    plan: (run) => api.post('/trainings/plan', run),
     start: (run) => api.post('/trainings', run),
     stop: (id) => api.post(`/trainings/${id}/stop`, {}),
     remove: (id) => api.delete(`/trainings/${id}`)
