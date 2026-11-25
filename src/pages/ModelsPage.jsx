@@ -1,7 +1,7 @@
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Select, Divider, ProgressBar, CircularProgress, Pagination } from '@components/Components';
 import { useNotification } from '@contexts/NotificationContext';
-import { chatService, deviceService, modelService, providerService, describeError, useGuide, onReturn } from '../client/ai.client';
+import { chatService, deviceService, modelService, providerService, trainingService, describeError, useGuide, onReturn } from '../client/ai.client';
 
 const MEMORY_EVERY_MS = 4000;
 const STATE_BADGES = { answering: ['Answering', 'success'], waiting: ['Waiting its turn', 'tertiary'], loading: ['Loading', 'warning'], idle: ['Idle', 'default'] };
@@ -285,7 +285,8 @@ const TABS = [
     { id: 'installed', label: 'Installed' },
     { id: 'running', label: 'Running' },
     { id: 'mine', label: 'My models' },
-    { id: 'online', label: 'Online' }
+    { id: 'online', label: 'Online' },
+    { id: 'train', label: 'Train' }
 ];
 const PROVIDER_ICONS = { ollama: 'SiOllama', anthropic: 'SiAnthropic', openai: 'FiZap', google: 'SiGooglegemini', moonshot: 'FiMoon', deepseek: 'SiDeepseek', xai: 'SiX', mistral: 'SiMistralai', openrouter: 'SiOpenrouter', groq: 'FiCpu', cerebras: 'FiCpu' };
 const PROVIDER_COLORS = { healthy: 'success', unchecked: 'default', busy: 'warning', empty: 'warning' };
@@ -493,6 +494,129 @@ const DownloadsPanel = ({ jobs, canManage, onResume, onPause, onCancel }) => {
 
 // Models that run on another company's computers with the person's own key. Ollama comes first, because it runs the
 // models from the same library that are too large to download; the other services follow.
+// Training: a person teaches a small model on one of their own computers. The desktop app there does the work; this
+// tab gives it the lessons and shows how the run is going and what the model gained and kept.
+const TRAIN_LIVE = ['queued', 'setting-up', 'scoring', 'training', 'saving'];
+const TRAIN_STATUS = { queued: ['Waiting', 'default'], 'setting-up': ['Setting up', 'primary'], scoring: ['Asking the model', 'primary'], training: ['Training', 'primary'], saving: ['Saving', 'primary'], done: ['Trained', 'success'], failed: ['Failed', 'error'], stopped: ['Stopped', 'default'] };
+const spanOf = (seconds) => (seconds >= 90 ? `${Math.round(seconds / 60)} min` : `${seconds} s`);
+export const TrainTab = () => {
+    const { success, error: notifyError, confirm } = useNotification();
+    const [state, setState] = useState(null);
+    const [form, setForm] = useState({ device: '', base: '', kind: 'habits', name: '', lessons: '' });
+    const [busy, setBusy] = useState(false);
+
+    const load = useCallback(() => trainingService.list().then((listed) => {
+        setState(listed);
+        setForm((current) => ({ ...current, device: current.device || listed.computers.find((one) => one.ready)?.id || listed.computers[0]?.id || '', base: current.base || listed.bases[0]?.id || '' }));
+    }).catch((error) => { setState((current) => current || { computers: [], bases: [], kinds: [], trainings: [], limits: {} }); notifyError(describeError(error, 'Your trainings could not be loaded.')); }), []);
+    useEffect(() => { load(); }, [load]);
+    const live = (state?.trainings || []).some((one) => TRAIN_LIVE.includes(one.status));
+    useEffect(() => {
+        if (!live) return undefined;
+        const timer = setInterval(load, 3000);
+        return () => clearInterval(timer);
+    }, [live, load]);
+
+    if (state === null) return <Loading text="Loading your trainings…" />;
+    const computer = state.computers.find((one) => one.id === form.device) || null;
+    const base = state.bases.find((one) => one.id === form.base) || null;
+    const kind = state.kinds.find((one) => one.id === form.kind) || null;
+    const set = (key) => (value) => setForm((current) => ({ ...current, [key]: value?.target ? value.target.value : value }));
+    const start = async () => {
+        setBusy(true);
+        try {
+            const { unread } = await trainingService.start(form);
+            success(`Training has started on ${computer.name}.${unread ? ` ${unread} ${unread === 1 ? 'lesson' : 'lessons'} could not be read and ${unread === 1 ? 'was' : 'were'} left out.` : ''}`);
+            setForm((current) => ({ ...current, name: '', lessons: '' }));
+            await load();
+        } catch (error) {
+            notifyError(describeError(error, 'The training could not be started.'));
+        }
+        setBusy(false);
+    };
+    const stop = async (job) => {
+        if (!await confirm(`Stop training ${job.name}? What it has learned so far is thrown away.`, { confirmLabel: 'Stop', color: 'error' })) return;
+        await trainingService.stop(job.id).catch((error) => notifyError(describeError(error, 'The training could not be stopped.')));
+        load();
+    };
+    const remove = async (job) => {
+        await trainingService.remove(job.id).catch((error) => notifyError(describeError(error, 'This could not be removed from the list.')));
+        load();
+    };
+    const gained = (job, key, of) => (job.after ? `${job.before ? `${job.before[key]} → ` : ''}${job.after[key]} of ${job.after[of]}` : job.before ? `${job.before[key]} of ${job.before[of]} before training` : null);
+
+    return (
+        <>
+            {state.computers.length === 0 ? (
+                <Empty icon="FiMonitor" title="No computer is connected to your account" text="Training runs on one of your own computers. Add one on the Devices page, with the Mollama desktop app." />
+            ) : (
+                <Card layout="flex-column" gap="md" padding="lg" width="100%" maxWidth="720px" wrap={false}>
+                    <Container layout="flex-column" gap="xs" padding="none" width="100%">
+                        <Typography as="h3" size="sm" weight="semibold">Train a model</Typography>
+                        <Typography as="p" size="xs" color="muted">Give a small model your own lessons. The training runs on your computer's graphics card, through the desktop app, and the result becomes one of that computer's models. Nothing is sent anywhere else.</Typography>
+                    </Container>
+                    <Select label="Computer" width="100%" options={state.computers.map((one) => ({ value: one.id, label: one.name }))} value={form.device} onChange={set('device')} />
+                    {computer?.reason && <Typography as="p" size="xs" color={computer.ready ? 'muted' : 'warning'}>{computer.reason}</Typography>}
+                    <Select label="Model to teach" width="100%" options={state.bases.map((one) => ({ value: one.id, label: `${one.label}${one.tried ? '' : ' (not tried yet)'}` }))} value={form.base} onChange={set('base')} />
+                    {base && <Typography as="p" size="xs" color="muted">Downloaded to that computer the first time, about {gb(base.downloadMb)}.</Typography>}
+                    <Container layout="flex-column" gap="xs" padding="none" width="100%">
+                        <Typography size="sm" weight="semibold">What to teach</Typography>
+                        <ButtonGroup size="sm" justify="start" selectable={false}>
+                            {state.kinds.map((one) => <Button key={one.id} size="sm" selected={form.kind === one.id} onClick={() => set('kind')(one.id)}>{one.label}</Button>)}
+                        </ButtonGroup>
+                        {kind && <Typography as="p" size="xs" color="muted">{kind.about}</Typography>}
+                    </Container>
+                    <Input label="Name for the trained model" helpText="Small letters, digits and hyphens, such as my-helper." value={form.name} onChange={set('name')} width="100%" />
+                    <Input
+                        label="Lessons"
+                        helpText={`A question, then its answer on the next line, and a blank line between lessons. At least ${state.limits.least}. Ask each thing in several wordings: one lesson alone does not stick.`}
+                        multiline
+                        rows={8}
+                        value={form.lessons}
+                        onChange={set('lessons')}
+                        width="100%"
+                    />
+                    <Container layout="flex" justify="end" padding="none" width="100%">
+                        <Button size="sm" color="primary" disabled={busy || !computer?.ready || !form.base || !form.name.trim() || !form.lessons.trim()} onClick={start}>
+                            <Icon name="FiPlay" size="xs" />Start training
+                        </Button>
+                    </Container>
+                </Card>
+            )}
+            {state.trainings.map((job) => {
+                const [label, color] = TRAIN_STATUS[job.status] || [job.status, 'default'];
+                const running = TRAIN_LIVE.includes(job.status);
+                return (
+                    <Card key={job.id} layout="flex-column" gap="sm" padding="lg" width="100%" maxWidth="720px" wrap={false}>
+                        <Container layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%">
+                            <Container layout="flex" align="center" gap="sm" padding="none" minWidth="0">
+                                <Typography as="h3" size="sm" weight="semibold" truncate>{job.name}</Typography>
+                                <Badge size="xs" color={color}>{label}</Badge>
+                            </Container>
+                            {running
+                                ? <Button size="xs" variant="ghost" color="error" onClick={() => stop(job)}>Stop</Button>
+                                : <Button size="xs" variant="ghost" title="Remove from this list" aria-label={`Remove ${job.name} from this list`} onClick={() => remove(job)}><Icon name="FiX" size="xs" /></Button>}
+                        </Container>
+                        <Typography as="p" size="xxs" color="muted">
+                            {state.bases.find((one) => one.id === job.base)?.label || job.base} · {job.kind === 'facts' ? 'Facts' : 'Habits'} · {job.lessons} lessons · {state.computers.find((one) => one.id === job.device)?.name || 'a computer no longer connected'}{job.seconds ? ` · ${spanOf(job.seconds)}` : ''}
+                        </Typography>
+                        {running && (
+                            <Container layout="flex-column" gap="xs" padding="none" width="100%">
+                                <ProgressBar size="xs" width="100%" value={job.percent} color="primary" aria-label={`${job.name}: ${job.percent}% done`} />
+                                <Typography as="p" size="xs" color="muted">{job.stage || 'Working'}</Typography>
+                            </Container>
+                        )}
+                        {gained(job, 'recalled', 'of') && <Typography as="p" size="xs">Gives back its lessons, nearly word for word: {gained(job, 'recalled', 'of')} asked</Typography>}
+                        {gained(job, 'kept', 'keptOf') && <Typography as="p" size="xs">Still knows what it knew: {gained(job, 'kept', 'keptOf')} asked</Typography>}
+                        {job.status === 'done' && <Typography as="p" size="xs" color="muted">Pick {job.name} in a chat on that computer to use it.</Typography>}
+                        {job.detail && job.status !== 'done' && <Typography as="p" size="xs" color={job.status === 'failed' ? 'error' : 'muted'}>{job.detail}</Typography>}
+                    </Card>
+                );
+            })}
+        </>
+    );
+};
+
 export const OnlineTab = () => {
     const { success, error: notifyError, confirm } = useNotification();
     const [providers, setProviders] = useState(null);
@@ -1548,13 +1672,14 @@ const ModelsPage = () => {
 
             <Container layout="flex-column" gap="xl" padding="none" width="100%" wrap={false}>
                 {tab === 'online' && <OnlineTab />}
-                {tab !== 'online' && devices?.length === 0 && (
+                {tab === 'train' && <TrainTab />}
+                {!['online', 'train'].includes(tab) && devices?.length === 0 && (
                     <Empty icon="FiMonitor" title="No device is connected to your account" text="Open the Devices page to add a computer. Its models are then managed here." />
                 )}
-                {tab !== 'online' && device && !device.online && (
+                {!['online', 'train'].includes(tab) && device && !device.online && (
                     <Empty icon="FiMonitor" title={`${device.name} is offline`} text="Open the Mollama desktop app on that computer to see and manage its models." />
                 )}
-                {tab !== 'online' && device?.online && device.paused && (
+                {!['online', 'train'].includes(tab) && device?.online && device.paused && (
                     <Empty icon="FiPause" title={`${device.name} is paused`} text="Resume it on the Devices page to see and manage its models." />
                 )}
                 {device?.online && tab === 'discover' && (

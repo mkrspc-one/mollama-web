@@ -21,6 +21,7 @@ export const GUIDE_TEXT = {
     'models.installed': ['Installed', 'The models already on this device, with their size on disk.'],
     'models.running': ['Running', 'Models loaded in memory right now. They unload by themselves after a few minutes.'],
     'models.mine': ['My models', 'An installed model with your own instructions built in, saved under its own name.'],
+    'models.train': ['Train', 'Teach a small model your own lessons, on one of your own computers.'],
     'models.refresh': ['Refresh', 'Reads the model lists and the free disk space again, for example after a download finished elsewhere.'],
     'models.download': ['Download', 'The download runs on the server, so it carries on if you close this page. Its progress shows at the top.'],
     'devices.read': ['Read this computer again', 'Reads the hardware again, for example after a graphics card was changed.'],
@@ -254,6 +255,14 @@ export const toolService = {
     update: (id, changes) => api.patch(`/tools/servers/${id}`, changes),
     remove: (id) => api.delete(`/tools/servers/${id}`),
     signIn: (id) => api.post(`/tools/servers/${id}/sign-in`, {})
+};
+
+// Training a model on one of a person's own computers.
+export const trainingService = {
+    list: () => api.get('/trainings'),
+    start: (run) => api.post('/trainings', run),
+    stop: (id) => api.post(`/trainings/${id}/stop`, {}),
+    remove: (id) => api.delete(`/trainings/${id}`)
 };
 
 export const deviceService = {
