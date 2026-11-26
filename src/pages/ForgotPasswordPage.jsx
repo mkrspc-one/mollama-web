@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@contexts/AuthContext';
 import { useNotification } from '@contexts/NotificationContext';
-import { Input, Button } from '@components/Components';
+import { Input, Button, Typography } from '@components/Components';
 import { AuthCard } from './LoginPage';
+import authService from '../client/auth.client';
 
 export const ForgotPasswordPage = () => {
     const navigate = useNavigate();
@@ -71,6 +72,86 @@ export const ForgotPasswordPage = () => {
             <Button type="submit" size="lg" color="secondary" variant="solid" width="100%" disabled={!email || isLoading} onClick={handleSubmit}>
                 {isLoading ? 'Sending the link…' : 'Send reset link'}
             </Button>
+        </AuthCard>
+    );
+};
+
+// Opened from the link in a password reset email.
+export const ResetPasswordPage = () => {
+    const navigate = useNavigate();
+    const { token } = useParams();
+    const { resetPassword } = useAuth();
+    const [password, setPassword] = useState('');
+    const [again, setAgain] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const differs = again.length > 0 && again !== password;
+
+    const handleSubmit = async (event) => {
+        event.preventDefault();
+        if (!password || differs) return;
+        setIsLoading(true);
+        try {
+            await resetPassword(token, password);
+            navigate('/', { replace: true });
+        } catch {
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <AuthCard
+            title="Choose a new password"
+            lead="Use 8 to 30 characters with an uppercase letter, a lowercase letter, a number and a symbol."
+            onSubmit={handleSubmit}
+            footer={(
+                <Button size="sm" variant="ghost" align="start" onClick={() => navigate('/forgot-password')}>
+                    Send a new link
+                </Button>
+            )}
+        >
+            <Input type="password" name="password" label="New password" value={password} onChange={(event) => setPassword(event.target.value)} required width="100%" autoComplete="new-password" />
+            <Input type="password" name="confirmPassword" label="New password again" value={again} onChange={(event) => setAgain(event.target.value)} required width="100%" autoComplete="new-password" validationState={differs ? 'error' : 'default'} />
+            {differs && <Typography size="xs" color="error">The two passwords differ.</Typography>}
+            <Button type="submit" size="lg" color="secondary" variant="solid" width="100%" disabled={!password || !again || differs || isLoading} onClick={handleSubmit}>
+                {isLoading ? 'Saving…' : 'Save new password'}
+            </Button>
+        </AuthCard>
+    );
+};
+
+// Opened from the link in a verification email, signed in or not. A link works once, so it is sent once.
+export const VerifyEmailPage = () => {
+    const { token } = useParams();
+    const { user } = useAuth();
+    const [state, setState] = useState({ status: 'checking', message: '' });
+    const sent = useRef(null);
+
+    useEffect(() => {
+        if (sent.current === token) return;
+        sent.current = token;
+        authService.verifyEmail(token)
+            .then((reply) => setState({ status: 'done', message: reply.message }))
+            .catch((error) => setState({ status: 'failed', message: error.response?.data?.message || 'This link could not be checked. Try again.' }));
+    }, [token]);
+
+    // A full load, so the account is read again with the email marked as confirmed.
+    const go = (path) => window.location.assign(path);
+
+    const titles = { checking: 'Confirming your email…', done: 'Email confirmed', failed: 'This link did not work' };
+    const leads = {
+        checking: 'One moment.',
+        done: 'Your email address is confirmed. Everything that needs it is now open to you.',
+        failed: `${state.message.replace(/[.!]?$/, '.')} Links last 24 hours and work once; you can send a new one from Settings, under Account.`
+    };
+    return (
+        <AuthCard title={titles[state.status]} lead={leads[state.status]} onSubmit={(event) => event.preventDefault()}>
+            {state.status === 'checking' && <Typography size="xs" color="muted">Checking the link…</Typography>}
+            {state.status !== 'checking' && (
+                user
+                    ? <Button size="lg" width="100%" onClick={() => go('/settings?tab=account')}>Open Settings</Button>
+                    : <Button size="lg" width="100%" onClick={() => go('/login')}>Sign in</Button>
+            )}
         </AuthCard>
     );
 };

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-    Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Select, Switch, Divider, Image, CircularProgress
+    Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Select, Switch, Divider, Image, CircularProgress, BACKGROUND_PATTERNS, BACKGROUND_DYNAMIC
 } from '@components/Components';
 import { useAuth } from '@contexts/AuthContext';
 import { useTheme } from '@contexts/ThemeContext';
@@ -11,6 +11,7 @@ import { userService } from '../client/user.client';
 import { themeService } from '../client/theme.client';
 import { deviceService, describeError } from '../client/ai.client';
 import { listFontKeys, ensureFontsLoaded } from '@styles/font.registry';
+import { GALLERY_THEMES } from '@styles/theme.gallery';
 
 const failText = (error, fallback) => error?.response?.data?.message || fallback;
 
@@ -623,7 +624,7 @@ const RADII_FIELDS = [
     ['checkbox', 'Checkboxes'], ['fab', 'Round buttons'], ['progress', 'Progress bars'], ['notification', 'Notifications']
 ];
 const NEW_THEME = {
-    name: '', slug: '', description: '', visibility: 'private', darkMode: false,
+    name: '', slug: '', description: '', visibility: 'private', darkMode: false, pageBackground: '',
     colors: {
         primary: '#12355B', primaryAccent: '#1A4A7A', secondary: '#FF570A', secondaryAccent: '#CC4000',
         tertiary: '#A5D8FF', tertiaryAccent: '#70BFFF', success: '#1E7A3A', warning: '#E88500', error: '#CC2200',
@@ -632,6 +633,14 @@ const NEW_THEME = {
     fonts: { primary: 'urbanist', secondary: 'montserrat-alternates', monospace: 'jetbrains-mono' },
     radii: { base: '0.375rem', card: '0.5rem', input: '0.375rem', button: '0.375rem', checkbox: '0.25rem', fab: '50%', progress: '9999px', notification: '0.5rem' }
 };
+const titleOf = (name) => name.charAt(0).toUpperCase() + name.slice(1);
+// A theme may set one background for every page, clear them all, or leave each page its own.
+const BACKGROUND_OPTIONS = [
+    { value: '', label: 'Each page keeps its own' },
+    { value: 'none', label: 'None: plain pages' },
+    ...BACKGROUND_PATTERNS.map((name) => ({ value: name, label: titleOf(name) })),
+    ...BACKGROUND_DYNAMIC.map((name) => ({ value: name, label: `${titleOf(name)} (moving)` }))
+];
 const slugify = (value = '') => value.toLowerCase().trim().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 50);
 const idOf = (doc) => doc.id || doc._id;
 const fontOptions = (kind) => listFontKeys(kind).map((key) => ({ value: key, label: key }));
@@ -680,7 +689,7 @@ const ThemeEditor = ({ initial, editingId, onSaved, onCancel }) => {
             slug: form.slug,
             description: form.description.trim(),
             visibility: form.visibility,
-            tokens: { darkMode: form.darkMode, colors: form.colors, fonts: form.fonts, ...(form.radii ? { radii: form.radii } : {}) },
+            tokens: { darkMode: form.darkMode, colors: form.colors, fonts: form.fonts, ...(form.radii ? { radii: form.radii } : {}), pageBackground: form.pageBackground || '' },
             ...(form.forkedFrom ? { forkedFrom: form.forkedFrom } : {})
         };
         try {
@@ -761,6 +770,17 @@ const ThemeEditor = ({ initial, editingId, onSaved, onCancel }) => {
             </Container>
 
             <Divider margin="xs" />
+            <Typography as="h4" size="sm" weight="semibold">Background</Typography>
+            <Select
+                size="sm"
+                label="Page background"
+                width="260px"
+                options={BACKGROUND_OPTIONS}
+                value={form.pageBackground || ''}
+                onChange={(value) => setForm((now) => ({ ...now, pageBackground: value }))}
+            />
+
+            <Divider margin="xs" />
             <Typography as="h4" size="sm" weight="semibold">Corners</Typography>
             <Typography as="p" size="xxs" color="muted">Any CSS length works: 0 for sharp, 9999px for pills, 50% for circles.</Typography>
             <Container layout="grid" columns="auto-sm" gap="sm" padding="none" width="100%">
@@ -777,12 +797,37 @@ const ThemeEditor = ({ initial, editingId, onSaved, onCancel }) => {
     );
 };
 
-const ThemeCard = ({ doc, applied, onApply, onFork, onEdit, onDelete }) => (
+// The newer themes live only in the web app, so a copy starts from them here; the accents a saved theme needs
+// are taken from the colours they follow.
+const galleryCopy = (slug) => {
+    const doc = GALLERY_THEMES.find((entry) => entry.slug === slug);
+    if (!doc) return null;
+    const { colors } = doc.tokens;
+    return { ...doc, tokens: { ...doc.tokens, colors: { ...colors, primaryAccent: colors.primary, secondaryAccent: colors.secondary, tertiaryAccent: colors.tertiary } } };
+};
+
+// One theme on the account is the favourite: every app opens in it on a fresh visit.
+const FavoriteButton = ({ name, favorite, onFavorite }) => (
+    <Button
+        size="xs"
+        variant="ghost"
+        color={favorite ? 'error' : 'default'}
+        aria-pressed={favorite}
+        aria-label={favorite ? `${name} is your favourite theme. Press to remove it.` : `Make ${name} your favourite theme`}
+        title={favorite ? 'Your favourite: every app opens in it. Press to remove.' : 'Make this your favourite: every app opens in it'}
+        onClick={onFavorite}
+    >
+        <Icon name={favorite ? 'FaHeart' : 'FiHeart'} />
+    </Button>
+);
+
+const ThemeCard = ({ doc, applied, favorite, onFavorite, onApply, onFork, onEdit, onDelete }) => (
     <Card layout="flex-column" gap="sm" minWidth="0" borderColor={applied ? 'primary' : null}>
         <Container layout="flex" align="center" gap="xs" padding="none" width="100%" wrap={false}>
             <Typography as="h3" size="sm" weight="semibold" truncate>{doc.name}</Typography>
             {applied && <Badge size="xs" color="success">In use</Badge>}
             {!doc.isPreset && doc.visibility && doc.visibility !== 'private' && <Badge size="xs" color="tertiary">{doc.visibility}</Badge>}
+            <Container layout="flex" justify="end" padding="none" width="100%"><FavoriteButton name={doc.name} favorite={favorite} onFavorite={onFavorite} /></Container>
         </Container>
         {doc.description && <Typography as="p" size="xxs" color="muted" truncate>{doc.description}</Typography>}
         <Swatches colors={swatchesOf(doc)} />
@@ -796,7 +841,10 @@ const ThemeCard = ({ doc, applied, onApply, onFork, onEdit, onDelete }) => (
 );
 
 const AppearanceTab = ({ user }) => {
-    const { currentTheme, mode, setMode, switchTheme, applyCustomTheme, clearCustomTheme, customTheme, themes } = useTheme();
+    const { currentTheme, mode, setMode, modeOf, switchTheme, applyCustomTheme, clearCustomTheme, customTheme, themes } = useTheme();
+    const { saveFavoriteTheme } = useAuth();
+    const favoriteName = user?.favoriteTheme?.split(':')[0] || null;
+    const toggleFavorite = (themeName) => saveFavoriteTheme(favoriteName === themeName ? null : `${themeName}:${modeOf(themeName)}`);
     const { success, error: notifyError } = useNotification();
     const [presets, setPresets] = useState([]);
     const [mine, setMine] = useState([]);
@@ -834,6 +882,7 @@ const AppearanceTab = ({ user }) => {
             description: doc.description || '',
             visibility: fork ? 'private' : doc.visibility || 'private',
             darkMode: Boolean(tokens.darkMode),
+            pageBackground: tokens.pageBackground || tokens.effects?.['page-background'] || '',
             colors: { ...NEW_THEME.colors, ...(tokens.colors || {}) },
             fonts: { ...NEW_THEME.fonts, ...(tokens.fonts || {}) },
             radii: { ...NEW_THEME.radii, ...(tokens.radii || {}) },
@@ -872,13 +921,16 @@ const AppearanceTab = ({ user }) => {
                 <Switch size="sm" label={`Use the dark variant of ${themes?.[currentTheme]?.name || 'this theme'}`} checked={mode === 'dark'} onChange={() => setMode(mode === 'dark' ? 'light' : 'dark')} />
                 <Container layout="grid" columns="auto" gap="md" padding="none" width="100%">
                     {BUILT_IN.map((slug) => {
-                        const preset = presets.find((doc) => doc.slug === slug);
+                        const preset = presets.find((doc) => doc.slug === slug) || galleryCopy(slug);
                         const applied = currentTheme === slug;
                         return (
                             <Card key={slug} layout="flex-column" gap="sm" minWidth="0" borderColor={applied ? 'primary' : null}>
                                 <Container layout="flex" align="center" justify="between" padding="none" width="100%" wrap={false}>
                                     <Typography as="h3" size="sm" weight="semibold">{themes?.[slug]?.name || slug}</Typography>
-                                    {applied && <Badge size="xs" color="success">In use</Badge>}
+                                    <Container layout="flex" align="center" justify="end" gap="xs" padding="none" wrap={false}>
+                                        {applied && <Badge size="xs" color="success">In use</Badge>}
+                                        <FavoriteButton name={themes?.[slug]?.name || slug} favorite={favoriteName === slug} onFavorite={() => toggleFavorite(slug)} />
+                                    </Container>
                                 </Container>
                                 <ThemePreview theme={slug} />
                                 <Container layout="flex" gap="xs" padding="none" wrap={false}>
@@ -908,6 +960,8 @@ const AppearanceTab = ({ user }) => {
                                 key={idOf(doc)}
                                 doc={doc}
                                 applied={usingCustom(doc)}
+                                favorite={favoriteName === `custom-${doc.slug}`}
+                                onFavorite={() => toggleFavorite(`custom-${doc.slug}`)}
                                 onApply={() => applyDoc(doc)}
                                 onFork={canCreate ? () => openFork(doc) : null}
                                 onEdit={canCreate ? () => openEdit(doc) : null}
@@ -922,7 +976,7 @@ const AppearanceTab = ({ user }) => {
                 <Section title="Shared themes" note="Public themes made by other people.">
                     <Container layout="grid" columns="auto" gap="md" padding="none" width="100%">
                         {shared.map((doc) => (
-                            <ThemeCard key={idOf(doc)} doc={doc} applied={usingCustom(doc)} onApply={() => applyDoc(doc)} onFork={canCreate ? () => openFork(doc) : null} />
+                            <ThemeCard key={idOf(doc)} doc={doc} applied={usingCustom(doc)} favorite={favoriteName === `custom-${doc.slug}`} onFavorite={() => toggleFavorite(`custom-${doc.slug}`)} onApply={() => applyDoc(doc)} onFork={canCreate ? () => openFork(doc) : null} />
                         ))}
                     </Container>
                 </Section>
