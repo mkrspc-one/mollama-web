@@ -274,7 +274,7 @@ export const trainingService = {
 export const rentalService = {
     cards: () => api.get('/rentals/cards'),
     list: () => api.get('/rentals'),
-    start: (flavor, hours, limit) => api.post('/rentals', { flavor, hours, limit }),
+    start: (flavor, hours, limit, price) => api.post('/rentals', { flavor, hours, limit, price }),
     end: (id) => api.post(`/rentals/${id}/end`, {})
 };
 

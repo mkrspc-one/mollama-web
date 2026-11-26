@@ -520,11 +520,13 @@ const RentCard = ({ offer, onRented }) => {
     const rent = async () => {
         setBusy(true);
         try {
-            await rentalService.start(flavor, Number(hours), cents);
+            await rentalService.start(flavor, Number(hours), cents, card.price);
             success(`Starting your ${card.name}. It takes a few minutes; you are told when it is ready.`);
             document.querySelector('[data-genie-backdrop]')?.click();
             onRented();
         } catch (error) {
+            // The card went meanwhile and only a dearer one of its kind is left: say so, and show the new price.
+            if (error?.response?.data?.code === 'PRICE_CHANGED') onRented();
             notifyError(error?.response?.data?.message || describeError(error, 'The card could not be rented.'));
         } finally {
             setBusy(false);
@@ -538,7 +540,11 @@ const RentCard = ({ offer, onRented }) => {
                 A computer with a strong graphics card, yours by the hour. It appears here as one of your computers; you download models onto it and choose it in a chat.
             </Typography>
             <Select size="sm" label="Card" value={flavor} onChange={setFlavor} width="100%"
-                options={offer.cards.map((one) => ({ value: one.flavor, label: `${one.name} · ${one.memoryMb ? `${formatGb(one.memoryMb)} graphics memory · ` : ''}${formatMoney(one.price)} an hour` }))} />
+                options={[
+                    ...offer.cards.map((one) => ({ value: one.flavor, label: `${one.name} · ${one.memoryMb ? `${formatGb(one.memoryMb)} graphics memory · ` : ''}${formatMoney(one.price)} an hour${one.spot ? ' · spot: can be taken back at any time' : ''}` })),
+                    ...(offer.unavailable || []).map((one) => ({ value: one.flavor, label: `${one.name} · ${formatMoney(one.price)} an hour · ${one.why}`, disabled: true }))
+                ]} />
+            {card?.spot && <Typography as="p" size="xxs" color="warning">A spot machine costs less, but it can be taken back at any moment. The rental then ends and you pay only for the minutes used.</Typography>}
             <Container layout="grid" columns="2" gap="sm" padding="none" width="100%">
                 <Select size="sm" label="For at most" value={hours} onChange={(value) => setHours(String(value))} width="100%"
                     options={Array.from({ length: offer.rules.mostHours }, (unused, index) => ({ value: String(index + 1), label: index === 0 ? '1 hour' : `${index + 1} hours` }))} />
@@ -763,7 +769,7 @@ const DevicesPage = () => {
             }, (error) => {
                 setOffer(null);
                 const answer = error.response?.data;
-                setRentProblem(answer?.code === 'HYPERSTACK_DOWN' ? `${answer.message}${answer.detail ? ` Hyperstack says: ${answer.detail}` : ''}` : null);
+                setRentProblem(answer?.code === 'PROVIDER_DOWN' ? `${answer.message}${answer.detail ? ` The provider says: ${answer.detail}` : ''}` : null);
             });
             setCanManage(Boolean(result.permissions?.manage));
             setFailed(false);
