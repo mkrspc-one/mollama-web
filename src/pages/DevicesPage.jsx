@@ -746,6 +746,7 @@ const DevicesPage = () => {
     const [pools, setPools] = useState(null);
     const [rentals, setRentals] = useState([]);
     const [offer, setOffer] = useState(null);
+    const [rentProblem, setRentProblem] = useState(null);
     // Two views: the computers themselves, and pooling them. The address says which, so other pages can link to pooling.
     const [params, setParams] = useSearchParams();
     const view = params.get('view') === 'pooling' ? 'pooling' : 'computers';
@@ -756,7 +757,14 @@ const DevicesPage = () => {
             setDevices(result.devices);
             deviceService.pools().then(setPools, () => setPools({ groups: [], left: [] }));
             rentalService.list().then((answer) => setRentals(answer.rentals || []), () => setRentals([]));
-            rentalService.cards().then((answer) => setOffer(answer.on ? answer : null), () => setOffer(null));
+            rentalService.cards().then((answer) => {
+                setOffer(answer.on ? answer : null);
+                setRentProblem(null);
+            }, (error) => {
+                setOffer(null);
+                const answer = error.response?.data;
+                setRentProblem(answer?.code === 'HYPERSTACK_DOWN' ? `${answer.message}${answer.detail ? ` Hyperstack says: ${answer.detail}` : ''}` : null);
+            });
             setCanManage(Boolean(result.permissions?.manage));
             setFailed(false);
         } catch (error) {
@@ -877,6 +885,7 @@ const DevicesPage = () => {
                 </Container>
             )}
         >
+            {rentProblem && <Typography as="p" size="xs" color="warning">{`Renting a graphics card: ${rentProblem}`}</Typography>}
             <ButtonGroup size="sm" justify="start" selectable={false}>
                 {[['computers', 'Computers', 'FiMonitor'], ['pooling', 'Pooling', 'FiLayers']].map(([id, label, icon]) => (
                     <Button key={id} size="sm" selected={view === id} onClick={() => id !== view && setParams(id === 'pooling' ? { view: id } : {})}><Icon name={icon} />{label}</Button>
