@@ -283,7 +283,7 @@ export const MemoryManager = ({ only = null }) => {
 const TABS = [
     { id: 'discover', label: 'Download', icon: 'FiDownloadCloud', about: 'Models you can download onto this computer' },
     { id: 'installed', label: 'Installed', icon: 'FiHardDrive', about: 'The models already on this computer' },
-    { id: 'train', label: 'Train', icon: 'FiTrendingUp', about: 'Teach a model on this computer' },
+    { id: 'train', label: 'Train', icon: 'FaDumbbell', about: 'Teach a model on this computer' },
     { id: 'online', label: 'Online', icon: 'FiGlobe', about: 'Models that run online: cloud models and your own keys' }
 ];
 const PROVIDER_ICONS = { ollama: 'SiOllama', anthropic: 'SiAnthropic', openai: 'FiZap', google: 'SiGooglegemini', moonshot: 'FiMoon', deepseek: 'SiDeepseek', xai: 'SiX', mistral: 'SiMistralai', openrouter: 'SiOpenrouter', groq: 'FiCpu', cerebras: 'FiCpu' };
