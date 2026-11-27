@@ -281,7 +281,7 @@ export const MemoryManager = ({ only = null }) => {
 };
 
 const TABS = [
-    { id: 'discover', label: 'Downloadable', icon: 'FiDownloadCloud', about: 'Models you can download onto this computer' },
+    { id: 'discover', label: 'Download', icon: 'FiDownloadCloud', about: 'Models you can download onto this computer' },
     { id: 'installed', label: 'Installed', icon: 'FiHardDrive', about: 'The models already on this computer' },
     { id: 'train', label: 'Train', icon: 'FiTrendingUp', about: 'Teach a model on this computer' },
     { id: 'online', label: 'Online', icon: 'FiGlobe', about: 'Models that run online: cloud models and your own keys' }
@@ -689,7 +689,7 @@ export const TrainTab = ({ device }) => {
             {!chosen && (
                 <>
                     <SectionTitle title={`Models on ${device.name}`} count={listed.models.length} />
-                    {listed.models.length === 0 && <Empty icon="FiBox" title="Nothing is downloaded on this computer yet" text="Download a model from the Downloadable tab, or bring one in below." />}
+                    {listed.models.length === 0 && <Empty icon="FiBox" title="Nothing is downloaded on this computer yet" text="Download a model from the Download section, or bring one in below." />}
                     {listed.models.map((model) => {
                         const [label, color] = TRAIN_VERDICTS[model.state] || TRAIN_VERDICTS.other;
                         return (
@@ -936,7 +936,7 @@ const CatalogueCard = ({ model, job, jobs = [], canManage, ollamaUp, onDownload,
         const forPool = !model.fit.fits;
         // Where it can be downloaded from: the two places, each on its own button with its own mark.
         action = (
-            <ButtonGroup size="sm" selectable={false} wrap={false}>
+            <ButtonGroup size="sm" selectable={false} wrap={false} vertical={fromLibrary && Boolean(model.hub)}>
                 {fromLibrary && (
                     <Button size="sm" onClick={() => onDownload(model.tag)} disabled={!ollamaUp} title={forPool ? `Too large for this computer alone. It is kept here and runs in chats placed on your pool, with ${model.pool.names} sharing the work.` : `Download ${model.name}`} {...guide.tip('models.download')}>
                         <Icon name="SiOllama" size="xs" />
@@ -1069,7 +1069,7 @@ const HubFiles = ({ repo, deviceId, jobs, canManage, ollamaUp, onDownload }) => 
     );
 };
 
-const DiscoverTab = ({ catalogue, recommended, find, jobs, canManage, ollamaUp, onDownload, onFind, onPage, onSort, loading, deviceId = null }) => {
+const DiscoverTab = ({ catalogue, find, jobs, canManage, ollamaUp, onDownload, onFind, onPage, onSort, loading, deviceId = null }) => {
     const top = useRef(null);
     const [customName, setCustomName] = useState('');
     const [query, setQuery] = useState(find.q);
@@ -1160,18 +1160,6 @@ const DiscoverTab = ({ catalogue, recommended, find, jobs, canManage, ollamaUp, 
 
     return (
         <Container layout="flex-column" gap="xl" padding="none" width="100%">
-            {recommended?.length > 0 && (
-                <Container as="section" layout="flex-column" gap="md" padding="none" width="100%">
-                    <SectionTitle title="Recommended for this device" count={recommended.length} />
-                    <Container layout="grid" columns={4} gap="md" padding="none" width="100%" align="stretch">{recommended.map(card)}</Container>
-                </Container>
-            )}
-            {recommended?.length === 0 && (
-                <Typography as="p" size="xs" color="muted">
-                    No model is a comfortable fit for this device. Smaller ones may still run slowly.
-                </Typography>
-            )}
-
             <Container ref={top} layout="flex-column" gap="sm" padding="none" width="100%">
                 <Container layout="flex" gap="xs" padding="none" align="center" width="100%">
                     <Input
@@ -1273,7 +1261,7 @@ const InstalledTab = ({ installed, canManage, onDelete, elsewhere = {} }) => {
         return <Empty icon="FiAlertCircle" title="Ollama is not running" text="Installed models cannot be listed until it is started." />;
     }
     if (installed.models.length === 0) {
-        return <Empty icon="FiBox" title="No models are installed yet" text="Open the Downloadable tab to download one that fits this device." />;
+        return <Empty icon="FiBox" title="No models are installed yet" text="Open the Download section to download one that fits this device." />;
     }
 
     return (
@@ -1353,14 +1341,6 @@ const ModelsPage = () => {
     const finding = useRef(EVERYTHING);
     const asking = useRef(0);
     const viewing = useRef(null);
-    // The recommended models are read on their own, so no search, filter or page of the list changes them.
-    const [recommended, setRecommended] = useState(null);
-    const loadRecommended = useCallback(async (deviceId) => {
-        try {
-            const result = await modelService.getDeviceRecommended(deviceId);
-            setRecommended((now) => (viewing.current === deviceId ? result.models : now));
-        } catch { /* the list below still shows every model */ }
-    }, []);
     const loadCatalogue = useCallback(async (deviceId, { page = 1, size = perPage(), sort = sortChoice(), all = false, ...changes } = {}) => {
         const wanted = { ...finding.current, ...changes };
         finding.current = wanted;
@@ -1416,9 +1396,9 @@ const ModelsPage = () => {
     const refresh = useCallback(async () => {
         setRefreshing(true);
         await loadDevices();
-        if (device?.online) await Promise.all([loadInstalled(), loadCatalogue(device.id), loadRecommended(device.id)]);
+        if (device?.online) await Promise.all([loadInstalled(), loadCatalogue(device.id)]);
         setRefreshing(false);
-    }, [device, loadDevices, loadInstalled, loadCatalogue, loadRecommended]);
+    }, [device, loadDevices, loadInstalled, loadCatalogue]);
 
     useEffect(() => {
         return onReturn(() => refreshRef.current());
@@ -1438,13 +1418,11 @@ const ModelsPage = () => {
         statuses.current = new Map();
         setInstalled(null);
         setCatalogue(null);
-        setRecommended(null);
         setJobs([]);
         if (!deviceId || !deviceOnline) return;
         loadInstalled();
         loadCatalogue(deviceId);
-        loadRecommended(deviceId);
-    }, [deviceId, deviceOnline, loadInstalled, loadCatalogue, loadRecommended]);
+    }, [deviceId, deviceOnline, loadInstalled, loadCatalogue]);
 
     // Which of this computer's models are also on the person's other computers.
     useEffect(() => {
@@ -1631,7 +1609,6 @@ const ModelsPage = () => {
                 {device?.online && tab === 'discover' && (
                     <DiscoverTab
                         catalogue={catalogue}
-                        recommended={recommended}
                         jobs={jobs}
                         canManage={canManage}
                         ollamaUp={ollamaUp}
