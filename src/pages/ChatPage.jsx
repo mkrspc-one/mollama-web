@@ -18,6 +18,15 @@ import { appService } from '../client/app.client';
 import { MemoryManager, MemoryRow } from './ModelsPage';
 
 const FIT_COLORS = { gpu: 'success', mixed: 'warning', cpu: 'warning', too_large: 'error', cloud: 'primary' };
+// The model picker marks each computer and model with a coloured dot, said in words in its title and in the key under it.
+const PickerDot = ({ color, title }) => <Icon name="FaCircle" size="xs" color={color} title={title} aria-label={title} />;
+const PICKER_KEY = [
+    ['success', 'Ready, or runs fully on the graphics card'],
+    ['warning', 'Runs with the processor\'s help (slower), or needs attention'],
+    ['error', 'Too large for this computer'],
+    ['primary', 'Online service'],
+    ['tertiary', 'Offline']
+];
 const FIRST_MESSAGE = 'Explain what you can help me with in three sentences.';
 const MAX_ARTICLES = 10;
 const READABLE = /\.(txt|md|markdown|csv|tsv|json|jsonl|log|pdf|docx|xml|ya?ml|html?|js|jsx|ts|tsx|py|java|c|cpp|h|cs|go|rs|rb|php|sql|sh|css|ini|toml|png|jpe?g|webp|gif)$/i;
@@ -3162,19 +3171,20 @@ const ChatPage = () => {
                                     open={pop === 'model'}
                                     onOpen={() => openPop('model')}
                                     onClose={closePop}
-                                    width={devices.length > 1 ? '600px' : '330px'}
+                                    width={devices.length > 1 ? '760px' : '440px'}
                                 >
+                                    <Container layout="flex-column" gap="sm" padding="none" width="100%">
                                     <Container layout="flex" wrap={false} align="stretch" gap="sm" padding="none" width="100%">
                                         {devices.length > 1 && (
-                                            <Container layout="flex-column" gap="none" padding="none" width="50%" minWidth="0">
+                                            <Container layout="flex-column" gap="none" padding="none" width="42%" minWidth="0">
                                                 <Typography size="xxs" color="muted" weight="semibold">Run on</Typography>
                                                 {devices.map((device) => (
                                                     <Row key={device.id} icon={DEVICE_ICONS[device.kind] || 'FiMonitor'} label={device.name} size="xs" selected={device.id === currentDevice} disabled={!device.online || device.paused} onClick={() => changeDevice(device.id)}>
                                                         {deviceService.ready(device)
-                                                            ? <Icon name="FiCheckCircle" size="xs" color="success" title="Ready to use right now" aria-label="Ready to use right now" />
+                                                            ? <PickerDot color="success" title="Ready to use right now" />
                                                             : device.online && !device.paused && device.ollama?.available && device.ollama.modelCount > 0
-                                                                ? <Badge size="xxs" color="warning" title="The models on this computer cannot chat. Download a chat model on the Models page.">No chat model</Badge>
-                                                                : <Badge size="xxs" color={device.paused ? 'warning' : device.online ? 'success' : 'default'}>{device.paused ? 'Paused' : device.online ? 'Online' : 'Offline'}</Badge>}
+                                                                ? <PickerDot color="warning" title="The models on this computer cannot chat. Download a chat model on the Models page." />
+                                                                : device.paused ? <PickerDot color="warning" title="Paused" /> : device.online ? <PickerDot color="success" title="Online" /> : <PickerDot color="tertiary" title="Offline" />}
                                                     </Row>
                                                 ))}
                                             </Container>
@@ -3197,13 +3207,35 @@ const ChatPage = () => {
                                             {models.map((model) => (
                                                 <Row key={model.name} label={model.displayName} size="xs" selected={model.name === currentModel} onClick={() => changeModel(model.name)}>
                                                     {model.capabilities?.length > 0 && !model.capabilities.includes('tools') && (usesTools(model)
-                                                        ? <Badge size="xxs" title="This model was not made for tools, so it is told of them in words and may use them less well.">Tools in words</Badge>
-                                                        : <Badge size="xxs" color="warning" title="This model has too little room to use tools or search the web. It answers only from what it already knows.">No tools</Badge>)}
-                                                    <Badge size="xxs" color={FIT_COLORS[model.fit?.verdict] || 'tertiary'}>{model.fit?.label || 'Fit unknown'}</Badge>
+                                                        ? <Icon name="FiMessageSquare" size="xs" color="tertiary" title="Tools in words: this model was not made for tools, so it is told of them in words and may use them less well." aria-label="Tools in words" />
+                                                        : <Icon name="FiSlash" size="xs" color="warning" title="No tools: this model has too little room to use tools or search the web. It answers only from what it already knows." aria-label="No tools" />)}
                                                     {model.ready && <Icon name="FiCheckCircle" size="xs" color="success" title="Loaded and ready to use right now" aria-label="Loaded and ready to use right now" />}
+                                                    <PickerDot color={FIT_COLORS[model.fit?.verdict] || 'tertiary'} title={model.fit?.label || 'Fit unknown'} />
                                                 </Row>
                                             ))}
                                         </Container>
+                                    </Container>
+                                    <Divider />
+                                    <Container layout="flex" wrap gap="sm" padding="none" width="100%">
+                                        {PICKER_KEY.map(([color, label]) => (
+                                            <Container key={label} layout="flex" align="center" gap="xxs" padding="none" wrap={false}>
+                                                <PickerDot color={color} title={label} />
+                                                <Typography size="xxs" color="muted">{label}</Typography>
+                                            </Container>
+                                        ))}
+                                        <Container layout="flex" align="center" gap="xxs" padding="none" wrap={false}>
+                                            <Icon name="FiCheckCircle" size="xs" color="success" />
+                                            <Typography size="xxs" color="muted">Loaded now</Typography>
+                                        </Container>
+                                        <Container layout="flex" align="center" gap="xxs" padding="none" wrap={false}>
+                                            <Icon name="FiMessageSquare" size="xs" color="tertiary" />
+                                            <Typography size="xxs" color="muted">Tools in words</Typography>
+                                        </Container>
+                                        <Container layout="flex" align="center" gap="xxs" padding="none" wrap={false}>
+                                            <Icon name="FiSlash" size="xs" color="warning" />
+                                            <Typography size="xxs" color="muted">No tools</Typography>
+                                        </Container>
+                                    </Container>
                                     </Container>
                                 </Pop>
                             {busy && !live?.stopping && <Button size="sm" color="secondary" variant="solid" title="Stop" aria-label="Stop" onClick={stopReply}><Icon name="FiSquare" size="xs" /></Button>}
