@@ -264,6 +264,49 @@ const WhyUnreachable = () => (
 
 const STATUS_TONES = ['success', 'warning', 'error'];
 
+// What a computer's desktop app found wrong with its connections, with the fix (from 1.0.23).
+const ConnectionProblems = ({ problems }) => (problems || []).length > 0 && (
+    <Container layout="flex-column" gap="xs" padding="none" width="100%">
+        {problems.map((problem) => (
+            <Container key={`${problem.kind}-${problem.adapter}`} layout="flex" align="baseline" gap="xs" padding="none" width="100%" wrap={false}>
+                <Icon name={problem.level === 'problem' ? 'FiAlertTriangle' : 'FiInfo'} size="xs" color={problem.level === 'problem' ? 'warning' : 'primary'} />
+                <Typography size="xs" color={problem.level === 'problem' ? 'warning' : 'muted'}>{problem.message}</Typography>
+            </Container>
+        ))}
+    </Container>
+);
+// The checks between computers that Check again ran: one line per pair and way they are joined, both directions.
+const CHECK_WAYS = { cable: 'direct cable', wired: 'home network, by cable', wifi: 'Wi-Fi' };
+const checkText = (pair) => {
+    const there = pair.there;
+    const back = pair.back;
+    const time = (result) => (result?.ms ? `${result.ms} ms` : '');
+    if (there?.ok && back?.ok) return [`Works both ways${time(there) ? `, ${time(there)}` : ''}.`, 'success'];
+    if (there?.ok === null || back?.ok === null) return [there?.why || back?.why || 'Not checked.', 'muted'];
+    if (there?.ok || back?.ok) return [`Works only from ${there?.ok ? pair.aName : pair.bName}. ${(there?.ok ? back : there)?.why || ''}`.trim(), 'warning'];
+    return [there?.why || back?.why || 'It could not be reached.', 'warning'];
+};
+const ConnectionChecks = ({ checks }) => checks?.pairs?.length > 0 && (
+    <Container layout="flex-column" gap="sm" padding="none" width="100%">
+        <Divider />
+        <Container layout="flex" align="baseline" gap="sm" padding="none" width="100%">
+            <Typography as="h3" size="sm" weight="semibold">Connections between your computers</Typography>
+            <Typography size="xxs" color="muted">{`Checked ${new Date(checks.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`}</Typography>
+        </Container>
+        {checks.pairs.map((pair) => {
+            const [text, tone] = checkText(pair);
+            return (
+                <Container key={`${pair.a}-${pair.b}-${pair.via}`} layout="flex" align="baseline" gap="xs" padding="none" width="100%" wrap={false}>
+                    <Icon name={tone === 'success' ? 'FiCheckCircle' : tone === 'warning' ? 'FiAlertTriangle' : 'FiInfo'} size="xs" color={tone === 'muted' ? 'primary' : tone} />
+                    <Typography size="xs" weight="semibold">{`${pair.aName} and ${pair.bName}`}</Typography>
+                    <Typography size="xs" color="muted">{`· ${CHECK_WAYS[pair.via] || pair.via}: `}</Typography>
+                    <Typography size="xs" color={tone === 'warning' ? 'warning' : 'muted'}>{text}</Typography>
+                </Container>
+            );
+        })}
+    </Container>
+);
+
 const PoolSection = ({ pools, onPart, onCheck, checking, checkedAt, children }) => {
     const groups = pools?.groups || [];
     const left = pools?.left || [];
@@ -318,6 +361,7 @@ const PoolSection = ({ pools, onPart, onCheck, checking, checkedAt, children }) 
                                             <Icon name={status ? STATUS_ICONS[status[1]] : 'FiInfo'} size="xs" color={status && STATUS_TONES.includes(status[1]) ? status[1] : 'primary'} />
                                             <Typography size="xs" color="muted">{status ? status[0] : part.hint}</Typography>
                                         </Container>
+                                        <ConnectionProblems problems={one.problems} />
                                         {one.reachable === false && (
                                             <Button size="xs" variant="ghost" genieTrigger="click" genie={{ trigger: 'click', width: '440px', padding: 'md', content: <WhyUnreachable /> }}>
                                                 <Icon name="FiHelpCircle" />Why can't it be reached?
@@ -347,6 +391,7 @@ const PoolSection = ({ pools, onPart, onCheck, checking, checkedAt, children }) 
                     </Container>
                 );
             })}
+            <ConnectionChecks checks={pools?.checks} />
             {left.length > 0 && (
                 <Container layout="flex-column" gap="sm" padding="none" width="100%">
                     <Divider />
@@ -355,6 +400,7 @@ const PoolSection = ({ pools, onPart, onCheck, checking, checkedAt, children }) 
                             <Container padding="none" flexFill minWidth="16rem">
                                 <Typography size="sm" weight="semibold">{`${one.name}: `}</Typography>
                                 <Typography size="xs" color="muted">{one.message}</Typography>
+                                <ConnectionProblems problems={one.problems} />
                             </Container>
                             {one.reason === 'public' && (
                                 <Button size="xs" genieTrigger="click" genie={{ trigger: 'click', width: '460px', padding: 'md', content: <MakePrivate name={one.name} networks={one.publicNetworks} /> }}>
@@ -686,6 +732,19 @@ const ExtendRental = ({ rental, onExtended }) => {
     );
 };
 
+// Why Ollama does not use a graphics card the computer has (desktop app 1.0.23 on).
+const CARD_WHY = {
+    'mac-intel': 'Ollama uses only the graphics of Apple\'s own chips, so on an Intel Mac it runs on the processor.',
+    intel: 'Ollama does not use Intel graphics.',
+    driver: 'Ollama could not use it: install or update the NVIDIA driver.',
+    small: 'It has too little memory of its own for a model.',
+    other: 'Ollama does not use this kind of graphics.'
+};
+const cardsNote = (cards) => {
+    const memory = cards.filter((card) => card.memoryMb > 0 && !card.shared).map((card) => `${card.name} has ${formatGb(card.memoryMb)} of its own.`);
+    return [...memory, ...[...new Set(cards.map((card) => CARD_WHY[card.why] || CARD_WHY.other))]].join(' ');
+};
+
 const RENTAL_STATES = { starting: 'Starting', running: 'Rented', ending: 'Ending' };
 const rentalNote = (rental) => {
     if (rental.state === 'starting') return ' Rented by the hour. It is starting, which takes a few minutes; nothing is charged if it never becomes ready.';
@@ -700,6 +759,8 @@ const DeviceCard = ({ device, canManage, onChanged, onRemove, onPause, here, onS
     const [form, setForm] = useState({ name: '', memoryGb: '', gpuName: '', gpuMemoryGb: '' });
 
     const { hardware, ollama } = device;
+    // The graphics cards it has that Ollama does not use (read by desktop app 1.0.23 on).
+    const unusedCards = (hardware.cards || []).filter((card) => !card.usable);
     const guide = useGuide();
 
     const startEditing = () => {
@@ -783,12 +844,12 @@ const DeviceCard = ({ device, canManage, onChanged, onRemove, onPause, here, onS
                 <Container layout="flex-column" gap="xs" padding="none" width="100%" flexFill>
                     <Fact
                         label={hardware.gpuShared ? 'Graphics' : 'Graphics card'}
-                        value={!hardware.hasGpu ? 'None found' : hardware.gpuShared ? 'Built in' : (hardware.gpuName || 'Graphics card')}
+                        value={!hardware.hasGpu ? (unusedCards.length > 0 ? unusedCards.map((card) => card.name).join(', ') : 'None found') : hardware.gpuShared ? 'Built in' : (hardware.gpuName || 'Graphics card')}
                         note={!hardware.hasGpu
-                            ? 'Models run on the processor, which is slower'
+                            ? `${unusedCards.length > 0 ? `${cardsNote(unusedCards)} ` : ''}Models run on the processor, which is slower.`
                             : hardware.gpuShared
                                 ? `Shares the ${formatGb(hardware.memoryMb)} of system memory. About ${formatGb(hardware.gpuMemoryMb)} of it can hold a model (an estimate).`
-                                : `${formatGb(hardware.gpuMemoryMb)} of graphics memory`}
+                                : `${formatGb(hardware.gpuMemoryMb)} of graphics memory${unusedCards.length > 0 ? `. Also ${unusedCards.map((card) => card.name).join(', ')}, which Ollama does not use.` : ''}`}
                     />
                     <Fact label="System memory" value={formatGb(hardware.memoryMb)} />
                     <Fact
