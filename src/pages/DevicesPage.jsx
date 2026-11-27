@@ -1116,18 +1116,38 @@ const RentCard = ({ offer, onRented, start = null, open = 0 }) => {
     const [hours, setHours] = useState(String(offer.rules.hours));
     const [limit, setLimit] = useState(String(offer.rules.limit / 100));
     const [busy, setBusy] = useState(false);
+    const [models, setModels] = useState([]);
+    const [choices, setChoices] = useState(null);
     const card = offer.cards.find((one) => one.flavor === flavor);
     const cents = Math.round(Number(limit) * 100);
+    // The models a card can run, read again when the card changes; chosen ones it cannot run are dropped.
+    useEffect(() => {
+        if (!card) return undefined;
+        let live = true;
+        setChoices(null);
+        rentalService.models(Math.round((card.ramGb || 0) * 1024), card.memoryMb || 0).then((result) => {
+            if (!live) return;
+            const list = (result.models || []).filter((one) => !one.cloudOnly && one.sizeMb);
+            setChoices(list);
+            setModels((now) => now.filter((tag) => list.some((one) => one.tag === tag)));
+        }, () => live && setChoices([]));
+        return () => { live = false; };
+    }, [card?.flavor]);
+    const sizeOf = (tag) => choices?.find((one) => one.tag === tag)?.sizeMb || 0;
+    const modelsMb = models.reduce((sum, tag) => sum + sizeOf(tag), 0);
+    const roomMb = card?.diskGb ? Math.floor(card.diskGb * 1024 * 0.85) : null;
     const problem = open >= offer.rules.atOnce ? `You have ${open} rented computers, the most at once. End one first.`
         : !card ? 'No card is free to rent right now. Try again later.'
+        : models.length > 8 ? 'Choose at most 8 models to download when it is ready; add more from the Models page later.'
+        : roomMb !== null && modelsMb > roomMb ? `Those models take about ${formatGb(modelsMb)} and this card's disk has room for about ${formatGb(roomMb)}. Choose fewer or smaller ones.`
         : !Number.isFinite(cents) || cents < card.price ? `The spending limit must cover one hour: at least ${formatMoney(card.price)}.`
             : cents > offer.balance ? `You have ${formatMoney(offer.balance)} of credit. Add credit, or lower the limit.` : '';
 
     const rent = async () => {
         setBusy(true);
         try {
-            await rentalService.start(flavor, Number(hours), cents, card.price);
-            success(`Starting your ${card.name}. It takes a few minutes; you are told when it is ready.`);
+            await rentalService.start(flavor, Number(hours), cents, card.price, models);
+            success(`Starting your ${card.name}. It takes a few minutes; you are told when it is ready${models.length ? ', and the models you chose download onto it then' : ''}.`);
             document.querySelector('[data-genie-backdrop]')?.click();
             onRented();
         } catch (error) {
@@ -1157,6 +1177,11 @@ const RentCard = ({ offer, onRented, start = null, open = 0 }) => {
                     options={Array.from({ length: offer.rules.mostHours }, (unused, index) => ({ value: String(index + 1), label: index === 0 ? '1 hour' : `${index + 1} hours` }))} />
                 <Input size="sm" label="Spending limit (US dollars)" value={limit} onChange={(event) => setLimit(event.target.value)} width="100%" />
             </Container>
+            <Select size="sm" label="Models to download when it is ready" multiSelect width="100%" value={models} onChange={(tags) => setModels(tags || [])}
+                disabled={!choices?.length}
+                placeholder={choices === null ? 'Reading the models this card runs…' : choices.length ? 'Search the models this card runs' : 'No models could be read. Download them from the Models page once it is ready.'}
+                options={(choices || []).map((one) => ({ value: one.tag, label: `${one.tag} · ${formatGb(one.sizeMb)}` }))}
+                helpText={models.length ? `${models.length === 1 ? '1 model' : `${models.length} models`}, about ${formatGb(modelsMb)}${roomMb ? ` of about ${formatGb(roomMb)} free on its disk` : ''}. Downloading counts as use, so it is not ended as idle meanwhile.` : 'Optional. They start downloading the moment the computer is ready.'} />
             <Typography as="p" size="xxs" color={problem ? 'error' : 'muted'}>
                 {problem || `${formatMoney(cents)} of your ${formatMoney(offer.balance)} credit is set aside now. You pay by the minute, and what is not used comes back. It ends, and the machine is deleted with everything on it, after ${hours === '1' ? '1 hour' : `${hours} hours`}, when ${formatMoney(cents)} is spent, or after ${offer.rules.idleMinutes} minutes with nothing running, whichever comes first. If Mollama itself is unreachable for that long, it ends too, so you never pay for a machine you cannot use.`}
             </Typography>

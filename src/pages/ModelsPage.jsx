@@ -1,5 +1,5 @@
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Switch, Divider, ProgressBar, CircularProgress, Pagination } from '@components/Components';
+import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Switch, Divider, ProgressBar, CircularProgress, Pagination, Data } from '@components/Components';
 import { useNotification } from '@contexts/NotificationContext';
 import { chatService, deviceService, modelService, providerService, trainingService, describeError, useGuide, onReturn } from '../client/ai.client';
 
@@ -281,11 +281,10 @@ export const MemoryManager = ({ only = null }) => {
 };
 
 const TABS = [
-    { id: 'discover', label: 'Discover' },
-    { id: 'installed', label: 'Installed' },
-    { id: 'running', label: 'Running' },
-    { id: 'train', label: 'Train' },
-    { id: 'online', label: 'Online' }
+    { id: 'discover', label: 'Downloadable', icon: 'FiDownloadCloud', about: 'Models you can download onto this computer' },
+    { id: 'installed', label: 'Installed', icon: 'FiHardDrive', about: 'The models already on this computer' },
+    { id: 'train', label: 'Train', icon: 'FiTrendingUp', about: 'Teach a model on this computer' },
+    { id: 'online', label: 'Online', icon: 'FiGlobe', about: 'Models that run online: cloud models and your own keys' }
 ];
 const PROVIDER_ICONS = { ollama: 'SiOllama', anthropic: 'SiAnthropic', openai: 'FiZap', google: 'SiGooglegemini', moonshot: 'FiMoon', deepseek: 'SiDeepseek', xai: 'SiX', mistral: 'SiMistralai', openrouter: 'SiOpenrouter', groq: 'FiCpu', cerebras: 'FiCpu' };
 const PROVIDER_COLORS = { healthy: 'success', unchecked: 'default', busy: 'warning', empty: 'warning' };
@@ -347,11 +346,9 @@ const Row = ({ children }) => (
 
 const Stat = ({ label, value, note }) => (
     <Container layout="flex-column" gap="none" padding="none" minWidth="0">
-        <Typography as="p" size="xxs" color="muted">{label}</Typography>
-        <Container layout="flex" align="baseline" gap="xs" padding="none">
-            <Typography as="p" size="sm" weight="medium">{value}</Typography>
-            {note && <Typography as="p" size="xxs" color="muted">{note}</Typography>}
-        </Container>
+        <Typography as="p" size="sm" color="muted">{label}</Typography>
+        <Typography as="p" size="lg" weight="semibold">{value}</Typography>
+        {note && <Typography as="p" size="xs" color="muted">{note}</Typography>}
     </Container>
 );
 
@@ -692,7 +689,7 @@ export const TrainTab = ({ device }) => {
             {!chosen && (
                 <>
                     <SectionTitle title={`Models on ${device.name}`} count={listed.models.length} />
-                    {listed.models.length === 0 && <Empty icon="FiBox" title="Nothing is downloaded on this computer yet" text="Download a model in Discover, or bring one in below." />}
+                    {listed.models.length === 0 && <Empty icon="FiBox" title="Nothing is downloaded on this computer yet" text="Download a model from the Downloadable tab, or bring one in below." />}
                     {listed.models.map((model) => {
                         const [label, color] = TRAIN_VERDICTS[model.state] || TRAIN_VERDICTS.other;
                         return (
@@ -807,8 +804,10 @@ export const OnlineTab = () => {
     };
 
     if (providers === null) return <Loading text="Loading your online services…" />;
-    const ollama = suggested.find((entry) => entry.id === 'ollama');
-    const others = suggested.filter((entry) => entry.id !== 'ollama' && !connected(entry.id));
+    const cloud = providers.find((provider) => provider.cloud) || null;
+    const keyed = providers.filter((provider) => !provider.cloud);
+    const others = suggested.filter((entry) => !connected(entry.id));
+    const perMillion = (dollars) => (dollars === null || dollars === undefined ? '' : `$${dollars.toFixed(dollars < 1 ? 3 : 2)}`);
 
     const keyForm = (entry) => (
         <Card layout="flex-column" gap="md" padding="lg" width="100%" maxWidth="720px" wrap={false}>
@@ -860,28 +859,35 @@ export const OnlineTab = () => {
 
     return (
         <Container layout="flex-column" gap="xl" padding="none" width="100%">
-            {providers.length > 0 && (
+            {cloud && (
                 <Container as="section" layout="flex-column" gap="md" padding="none" width="100%">
-                    <SectionTitle title="Connected" count={providers.length} />
-                    <Container layout="grid" columns={3} gap="md" padding="none" width="100%" align="stretch">
-                        {providers.map(connectedCard)}
-                    </Container>
+                    <SectionTitle title="Cloud" count={cloud.priced?.length ?? cloud.modelCount}>
+                        <Badge size="xs" color={PROVIDER_COLORS[cloud.health.state] || 'error'}>{cloud.health.label}</Badge>
+                    </SectionTitle>
+                    <Typography as="p" size="xs" maxWidth="760px">
+                        Large open models that run online, paid from your Mollama credit by what each reply reads and writes, with no key of your own. They are in the model picker of every chat; a reply stops when your credit runs low.
+                    </Typography>
+                    {cloud.health.needs.map((need) => <Typography key={need} as="p" size="xs" color="warning">{need}</Typography>)}
+                    {cloud.priced?.length > 0 && (
+                        <Data
+                            data={cloud.priced.map((model) => ({ id: model.name, model: model.title || model.name, context: model.contextLength ? `${Math.round(model.contextLength / 1024)}K` : '', reads: perMillion(model.input), writes: perMillion(model.output), can: [model.tools ? 'Tools' : null, model.vision ? 'Pictures' : null].filter(Boolean).join(', ') }))}
+                            size="xs"
+                            exclude={['id']}
+                            fieldConfig={{ model: { label: 'Model' }, context: { label: 'Reads up to' }, reads: { label: 'Reading, per million tokens' }, writes: { label: 'Writing, per million tokens' }, can: { label: 'Can use' } }}
+                            sortable
+                            flat
+                            width="100%"
+                        />
+                    )}
                 </Container>
             )}
 
-            {ollama && !connected('ollama') && (
+            {keyed.length > 0 && (
                 <Container as="section" layout="flex-column" gap="md" padding="none" width="100%">
-                    <SectionTitle title="Models too large to download" />
-                    <Card layout="flex" align="center" justify="between" gap="md" padding="lg" width="100%">
-                        <Container layout="flex" align="center" gap="md" padding="none" wrap={false} minWidth="0">
-                            <Icon name="SiOllama" size="sm" color="primary" />
-                            <Container layout="flex-column" gap="xs" padding="none" minWidth="0">
-                                <Typography as="h3" size="sm" weight="semibold">Run them on Ollama&apos;s computers</Typography>
-                                <Typography as="p" size="xs">The models marked &quot;Cloud only&quot; in Discover cannot be downloaded. With your own Ollama key they run on Ollama&apos;s computers and work in chats like any other model.</Typography>
-                            </Container>
-                        </Container>
-                        <Button size="sm" onClick={() => { setChosen(ollama); setKey(''); }}><Icon name="FiKey" size="xs" />Add an Ollama key</Button>
-                    </Card>
+                    <SectionTitle title="Connected" count={keyed.length} />
+                    <Container layout="grid" columns={4} gap="md" padding="none" width="100%" align="stretch">
+                        {keyed.map(connectedCard)}
+                    </Container>
                 </Container>
             )}
 
@@ -890,7 +896,7 @@ export const OnlineTab = () => {
             {others.length > 0 && (
                 <Container as="section" layout="flex-column" gap="md" padding="none" width="100%">
                     <SectionTitle title="Other providers" />
-                    <Container layout="grid" columns={3} gap="md" padding="none" width="100%" align="stretch">
+                    <Container layout="grid" columns={4} gap="md" padding="none" width="100%" align="stretch">
                         {others.map((entry) => (
                             <Card key={entry.id} layout="flex-column" gap="sm" padding="lg" width="100%" height="100%" minWidth="0" wrap={false}>
                                 <Container layout="flex" align="center" gap="sm" padding="none" width="100%" wrap={false} minWidth="0">
@@ -912,9 +918,10 @@ export const OnlineTab = () => {
     );
 };
 
-const CatalogueCard = ({ model, job, canManage, ollamaUp, onDownload }) => {
+const CatalogueCard = ({ model, job, jobs = [], canManage, ollamaUp, onDownload, deviceId = null }) => {
     const guide = useGuide();
     const busy = job && ['queued', 'downloading'].includes(job.status);
+    const fromLibrary = model.source !== 'huggingface';
     let action = null;
 
     if (model.cloudOnly) action = null;
@@ -927,19 +934,23 @@ const CatalogueCard = ({ model, job, canManage, ollamaUp, onDownload }) => {
     else if (!model.fitsDisk) action = <Badge size="xs" color="error">Not enough disk</Badge>;
     else if (canManage) {
         const forPool = !model.fit.fits;
+        // Where it can be downloaded from: the two places, each on its own button with its own mark.
         action = (
-            <Button size="sm" onClick={() => onDownload(model.tag)} disabled={!ollamaUp} title={forPool ? `Too large for this computer alone. It is kept here and runs in chats placed on your pool, with ${model.pool.names} sharing the work.` : undefined} {...guide.tip('models.download')}>
-                <Icon name="FiDownload" size="xs" />
-                {job?.status === 'paused' || job?.status === 'failed' ? 'Resume' : forPool ? 'Download for pooling' : 'Download'}
-            </Button>
+            <ButtonGroup size="sm" selectable={false} wrap={false}>
+                {fromLibrary && (
+                    <Button size="sm" onClick={() => onDownload(model.tag)} disabled={!ollamaUp} title={forPool ? `Too large for this computer alone. It is kept here and runs in chats placed on your pool, with ${model.pool.names} sharing the work.` : `Download ${model.name}`} {...guide.tip('models.download')}>
+                        <Icon name="SiOllama" size="xs" />
+                        {job?.status === 'paused' || job?.status === 'failed' ? 'Resume' : 'Download from Ollama'}
+                    </Button>
+                )}
+                {model.hub && (
+                    <Button size="sm" disabled={!ollamaUp} title="Choose a download size" genie={{ trigger: 'click', variant: 'popover', width: '420px', padding: 'lg', content: <HubFiles repo={model.hub} deviceId={deviceId} jobs={jobs} canManage={canManage} ollamaUp={ollamaUp} onDownload={onDownload} /> }}>
+                        <Icon name="SiHuggingface" size="xs" />Download from Hugging Face
+                    </Button>
+                )}
+            </ButtonGroup>
         );
     }
-    // Beside a download button this is the quieter choice; with nothing to download it is the card's own action.
-    const useOnline = (model.cloudOnly || model.online) && (
-        <Button size="sm" variant={action?.type === Button ? 'ghost' : null} title="Run it on Ollama's computers with your own Ollama key" onClick={() => window.dispatchEvent(new CustomEvent('models-open-online'))}>
-            <Icon name="FiCloud" size="xs" />Use online
-        </Button>
-    );
     const can = abilities(model);
 
     return (
@@ -949,7 +960,6 @@ const CatalogueCard = ({ model, job, canManage, ollamaUp, onDownload }) => {
                     <Typography as="h3" size="sm" weight="semibold" title={model.name}>{model.name}</Typography>
                     {model.pickLabel && <Badge size="xs" color="primary" title={model.pickWhy}>{model.pickLabel}</Badge>}
                 </Row>
-                <Typography as="p" size="xxs" color="muted" font="monospace" title="Its name on Ollama">{model.tag}</Typography>
             </Container>
             <Typography as="p" size="xs">{model.description}</Typography>
             {(can.length > 0 || cannotChat(model)) && (
@@ -962,7 +972,7 @@ const CatalogueCard = ({ model, job, canManage, ollamaUp, onDownload }) => {
             <Container layout="flex-column" gap="xs" padding="none" width="100%" minWidth="0">
                 <Typography as="p" size="xs">
                     {model.cloudOnly
-                        ? 'Too large to download. Runs on Ollama with your own key.'
+                        ? 'Too large to download.'
                         : [`${gb(model.sizeMb)} download`, model.fit.memoryNeededMb ? `needs ${gb(model.fit.memoryNeededMb)} to run` : null, model.fit.tokensPerSecond ? speedWords(model.fit.tokensPerSecond) : null].filter(Boolean).join(' · ')}
                 </Typography>
                 {!model.cloudOnly && <Placement model={model} />}
@@ -975,9 +985,8 @@ const CatalogueCard = ({ model, job, canManage, ollamaUp, onDownload }) => {
                 </Container>
             </Container>
             {busy && <ProgressBar value={job.percent} size="xs" color="primary" animated={job.status === 'downloading' && !job.stalled} width="100%" />}
-            {(useOnline || action) && (
+            {action && (
                 <Container layout="flex" align="center" justify="end" gap="xs" padding="none" width="100%">
-                    {useOnline}
                     {action}
                 </Container>
             )}
@@ -1027,7 +1036,40 @@ const perPage = () => {
     const kept = Number(localStorage.getItem('mollama-models-per-page'));
     return PAGE_SIZES.includes(kept) ? kept : 12;
 };
-const DiscoverTab = ({ catalogue, recommended, find, jobs, canManage, ollamaUp, onDownload, onFind, onPage, onSort, loading }) => {
+// One model's download sizes from its second source, each with whether it fits this computer.
+const HubFiles = ({ repo, deviceId, jobs, canManage, ollamaUp, onDownload }) => {
+    const [files, setFiles] = useState(null);
+    useEffect(() => {
+        let live = true;
+        modelService.hubFiles(repo, deviceId).then((result) => live && setFiles(result), (error) => live && setFiles({ problem: error?.response?.data?.message || 'Its download sizes could not be read just now.' }));
+        return () => { live = false; };
+    }, [repo, deviceId]);
+    if (!files) return <Loading text="Reading its download sizes…" />;
+    if (files.problem) return <Typography as="p" size="xs" color="error">{files.problem}</Typography>;
+    return (
+        <Container layout="flex-column" gap="sm" padding="none" width="100%">
+            <Typography as="h3" size="sm" weight="semibold">{files.repo}</Typography>
+            <Typography as="p" size="xxs" color="muted">{[files.parameters ? `${files.parameters}B parameters` : null, files.licence ? `Licence: ${files.licence}` : null, 'Smaller sizes are squeezed harder: faster and lighter, a little less exact.'].filter(Boolean).join(' · ')}</Typography>
+            {files.quants.length === 0 && <Typography as="p" size="xs" color="muted">This model has no single-file download that can be used here.</Typography>}
+            {files.quants.map((one) => {
+                const job = jobs.find((entry) => entry.model === one.name && entry.status !== 'completed' && entry.status !== 'cancelled');
+                return (
+                    <Container key={one.quant} layout="flex" align="center" justify="between" gap="sm" padding="none" width="100%" wrap={false}>
+                        <Container layout="flex-column" gap="none" padding="none" minWidth="0">
+                            <Typography as="p" size="xs" weight="semibold">{`${one.quant} · ${gb(one.sizeMb)}`}</Typography>
+                            {one.fit && <Typography as="p" size="xxs" color={one.fit.fits ? 'muted' : 'warning'}>{one.fit.label}</Typography>}
+                        </Container>
+                        {canManage && (job
+                            ? <Badge size="xs">{job.status === 'downloading' ? `${job.percent ?? 0}%` : job.status}</Badge>
+                            : <Button size="xs" disabled={!ollamaUp || (one.fit && !one.fit.fits)} onClick={() => onDownload(one.name)}><Icon name="FiDownload" size="xs" />Download</Button>)}
+                    </Container>
+                );
+            })}
+        </Container>
+    );
+};
+
+const DiscoverTab = ({ catalogue, recommended, find, jobs, canManage, ollamaUp, onDownload, onFind, onPage, onSort, loading, deviceId = null }) => {
     const top = useRef(null);
     const [customName, setCustomName] = useState('');
     const [query, setQuery] = useState(find.q);
@@ -1049,8 +1091,9 @@ const DiscoverTab = ({ catalogue, recommended, find, jobs, canManage, ollamaUp, 
     const size = catalogue.size || perPage();
     const paged = catalogue.paged ?? catalogue.total ?? 0;
     const pages = Math.max(1, Math.ceil(paged / size));
+    // The list holds the first 200 models; reaching its last page asks for 200 more.
     const turn = (next, perPage = size) => {
-        onPage(next, perPage);
+        onPage(next, perPage, next >= pages && catalogue.further ? (catalogue.limit || 200) + 200 : null);
         top.current?.scrollIntoView({ block: 'start' });
     };
     const narrowed = Boolean(find.q) || find.purpose !== 'all' || find.can.length > 0 || find.fits || Object.keys(RANGES).some((key) => find[key] !== 'any');
@@ -1073,6 +1116,8 @@ const DiscoverTab = ({ catalogue, recommended, find, jobs, canManage, ollamaUp, 
             key={model.tag}
             model={model}
             job={jobFor(model.tag)}
+            jobs={jobs}
+            deviceId={deviceId}
             canManage={canManage}
             ollamaUp={ollamaUp}
             onDownload={onDownload}
@@ -1118,7 +1163,7 @@ const DiscoverTab = ({ catalogue, recommended, find, jobs, canManage, ollamaUp, 
             {recommended?.length > 0 && (
                 <Container as="section" layout="flex-column" gap="md" padding="none" width="100%">
                     <SectionTitle title="Recommended for this device" count={recommended.length} />
-                    <Container layout="grid" columns={3} gap="md" padding="none" width="100%" align="stretch">{recommended.map(card)}</Container>
+                    <Container layout="grid" columns={4} gap="md" padding="none" width="100%" align="stretch">{recommended.map(card)}</Container>
                 </Container>
             )}
             {recommended?.length === 0 && (
@@ -1168,7 +1213,7 @@ const DiscoverTab = ({ catalogue, recommended, find, jobs, canManage, ollamaUp, 
                 <Empty
                     icon={catalogue.unavailable ? 'FiAlertCircle' : 'FiSearch'}
                     title={catalogue.unavailable ? 'The model list could not be loaded' : 'No model matched'}
-                    text={catalogue.unavailable ? 'The list could not be loaded from ollama.com. You can still add a model by its name below.' : 'No model in the ollama.com library matched. Try other words or fewer filters, or add a model by its name below.'}
+                    text={catalogue.unavailable ? 'The list could not be loaded just now. You can still add a model by its name below.' : 'No model matched. Try other words or fewer filters, or add a model by its name below.'}
                 >
                     {!catalogue.unavailable && narrowed && <Button size="sm" onClick={clear}>Clear all filters</Button>}
                 </Empty>
@@ -1177,7 +1222,7 @@ const DiscoverTab = ({ catalogue, recommended, find, jobs, canManage, ollamaUp, 
             {others.length > 0 && (
                 <Container as="section" layout="flex-column" gap="md" padding="none" width="100%">
                     <SectionTitle title="All models" count={catalogue.total ?? others.length} />
-                    <Container layout="grid" columns={3} gap="md" padding="none" width="100%" align="stretch">{others.map(card)}</Container>
+                    <Container layout="grid" columns={4} gap="md" padding="none" width="100%" align="stretch">{others.map(card)}</Container>
                 </Container>
             )}
 
@@ -1228,11 +1273,11 @@ const InstalledTab = ({ installed, canManage, onDelete, elsewhere = {} }) => {
         return <Empty icon="FiAlertCircle" title="Ollama is not running" text="Installed models cannot be listed until it is started." />;
     }
     if (installed.models.length === 0) {
-        return <Empty icon="FiBox" title="No models are installed yet" text="Open Discover to download one that fits this device." />;
+        return <Empty icon="FiBox" title="No models are installed yet" text="Open the Downloadable tab to download one that fits this device." />;
     }
 
     return (
-        <Container layout="grid" columns={3} gap="md" padding="none" width="100%" align="stretch">
+        <Container layout="grid" columns={4} gap="md" padding="none" width="100%" align="stretch">
             {installed.models.map((model) => (
                 <Card key={model.name} layout="flex-column" gap="sm" padding="lg" width="100%" height="100%" minWidth="0" wrap={false}>
                     <Container layout="flex-column" gap="none" padding="none" width="100%" minWidth="0">
@@ -1320,7 +1365,7 @@ const ModelsPage = () => {
         const wanted = { ...finding.current, ...changes };
         finding.current = wanted;
         setFind(wanted);
-        const { q, purpose, can, fits } = wanted;
+        const { q, purpose, can, fits, limit } = wanted;
         const spans = rangeQuery(wanted);
         const mine = ++asking.current;
         setCatalogueLoading(true);
@@ -1328,6 +1373,7 @@ const ModelsPage = () => {
             const ask = (current) => modelService.getDeviceCatalogue(deviceId, {
                 ...(q ? { q } : {}),
                 ...(page > 1 ? { page } : {}),
+                ...(current && limit > 200 ? { limit } : {}),
                 ...(all ? { all: true } : {}),
                 ...(current && !all ? { size } : {}),
                 ...(current && sort !== 'fit' ? { sort } : {}),
@@ -1516,6 +1562,27 @@ const ModelsPage = () => {
     const ollamaUp = installed ? installed.ollamaAvailable : true;
     const counts = useMemo(() => ({ installed: installed?.models.length ?? null }), [installed]);
 
+    // The sections, down the left edge of the screen; what this computer holds, down the right edge.
+    const sections = TABS.map((option) => ({
+        icon: option.icon,
+        label: `${option.label}${option.id === 'installed' && counts.installed !== null ? ` (${counts.installed})` : ''}: ${option.about}`,
+        selected: tab === option.id,
+        onClick: () => setTab(option.id),
+        tip: guide.tip(`models.${option.id}`)
+    }));
+    const holds = (
+        <Container layout="flex-column" gap="lg" padding="none" width="100%">
+            <Stat label="Installed" value={installed ? `${installed.models.length} models` : '…'} />
+            <Stat label="Used by models" value={installed?.disk ? gb(installed.disk.usedByModelsMb) : '…'} />
+            <Stat label="Free disk" value={installed?.disk ? gb(installed.disk.freeMb) : '…'} />
+            <Stat
+                label="Graphics card"
+                value={device ? (catalogue?.hardware?.gpuName || device.hardware?.gpuName || 'None') : '…'}
+                note={device?.hardware?.gpuMemoryMb ? `${gb(device.hardware.gpuMemoryMb)} graphics memory` : null}
+            />
+        </Container>
+    );
+
     return (
         <Page
             title="Models"
@@ -1524,6 +1591,8 @@ const ModelsPage = () => {
             gap="xl"
             background="grid"
             backgroundFade="bottom"
+            left={{ actions: sections, icon: TABS.find((option) => option.id === tab)?.icon, label: 'Sections of the Models page' }}
+            right={{ content: holds, icon: 'FiHardDrive', label: device ? `What ${device.name} holds` : 'What this computer holds' }}
             actions={(
                 <Container layout="flex" gap="sm" padding="none" align="center" justify="end">
                     {devices?.length > 1 && (
@@ -1544,30 +1613,7 @@ const ModelsPage = () => {
                 </Container>
             )}
         >
-            <Container layout="flex" gap="2xl" padding="none" width="100%" align="start">
-                <Stat label="Installed" value={installed ? `${installed.models.length} models` : '…'} />
-                <Stat label="Used by models" value={installed?.disk ? gb(installed.disk.usedByModelsMb) : '…'} />
-                <Stat label="Free disk" value={installed?.disk ? gb(installed.disk.freeMb) : '…'} />
-                <Stat
-                    label={device?.name || 'Device'}
-                    value={catalogue?.hardware?.gpuName || device?.hardware?.gpuName || device?.name || '…'}
-                    note={device?.hardware?.gpuMemoryMb ? `${gb(device.hardware.gpuMemoryMb)} graphics memory` : null}
-                />
-            </Container>
-
-            <ButtonGroup size="sm" selectable={false} wrap>
-                {TABS.map((option) => (
-                    <Button
-                        key={option.id}
-                        size="sm"
-                        selected={tab === option.id}
-                        onClick={() => setTab(option.id)}
-                        {...guide.tip(`models.${option.id}`)}
-                    >
-                        {option.label}{option.id === 'installed' && counts.installed !== null ? ` (${counts.installed})` : ''}
-                    </Button>
-                ))}
-            </ButtonGroup>
+            <Typography as="h2" size="md" weight="semibold" font="secondary">{TABS.find((option) => option.id === tab)?.label}</Typography>
 
             <DownloadsPanel jobs={jobs} canManage={canManage} onResume={(job) => download(job.model, job.device || deviceId)} onPause={pause} onCancel={cancel} />
 
@@ -1591,20 +1637,20 @@ const ModelsPage = () => {
                         ollamaUp={ollamaUp}
                         onDownload={download}
                         loading={catalogueLoading}
+                        deviceId={deviceId}
                         find={find}
-                        onFind={(changes) => device && loadCatalogue(device.id, changes)}
+                        onFind={(changes) => device && loadCatalogue(device.id, { ...changes, limit: 200 })}
                         onSort={(sort) => {
                             try { localStorage.setItem('mollama-models-sort', sort); } catch { /* kept for this visit only */ }
                             if (device) loadCatalogue(device.id, { sort });
                         }}
-                        onPage={(page, size) => {
+                        onPage={(page, size, limit) => {
                             try { localStorage.setItem('mollama-models-per-page', String(size)); } catch { /* kept for this visit only */ }
-                            if (device) loadCatalogue(device.id, { page, size });
+                            if (device) loadCatalogue(device.id, { page, size, ...(limit ? { limit } : {}) });
                         }}
                     />
                 )}
                 {device?.online && tab === 'installed' && <InstalledTab installed={installed} canManage={canManage} onDelete={deleteModel} elsewhere={elsewhere} />}
-                {device?.online && tab === 'running' && <MemoryManager only={deviceId} />}
                 {device?.online && !device.paused && tab === 'train' && <TrainTab device={device} />}
             </Container>
         </Page>

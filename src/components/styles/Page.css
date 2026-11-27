@@ -754,3 +754,36 @@
         animation: none !important;
     }
 }
+
+/* ===== Edge rails: fixed at the screen's edges, outside the column; a floating button stands in where there is no room ===== */
+.page-rail {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: calc(var(--z-fab, 100000) - 1);
+    display: none;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    max-height: 90vh;
+    overflow: auto;
+}
+
+.page-rail-left {
+    left: var(--spacing-lg);
+    align-items: center;
+}
+
+.page-rail-right {
+    right: var(--spacing-lg);
+    width: 13rem;
+}
+
+@media (min-width: 1440px) {
+    .page-rail-left { display: flex; }
+    .page-rail-fab-left { display: none; }
+}
+
+@media (min-width: 1760px) {
+    .page-rail-right { display: flex; }
+    .page-rail-fab-right { display: none; }
+}

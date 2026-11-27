@@ -277,7 +277,9 @@ export const trainingService = {
 export const rentalService = {
     cards: () => api.get('/rentals/cards'),
     list: () => api.get('/rentals'),
-    start: (flavor, hours, limit, price) => api.post('/rentals', { flavor, hours, limit, price }),
+    start: (flavor, hours, limit, price, models = []) => api.post('/rentals', { flavor, hours, limit, price, ...(models.length ? { models } : {}) }),
+    // Downloadable models that fit a card, most popular first, to choose from when renting.
+    models: (memoryMb, gpuMemoryMb) => api.get('/catalogue', { params: { memoryMb, gpuMemoryMb, fits: true, sort: 'popular', size: 48 } }),
     end: (id) => api.post(`/rentals/${id}/end`, {}),
     extend: (id, hours) => api.post(`/rentals/${id}/extend`, { hours })
 };
@@ -488,6 +490,9 @@ export const modelService = {
     createModel: (request) => api.post('/models/create', request, onViewed()),
     updateModel: (request) => api.post('/models/update', request, onViewed()),
 
+    // GGUF models on Hugging Face, downloaded by Ollama as hf.co/<maker>/<name>:<size>.
+    searchHub: (q) => api.get('/huggingface', { params: { q } }),
+    hubFiles: (repo, device) => api.get('/huggingface/files', { params: { repo, ...(device ? { device } : {}) } }),
     getDeviceCatalogue: (deviceId, query = {}) => api.get(`/devices/${deviceId}/catalogue`, { params: query }),
     getDeviceRecommended: (deviceId) => api.get(`/devices/${deviceId}/recommended`),
     // A server that is one version behind does not know "sample" yet; it is then asked the older way and the page trims the list itself.
