@@ -321,7 +321,7 @@ const useHairline = () => {
 
 // Where each kind of computer stands, around its own x: [left, right, back, front, height]. Its links attach to its
 // sides and its top, and the box is its hit area.
-const FOOT = { laptop: [-17, 17, -12, 12, 24], tablet: [-15, 15, -13, 10, 22], allinone: [-21, 21, -6.2, 13, 36], mini: [-21, 32, -6.2, 14, 33], desktop: [-19, 37, -12, 13, 33] };
+const FOOT = { laptop: [-17, 17, -12, 12, 24], tablet: [-15, 15, -13, 10, 22], allinone: [-21, 21, -6.2, 13, 36], mini: [-21, 32, -6.2, 14, 33], desktop: [-19, 37, -12, 13, 33], server: [-24, 24, -12, 12, 21] };
 const footOf = (form) => FOOT[form] || FOOT.laptop;
 const anchorsOf = (form, x, y, z0) => {
     const [x0, x1, y0, y1, h] = footOf(form);
@@ -333,8 +333,8 @@ const anchorsOf = (form, x, y, z0) => {
         corners: [x0, x1].flatMap((cx) => [y0, y1].flatMap((cy) => [[x + cx, y + cy, 0], [x + cx, y + cy, z0 + h]]))
     };
 };
-const REASON_SHORT = { offline: 'Offline', paused: 'Paused', update: 'Needs an update', public: 'Public network', nonetwork: 'No network', alone: 'Not joined' };
-const FORM_NAMES = { laptop: 'Laptop', tablet: 'Tablet', allinone: 'All-in-one', mini: 'Small desktop', desktop: 'Desktop' };
+const REASON_SHORT = { offline: 'Offline', paused: 'Paused', update: 'Needs an update', public: 'Public network', nonetwork: 'No network', alone: 'Not joined', rented: 'Rented' };
+const FORM_NAMES = { laptop: 'Laptop', tablet: 'Tablet', allinone: 'All-in-one', mini: 'Small desktop', desktop: 'Desktop', server: 'Rented computer' };
 
 // Where a warning sits: its computer, its cable or its line to a router, as the server's scene names it.
 const issueKey = (on) => (on.computer ? on.computer : on.cable ? [...on.cable].sort().join('|') : on.line.join('|'));
@@ -412,6 +412,16 @@ const drawComputer = (HL, P, front, g, form, x, y, z0) => {
         line([[-13, -8, 1.8], [13, -8, 1.8], [13, 1.5, 1.8], [-13, 1.5, 1.8], [-13, -8, 1.8]]);
         for (const row of [-5.6, -3.2, -0.8]) line([[-13, row, 1.8], [13, row, 1.8]]);
         line([[-5, 4, 1.8], [5, 4, 1.8], [5, 10, 1.8], [-5, 10, 1.8], [-5, 4, 1.8]]);
+        return;
+    }
+    // A rented computer: two rack servers stacked, each with its drive bays and lights, as in a data centre.
+    if (form === 'server') {
+        for (const [a, b] of [[0, 10], [10.5, 20.5]]) {
+            box(-24, -12, 24, 12, a, b, 1.2, 0.6);
+            for (const bay of [-20, -14, -8]) face(bay, bay + 5, 12, a + 2.5, b - 2.5);
+            for (const vent of [6, 9, 12, 15, 18]) line([[vent, 12, a + 3], [vent, 12, b - 3]]);
+            line([[-2, 12, a + 5], [-0.6, 12, a + 5]], 'sil nf');
+        }
         return;
     }
     if (form === 'tablet') {
@@ -750,7 +760,7 @@ const ComputerCard = ({ one, main, issues, onPart }) => {
                     <Icon name="FiHelpCircle" />Why can't it be reached?
                 </Button>
             )}
-            {one.reason === 'alone' && row('FiInfo', 'primary', one.message)}
+            {['alone', 'rented'].includes(one.reason) && row('FiInfo', 'primary', one.message)}
             {!one.reason && (
                 <Container layout="flex-column" gap="xs" padding="none" width="100%">
                     <ButtonGroup size="sm" justify="start" selectable={false}>
