@@ -522,7 +522,7 @@ const RENT_FIELDS = {
     source: { label: 'Supplied by (admins and owners only)' }
 };
 
-const RentView = ({ offer, problem, renting, onRented, onShowComputers }) => {
+const RentView = ({ offer, problem, open = 0, onRented, onShowComputers }) => {
     const [freeOnly, setFreeOnly] = useState(false);
     const [floor, setFloor] = useState('0');
     const [sort, setSort] = useState('price');
@@ -547,7 +547,7 @@ const RentView = ({ offer, problem, renting, onRented, onShowComputers }) => {
     const rentRow = {
         trigger: 'click', variant: 'popover', width: '480px', padding: 'lg',
         content: (row) => (row.held.free
-            ? <RentCard offer={offer} onRented={onRented} start={row.id} />
+            ? <RentCard offer={offer} onRented={onRented} start={row.id} open={open} />
             : <Typography as="p" size="xs" color="muted">{`${row.card} is out of stock right now. Try again later, or choose a card that is free now.`}</Typography>)
     };
 
@@ -556,9 +556,14 @@ const RentView = ({ offer, problem, renting, onRented, onShowComputers }) => {
             <Typography as="p" size="xs" color="muted">
                 A computer with a strong graphics card, yours by the minute. It appears under Computers as one of your computers: you download models onto it and choose it in a chat. Choose a card that is free now to rent it.
             </Typography>
-            {renting && (
-                <Notice title="You already have a rented computer" text="End it before renting another. It is under Computers.">
-                    <Button size="sm" onClick={onShowComputers}><Icon name="FiMonitor" />Show it</Button>
+            {open >= offer.rules.atOnce && (
+                <Notice title={open === 1 ? 'You already have a rented computer' : `You have ${open} rented computers, the most at once`} text="End one before renting another. They are under Computers.">
+                    <Button size="sm" onClick={onShowComputers}><Icon name="FiMonitor" />Show them</Button>
+                </Notice>
+            )}
+            {open >= 2 && open < offer.rules.atOnce && (
+                <Notice title={`You have ${open} rented computers running`} text="Another one is charged by the minute as well, from its own credit set aside. Make sure you need it.">
+                    <Button size="sm" onClick={onShowComputers}><Icon name="FiMonitor" />Show them</Button>
                 </Notice>
             )}
             <Container layout="flex" align="end" gap="sm" padding="none" width="100%">
@@ -577,7 +582,7 @@ const RentView = ({ offer, problem, renting, onRented, onShowComputers }) => {
     );
 };
 
-const RentCard = ({ offer, onRented, start = null }) => {
+const RentCard = ({ offer, onRented, start = null, open = 0 }) => {
     const { success, error: notifyError } = useNotification();
     const navigate = useNavigate();
     const [flavor, setFlavor] = useState(start || offer.cards[0]?.flavor || '');
@@ -586,7 +591,8 @@ const RentCard = ({ offer, onRented, start = null }) => {
     const [busy, setBusy] = useState(false);
     const card = offer.cards.find((one) => one.flavor === flavor);
     const cents = Math.round(Number(limit) * 100);
-    const problem = !card ? 'No card is free to rent right now. Try again later.'
+    const problem = open >= offer.rules.atOnce ? `You have ${open} rented computers, the most at once. End one first.`
+        : !card ? 'No card is free to rent right now. Try again later.'
         : !Number.isFinite(cents) || cents < card.price ? `The spending limit must cover one hour: at least ${formatMoney(card.price)}.`
             : cents > offer.balance ? `You have ${formatMoney(offer.balance)} of credit. Add credit, or lower the limit.` : '';
 
@@ -618,6 +624,7 @@ const RentCard = ({ offer, onRented, start = null }) => {
                     ...(offer.unavailable || []).map((one) => ({ value: one.flavor, label: `${one.name} · ${formatMoney(one.price)} an hour · ${one.why}`, disabled: true }))
                 ]} />
             {card?.spot && <Typography as="p" size="xxs" color="warning">A spot machine costs less, but it can be taken back at any moment. The rental then ends and you pay only for the minutes used.</Typography>}
+            {open >= 2 && !problem && <Typography as="p" size="xxs" color="warning">{`This is your ${open === 2 ? 'third' : 'fourth'} rented computer running at once. Each one is charged by the minute.`}</Typography>}
             <Container layout="grid" columns="2" gap="sm" padding="none" width="100%">
                 <Select size="sm" label="For at most" value={hours} onChange={(value) => setHours(String(value))} width="100%"
                     options={Array.from({ length: offer.rules.mostHours }, (unused, index) => ({ value: String(index + 1), label: index === 0 ? '1 hour' : `${index + 1} hours` }))} />
@@ -634,6 +641,44 @@ const RentCard = ({ offer, onRented, start = null }) => {
     );
 };
 
+// More time for a rental: what it adds to the end and, when the spending limit would not cover it, what more is set aside.
+const ExtendRental = ({ rental, onExtended }) => {
+    const { success, error: notifyError } = useNotification();
+    const [hours, setHours] = useState('1');
+    const [busy, setBusy] = useState(false);
+    const most = Math.max(0, rental.moreHours ?? 12);
+    const added = Number(hours);
+    const extra = Math.max(0, Math.ceil(((rental.minutes + added * 60) * rental.price) / 60) - rental.limit);
+    const ends = rental.endsAt ? new Date(new Date(rental.endsAt).getTime() + added * 3600000) : null;
+    const extend = async () => {
+        setBusy(true);
+        try {
+            await rentalService.extend(rental.id, added);
+            success(`${rental.card.name} runs ${added === 1 ? 'an hour' : `${added} hours`} longer.`);
+            document.querySelector('[data-genie-backdrop]')?.click();
+            onExtended();
+        } catch (error) {
+            notifyError(error?.response?.data?.message || describeError(error, 'The rental could not be extended.'));
+        } finally {
+            setBusy(false);
+        }
+    };
+    if (most === 0) return <Typography as="p" size="xs" color="muted">This rental is already as long as one can be.</Typography>;
+    return (
+        <Container layout="flex-column" gap="sm" padding="none" width="100%">
+            <Typography as="h2" size="md" weight="semibold" font="secondary">Extend the rental</Typography>
+            <Select size="sm" label="More time" value={hours} onChange={(value) => setHours(String(value))} width="100%"
+                options={Array.from({ length: Math.min(12, most) }, (unused, index) => ({ value: String(index + 1), label: index === 0 ? '1 hour more' : `${index + 1} hours more` }))} />
+            <Typography as="p" size="xxs" color="muted">
+                {`${ends ? `It then ends at ${ends.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} at the latest. ` : ''}${extra > 0 ? `Its spending limit rises by ${formatMoney(extra)}, set aside from your credit now; what is not used comes back.` : `Its spending limit of ${formatMoney(rental.limit)} already covers it, so nothing more is set aside.`} It still ends after ${rental.idleMinutes} minutes with nothing running.`}
+            </Typography>
+            <Container layout="flex" gap="xs" padding="none">
+                <Button size="sm" disabled={busy} onClick={extend}><Icon name="FiClock" />{busy ? 'Extending…' : 'Extend'}</Button>
+            </Container>
+        </Container>
+    );
+};
+
 const RENTAL_STATES = { starting: 'Starting', running: 'Rented', ending: 'Ending' };
 const rentalNote = (rental) => {
     if (rental.state === 'starting') return ' Rented by the hour. It is starting, which takes a few minutes; nothing is charged if it never becomes ready.';
@@ -641,7 +686,7 @@ const rentalNote = (rental) => {
     return ' Rented by the hour. Ending it deletes the machine and everything on it.';
 };
 
-const DeviceCard = ({ device, canManage, onChanged, onRemove, onPause, here, onSetUp, rental = null, onEndRental }) => {
+const DeviceCard = ({ device, canManage, onChanged, onRemove, onPause, here, onSetUp, rental = null, onEndRental, onExtended }) => {
     const { success, error: notifyError } = useNotification();
     const [editing, setEditing] = useState(false);
     const [busy, setBusy] = useState(false);
@@ -808,6 +853,11 @@ const DeviceCard = ({ device, canManage, onChanged, onRemove, onPause, here, onS
                             </Button>
                         )}
                         {device.kind !== 'local' && !here && !rental && <Button size="xs" variant="ghost" color="error" onClick={() => onRemove(device)}><Icon name="FiTrash2" />Remove</Button>}
+                        {rental && rental.state !== 'ending' && (
+                            <Button size="xs" variant="ghost" genie={{ trigger: 'click', variant: 'popover', width: '360px', padding: 'lg', content: <ExtendRental rental={rental} onExtended={onExtended} /> }}>
+                                <Icon name="FiClock" />Extend
+                            </Button>
+                        )}
                         {rental && rental.state !== 'ending' && <Button size="xs" variant="ghost" color="error" onClick={() => onEndRental(device, rental)}><Icon name="FiPower" />End rental</Button>}
                     </Container>
                 </>
@@ -917,7 +967,8 @@ const DevicesPage = () => {
     }, [devices]);
 
     // An open rental changes by the minute (what it has cost, how long is left, whether it is ready), so it is read again.
-    const renting = rentals.some((rental) => rental.state !== 'ended');
+    const openRentals = rentals.filter((rental) => rental.state !== 'ended').length;
+    const renting = openRentals > 0;
     useEffect(() => {
         if (!renting) return undefined;
         const timer = setInterval(load, 30000);
@@ -972,7 +1023,7 @@ const DevicesPage = () => {
                 ))}
             </ButtonGroup>
 
-            {view === 'rent' && <RentView offer={offer} problem={rentProblem} renting={renting} onRented={() => { load(); showView('computers'); }} onShowComputers={() => showView('computers')} />}
+            {view === 'rent' && <RentView offer={offer} problem={rentProblem} open={openRentals} onRented={() => { load(); showView('computers'); }} onShowComputers={() => showView('computers')} />}
 
             {devices === null && !failed && <Notice title="Reading this computer…" />}
 
@@ -999,7 +1050,7 @@ const DevicesPage = () => {
                 <Container layout="grid" columns="auto-lg" gap="lg" align="stretch" padding="none" width="100%">
                     {devices.map((device) => (
                         <DeviceCard key={device.id} device={device} canManage={canManage} onChanged={replaceDevice} onRemove={removeDevice} onPause={pauseDevice} here={device.id === here} onSetUp={setUpOllama}
-                            rental={rentals.find((rental) => rental.id === device.rental && rental.state !== 'ended') || null} onEndRental={endRental} />
+                            rental={rentals.find((rental) => rental.id === device.rental && rental.state !== 'ended') || null} onEndRental={endRental} onExtended={load} />
                     ))}
                 </Container>
             )}

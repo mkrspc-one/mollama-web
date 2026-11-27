@@ -275,7 +275,8 @@ export const rentalService = {
     cards: () => api.get('/rentals/cards'),
     list: () => api.get('/rentals'),
     start: (flavor, hours, limit, price) => api.post('/rentals', { flavor, hours, limit, price }),
-    end: (id) => api.post(`/rentals/${id}/end`, {})
+    end: (id) => api.post(`/rentals/${id}/end`, {}),
+    extend: (id, hours) => api.post(`/rentals/${id}/extend`, { hours })
 };
 
 export const deviceService = {
