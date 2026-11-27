@@ -380,7 +380,7 @@ const PoolNotes = ({ notes, steps = false }) => (
     <Container layout="flex-column" gap="sm" padding="none" width="100%">
         {notes.map((note) => (
             <Container key={`${note.title}-${note.text}`} layout="flex" align="baseline" gap="xs" padding="none" width="100%" wrap={false}>
-                <Icon name={note.level === 'error' ? 'FiXCircle' : 'FiAlertTriangle'} size="xs" color={note.level === 'error' ? 'error' : 'warning'} />
+                <Icon name={note.level === 'error' ? 'FiOctagon' : 'FiAlertTriangle'} size="xs" color={note.level === 'error' ? 'error' : 'warning'} />
                 <Container layout="flex-column" gap="xxs" padding="none" minWidth="0">
                     <Typography size="xs" weight="semibold" color={note.level === 'error' ? 'error' : 'warning'}>{note.title}</Typography>
                     <Typography size="xs">{note.text}</Typography>
@@ -451,7 +451,7 @@ const drawRouter = (HL, P, front, g, x, y) => {
     for (const r of [5, 9, 13]) {
         const arc = [];
         for (let a = -50; a <= 50; a += 10) arc.push(P(x + Math.sin(HL.rad(a)) * r, y - 4.5, 17 + Math.cos(HL.rad(a)) * r * 0.55));
-        HL.mk('path', { d: HL.open(arc), class: 'lo nf' }, g);
+        HL.mk('path', { d: HL.open(arc), class: 'sil nf' }, g);
     }
     return { top: [x, y - 4.5, 15], port: [x, y + 6, 1], points: [[-11, -6, 0], [11, 6, 0], [-11, -6, 15], [11, -6, 15], [11, 6, 4], [-11, 6, 4]].map(([a, b, c]) => [x + a, y + b, c]) };
 };
@@ -629,8 +629,15 @@ const PoolDrawing = ({ HL, pools, onPick, onWarn, picked }) => {
         const warn = (point, issue) => {
             const [wx, wy] = P(...point);
             const level = issue.level === 'error' ? ' error' : '';
-            const tri = HL.mk('path', { d: `M${HL.r2(wx)},${HL.r2(wy - 5)}L${HL.r2(wx + 4.6)},${HL.r2(wy + 3)}L${HL.r2(wx - 4.6)},${HL.r2(wy + 3)}Z`, class: `pool-warn${level}`, tabindex: 0, role: 'img', 'aria-label': issue.notes.map((note) => `${note.title}. ${note.text}`).join(' ') }, marks);
-            HL.mk('path', { d: `M${HL.r2(wx - 0.5)},${HL.r2(wy - 2.4)}h1v2.9h-1zM${HL.r2(wx - 0.5)},${HL.r2(wy + 1.1)}h1v1h-1z`, class: `pool-warn-mark${level}` }, marks);
+            // A warning (it works, with something to fix) is a triangle; an error (it cannot work until fixed) is an octagon,
+            // so the shape says which as well as the colour.
+            const octagon = Array.from({ length: 8 }, (_, k) => {
+                const angle = Math.PI / 8 + (k * Math.PI) / 4;
+                return `${k ? 'L' : 'M'}${HL.r2(wx + Math.cos(angle) * 4.6)},${HL.r2(wy - 1 + Math.sin(angle) * 4.6)}`;
+            }).join('') + 'Z';
+            const shape = issue.level === 'error' ? octagon : `M${HL.r2(wx)},${HL.r2(wy - 5)}L${HL.r2(wx + 4.6)},${HL.r2(wy + 3)}L${HL.r2(wx - 4.6)},${HL.r2(wy + 3)}Z`;
+            const tri = HL.mk('path', { d: shape, class: `pool-warn${level}`, tabindex: 0, role: 'img', 'aria-label': `${issue.level === 'error' ? 'Error' : 'Warning'}: ${issue.notes.map((note) => `${note.title}. ${note.text}`).join(' ')}` }, marks);
+            HL.mk('path', { d: issue.level === 'error' ? `M${HL.r2(wx - 0.5)},${HL.r2(wy - 3.6)}h1v3.2h-1zM${HL.r2(wx - 0.5)},${HL.r2(wy + 0.4)}h1v1h-1z` : `M${HL.r2(wx - 0.5)},${HL.r2(wy - 2.4)}h1v2.9h-1zM${HL.r2(wx - 0.5)},${HL.r2(wy + 1.1)}h1v1h-1z`, class: `pool-warn-mark${level}` }, marks);
             for (const type of ['pointerenter', 'focus']) bag.on(tri, type, () => onWarn(issue.notes, tri));
             for (const type of ['pointerleave', 'blur']) bag.on(tri, type, () => onWarn(null));
             // A click keeps what it says open, with the steps to fix it.
@@ -650,20 +657,24 @@ const PoolDrawing = ({ HL, pools, onPick, onWarn, picked }) => {
         }
         // Memory on its way: dots run along each link the server says memory is lent over, toward the primary computer.
         const flows = [];
+        // One step of the way, from one computer to the next: their cable when the flow runs over a cable or there is one,
+        // else through the router of a home network both are open on.
+        const step = (from, to, byRouter) => {
+            const cable = byRouter ? null : links.find((entry) => entry.open && !String(entry.ends[0]).startsWith('home:') && entry.ends.includes(from) && entry.ends.includes(to));
+            if (cable) return cable.ends[0] === from ? cable.points : [...cable.points].reverse();
+            const router = routers.find((home) => home.members.some((m) => m.id === from && m.open) && home.members.some((m) => m.id === to && m.open));
+            const out = router && links.find((entry) => entry.ends[0] === router.id && entry.ends[1] === from);
+            const into = router && links.find((entry) => entry.ends[0] === router.id && entry.ends[1] === to);
+            return out && into ? [...[...out.points].reverse(), ...into.points] : null;
+        };
         for (const flow of scene.flows) {
-            let path = null;
-            if (flow.cable) {
-                const link = links.find((entry) => entry.ends.includes(flow.cable[0]) && entry.ends.includes(flow.cable[1]));
-                if (link) path = link.ends[0] === flow.from ? link.points : [...link.points].reverse();
-            } else {
-                const out = links.find((entry) => entry.ends[0] === flow.home && entry.ends[1] === flow.from);
-                const into = links.find((entry) => entry.ends[0] === flow.home && entry.ends[1] === flow.to);
-                if (out && into) path = [...[...out.points].reverse(), ...into.points];
-            }
-            if (!path) continue;
+            const hops = list(flow.hops).length > 1 ? flow.hops : [flow.from, flow.to];
+            const pieces = hops.slice(1).map((to, at) => step(hops[at], to, Boolean(flow.home) && hops.length === 2));
+            if (pieces.some((piece) => !piece)) continue;
+            const path = pieces.flat();
             const screen = path.map((point) => P(...point));
             // The dots ride on their own link's layer, so a computer standing in front of the link hides them as it hides the link.
-            for (let k = 0; k < 3; k += 1) flows.push({ screen, offset: k / 3, dot: HL.mk('circle', { r: 1.1, class: 'pool-flow' }, flow.cable ? floor : air) });
+            for (let k = 0; k < 3 * pieces.length; k += 1) flows.push({ screen, offset: k / (3 * pieces.length), dot: HL.mk('circle', { r: 1.1, class: 'pool-flow' }, flow.home ? air : floor) });
         }
         const along = (screen, t) => {
             const spot = t * (screen.length - 1);
