@@ -1,17 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Frame, Select, Divider, Switch, Data } from '@components/Components';
+import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Frame, Select, Divider, Switch, Data, Genie } from '@components/Components';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useNotification } from '@contexts/NotificationContext';
 import { deviceService, desktopService, rentalService, skillService, describeError, formatGb, useGuide } from '../client/ai.client';
 import { formatMoney } from '../client/billing.client';
 
 
-// How a pool's computers are joined: one way or several (two Macs on a cable and on Wi-Fi), the fastest first.
-const WAY_NAMES = { cable: 'a direct cable', wired: 'your home network by cable', wifi: 'your home Wi-Fi' };
-const joinedBy = (group) => {
-    const ways = (group.ways || [group.via === 'cable' ? 'cable' : group.wired ? 'wired' : 'wifi']).map((way) => WAY_NAMES[way]).filter(Boolean);
-    return group.via === 'cable' || ways.length > 1 ? `Joined by ${ways.join(' and ')}` : group.wired ? 'On your home network, by cable' : 'On your home network, by Wi-Fi';
-};
 const ADD_STEPS = [
     'Download the Mollama desktop app on the computer you want to add.',
     'Install it, open it and sign in with this account.',
@@ -264,153 +258,516 @@ const WhyUnreachable = () => (
 
 const STATUS_TONES = ['success', 'warning', 'error'];
 
-// What a computer's desktop app found wrong with its connections, with the fix (from 1.0.23).
-const ConnectionProblems = ({ problems }) => (problems || []).length > 0 && (
-    <Container layout="flex-column" gap="xs" padding="none" width="100%">
-        {problems.map((problem) => (
-            <Container key={`${problem.kind}-${problem.adapter}`} layout="flex" align="baseline" gap="xs" padding="none" width="100%" wrap={false}>
-                <Icon name={problem.level === 'problem' ? 'FiAlertTriangle' : 'FiInfo'} size="xs" color={problem.level === 'problem' ? 'warning' : 'primary'} />
-                <Typography size="xs" color={problem.level === 'problem' ? 'warning' : 'muted'}>{problem.message}</Typography>
-            </Container>
-        ))}
-    </Container>
-);
-// The checks between computers that Check again ran: one line per pair and way they are joined, both directions.
-const CHECK_WAYS = { cable: 'direct cable', wired: 'home network, by cable', wifi: 'Wi-Fi' };
-const checkText = (pair) => {
-    const there = pair.there;
-    const back = pair.back;
-    const time = (result) => (result?.ms ? `${result.ms} ms` : '');
-    if (there?.ok && back?.ok) return [`Works both ways${time(there) ? `, ${time(there)}` : ''}.`, 'success'];
-    if (there?.ok === null || back?.ok === null) return [there?.why || back?.why || 'Not checked.', 'muted'];
-    if (there?.ok || back?.ok) return [`Works only from ${there?.ok ? pair.aName : pair.bName}. ${(there?.ok ? back : there)?.why || ''}`.trim(), 'warning'];
-    return [there?.why || back?.why || 'It could not be reached.', 'warning'];
+// ---------------------------------------------------------------------------------------------
+// Pooling, drawn: every computer on the account stands on one floor as what it is, joined by the cables and Wi-Fi the
+// checks found. A computer is clicked to choose its part; a warning mark says what is wrong with a link when pointed at.
+// The drawing is the library's Hairline kernel run in the page, so clicks and pointing reach the app.
+// ---------------------------------------------------------------------------------------------
+let hairlineKernel = null;
+const loadHairline = () => {
+    if (!hairlineKernel) {
+        hairlineKernel = kitFile('kernel.js').then((code) => new Function(`${code}\nreturn HL;`)());
+        hairlineKernel.catch(() => { hairlineKernel = null; });
+    }
+    return hairlineKernel;
 };
-const ConnectionChecks = ({ checks }) => checks?.pairs?.length > 0 && (
-    <Container layout="flex-column" gap="sm" padding="none" width="100%">
-        <Divider />
-        <Container layout="flex" align="baseline" gap="sm" padding="none" width="100%">
-            <Typography as="h3" size="sm" weight="semibold">Connections between your computers</Typography>
-            <Typography size="xxs" color="muted">{`Checked ${new Date(checks.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`}</Typography>
-        </Container>
-        {checks.pairs.map((pair) => {
-            const [text, tone] = checkText(pair);
-            return (
-                <Container key={`${pair.a}-${pair.b}-${pair.via}`} layout="flex" align="baseline" gap="xs" padding="none" width="100%" wrap={false}>
-                    <Icon name={tone === 'success' ? 'FiCheckCircle' : tone === 'warning' ? 'FiAlertTriangle' : 'FiInfo'} size="xs" color={tone === 'muted' ? 'primary' : tone} />
-                    <Typography size="xs" weight="semibold">{`${pair.aName} and ${pair.bName}`}</Typography>
-                    <Typography size="xs" color="muted">{`· ${CHECK_WAYS[pair.via] || pair.via}: `}</Typography>
-                    <Typography size="xs" color={tone === 'warning' ? 'warning' : 'muted'}>{text}</Typography>
-                </Container>
-            );
-        })}
-    </Container>
-);
+const POOL_STYLE = `
+[data-hairline="pool"]{--hairline-plate:var(--app-background);--hairline-hi:var(--app-text);--hairline-edge:color-mix(in srgb,var(--app-text) 58%,transparent);--hairline-mid:color-mix(in srgb,var(--app-text) 34%,transparent);--hairline-lo:color-mix(in srgb,var(--app-text) 16%,transparent);aspect-ratio:auto;width:100%;max-width:var(--pool-max,100%);margin:0 auto;color:var(--app-text)}
+[data-hairline="pool"]>svg{position:static;width:100%;height:auto;overflow:visible}
+[data-hairline="pool"] .pool-pc{transition:transform 260ms cubic-bezier(.32,.72,0,1)}
+[data-hairline="pool"] .pool-pc.up{transform:translateY(-2.5px)}
+[data-hairline="pool"] .pool-dim path{stroke:var(--hl-lo)}
+[data-hairline="pool"] .pool-main .sil{stroke:var(--hl-hi)}
+[data-hairline="pool"] path.pool-on{stroke:var(--hl-hi)}
+[data-hairline="pool"] .pool-hit{fill:transparent;stroke:none;cursor:pointer;outline:none}
+[data-hairline="pool"] .pool-hit:focus-visible{stroke:var(--app-primary);stroke-dasharray:2 2}
+[data-hairline="pool"] text{fill:currentColor;stroke:none;font-family:inherit;pointer-events:none}
+[data-hairline="pool"] text.muted{opacity:.6}
+[data-hairline="pool"] .pool-warn{fill:var(--warning-color,#d9a400);stroke:var(--app-background);stroke-width:1.2px;cursor:help;outline:none}
+[data-hairline="pool"] .pool-warn-mark{fill:var(--app-background);stroke:none;pointer-events:none}
+[data-hairline="pool"] .pool-flow{fill:var(--app-primary);stroke:none;pointer-events:none}
+@media (prefers-reduced-motion:reduce){[data-hairline="pool"] .pool-pc{transition:none}}
+`;
+const useHairline = () => {
+    const [HL, setHL] = useState(null);
+    useEffect(() => {
+        let live = true;
+        loadHairline().then((kernel) => {
+            if (!live) return;
+            kernel.inject(document);
+            if (!document.querySelector('style[data-pool-style]')) {
+                const style = document.createElement('style');
+                style.setAttribute('data-pool-style', '');
+                style.textContent = POOL_STYLE;
+                document.head.appendChild(style);
+            }
+            setHL(kernel);
+        }, () => live && setHL(false));
+        return () => { live = false; };
+    }, []);
+    return HL;
+};
 
-const PoolSection = ({ pools, onPart, onCheck, checking, checkedAt, children }) => {
-    const groups = pools?.groups || [];
-    const left = pools?.left || [];
+// Where each kind of computer stands, around its own x: [left, right, back, front, height]. Its links attach to its
+// sides and its top, and the box is its hit area.
+const FOOT = { laptop: [-17, 17, -12, 12, 24], tablet: [-15, 15, -13, 10, 22], allinone: [-21, 21, -6.2, 13, 36], mini: [-21, 32, -6.2, 14, 33], desktop: [-19, 37, -12, 13, 33] };
+const footOf = (form) => FOOT[form] || FOOT.laptop;
+const anchorsOf = (form, x, z0) => {
+    const [x0, x1, y0, y1, h] = footOf(form);
+    return { top: [x, (y0 + Math.min(y1, -2)) / 2, z0 + h], left: [x + x0, -5, z0 + 0.9], right: [x + x1, -5, z0 + 0.9], label: [x + (x0 + x1) / 2, y1 + 7, 0],
+        corners: [x0, x1].flatMap((cx) => [y0, y1].flatMap((cy) => [[x + cx, cy, 0], [x + cx, cy, z0 + h]])) };
+};
+const REASON_SHORT = { offline: 'Offline', paused: 'Paused', update: 'Needs an update', public: 'Public network', nonetwork: 'No network', alone: 'Not joined' };
+const FORM_NAMES = { laptop: 'Laptop', tablet: 'Tablet', allinone: 'All-in-one', mini: 'Small desktop', desktop: 'Desktop' };
+
+// Who is joined to whom: the direct cables the checks found (a pair that reached the other at least one way), and each
+// home network as a router its computers reach by Wi-Fi or by cable.
+const poolLinks = (pools) => {
+    const byId = new Map((pools?.computers || []).map((one) => [one.id, one]));
+    const cables = (pools?.checks?.pairs || []).filter((pair) => pair.via === 'cable' && pair.verdict !== 'unknown' && byId.has(pair.a) && byId.has(pair.b));
+    const homes = (pools?.networks || []).filter((network) => network.via === 'home').map((network) => ({
+        id: `home:${network.network}`,
+        members: network.computers.filter((one) => byId.has(one.id)).map((one) => ({ id: one.id, way: one.wired ? 'wired' : 'wifi' }))
+    }));
+    return { cables, homes };
+};
+
+// The order computers stand in: each chain of cables kept together, pooled ones first, the ones left out at the end.
+const poolOrder = (computers, cables) => {
+    const next = new Map(computers.map((one) => [one.id, []]));
+    for (const cable of cables) {
+        next.get(cable.a)?.push(cable.b);
+        next.get(cable.b)?.push(cable.a);
+    }
+    const rank = (one) => (one.reason ? 2 : one.role === 'off' ? 1 : 0);
+    const sorted = [...computers].sort((a, b) => rank(a) - rank(b) || (b.role === 'main') - (a.role === 'main') || a.name.localeCompare(b.name));
+    const seen = new Set();
+    const order = [];
+    const walk = (id) => {
+        if (seen.has(id)) return;
+        seen.add(id);
+        order.push(id);
+        for (const other of next.get(id) || []) walk(other);
+    };
+    // A chain is walked from one of its ends, so it stands in line.
+    for (const one of sorted) if (!seen.has(one.id) && (next.get(one.id) || []).length <= 1) walk(one.id);
+    for (const one of sorted) walk(one.id);
+    return order.map((id) => computers.find((one) => one.id === id));
+};
+
+// What is wrong, in words: on each computer, and on each link between two computers.
+const poolIssues = (pools, cables) => {
+    const byId = new Map((pools?.computers || []).map((one) => [one.id, one]));
+    const name = (id) => byId.get(id)?.name || 'that computer';
+    const onComputer = new Map();
+    const onLink = new Map();
+    const add = (map, key, text) => map.set(key, [...(map.get(key) || []), text]);
+    for (const one of pools?.computers || []) {
+        if (one.reason && one.reason !== 'alone') add(onComputer, one.id, one.message);
+        for (const problem of one.problems || []) if (problem.level === 'problem') add(onComputer, one.id, problem.message);
+        const status = poolStatus(one, Boolean(pools.main));
+        if (status && ['error', 'warning'].includes(status[1])) add(onComputer, one.id, status[0]);
+        const cabled = (pools.networks || []).some((network) => network.via === 'cable' && network.computers.some((entry) => entry.id === one.id));
+        if (pools.checks && cabled && !cables.some((cable) => cable.a === one.id || cable.b === one.id)) add(onComputer, one.id, 'Its cable reaches none of your computers. Check that it is plugged in at both ends.');
+    }
+    for (const pair of pools?.checks?.pairs || []) {
+        if (pair.verdict !== 'blocked' || !byId.has(pair.a) || !byId.has(pair.b)) continue;
+        const why = (pair.there.ok ? pair.back.why : pair.there.why) || '';
+        const way = pair.via === 'cable' ? 'the cable' : pair.via === 'wifi' ? 'Wi-Fi' : 'your home network';
+        const text = pair.from
+            ? `${name(pools.main)}, the primary computer, cannot reach ${name(pair.from)} over ${way}; only the other way works. ${why}`
+            : `${name(pair.a)} and ${name(pair.b)} cannot reach each other over ${way}. ${why}`;
+        // On a home network the mark sits on the line of the computer that is not the primary one.
+        const target = pair.via === 'cable' ? `${pair.a}|${pair.b}` : pair.a === pools.main ? pair.b : pair.a === pair.from ? pair.a : pair.b;
+        add(onLink, target, text.trim());
+    }
+    return { onComputer, onLink };
+};
+
+// One computer, drawn at (x, 0) standing on z0: its parts back to front.
+const drawComputer = (HL, P, front, g, form, x, z0) => {
+    const box = (x0, y0, x1, y1, a, b, r = 1.4, inset = 0.9) => {
+        const [ring, inner] = HL.rings(x + x0, y0, x + x1, y1, r, inset);
+        HL.put(HL.solid(g), HL.prism(P, front, ring, inner, z0 + a, z0 + b));
+    };
+    const line = (points, cls = 'lo nf') => HL.mk('path', { d: HL.open(points.map(([px, py, pz]) => P(x + px, py, z0 + pz))), class: cls }, g);
+    const face = (x0, x1, y, a, b, cls = 'lo nf') => HL.mk('path', { d: HL.poly([[x0, y, a], [x1, y, a], [x1, y, b], [x0, y, b]].map(([px, py, pz]) => P(x + px, py, z0 + pz))), class: cls }, g);
+    const monitor = (half, a, b) => {
+        box(-7, -6, 7, 2, 0, 1, 1.6, 0.8);
+        box(-1.6, -4.6, 1.6, -3, 1, a + 1, 0.8, 0.4);
+        box(-half, -6.2, half, -4.6, a, b, 1.2, 0.5);
+        face(-half + 2, half - 2, -4.6, a + 2, b - 2);
+    };
+    if (form === 'laptop') {
+        box(-17, -12, 17, 12, 0, 1.8, 2, 1);
+        box(-17, -12, 17, -10.4, 1.8, 24, 1.4, 0.5);
+        face(-14.5, 14.5, -10.4, 4.4, 21.6);
+        line([[-13, -8, 1.8], [13, -8, 1.8], [13, 1.5, 1.8], [-13, 1.5, 1.8], [-13, -8, 1.8]]);
+        for (const y of [-5.6, -3.2, -0.8]) line([[-13, y, 1.8], [13, y, 1.8]]);
+        line([[-5, 4, 1.8], [5, 4, 1.8], [5, 10, 1.8], [-5, 10, 1.8], [-5, 4, 1.8]]);
+        return;
+    }
+    if (form === 'tablet') {
+        line([[-11, -4, 15], [-11, -13, 0]], 'sil nf');
+        line([[11, -4, 15], [11, -13, 0]], 'sil nf');
+        box(-15, -2, 15, 10, 0, 1, 1.4, 0.6);
+        for (const y of [1, 3.4, 5.8]) line([[-12, y, 1], [12, y, 1]]);
+        box(-15, -4, 15, -2.4, 1, 22, 1.6, 0.5);
+        face(-13, 13, -2.4, 3, 20);
+        return;
+    }
+    const towerX = form === 'desktop' ? 30 : null;
+    if (form === 'desktop') {
+        box(towerX - 7, -12, towerX + 7, 12, 0, 30, 1.6, 0.9);
+        face(towerX - 5, towerX + 5, 12, 21, 27);
+        for (const z of [17, 15.5, 14]) line([[towerX - 5, 12, z], [towerX + 5, 12, z]]);
+    }
+    monitor(form === 'allinone' ? 21 : 19, form === 'allinone' ? 7 : 9, form === 'allinone' ? 36 : 33);
+    if (form === 'mini') {
+        box(16, 0, 32, 14, 0, 4.5, 2, 1);
+        line([[19, 14, 2.2], [21, 14, 2.2]], 'sil nf');
+    }
+    box(-14, 7, 10, 13, 0, 1, 1, 0.5);
+    for (const y of [9, 11]) line([[-12, y, 1], [8, y, 1]]);
+};
+
+const drawRouter = (HL, P, front, g, x, y) => {
+    const box = (x0, y0, x1, y1, a, b, r = 1.2, inset = 0.6) => {
+        const [ring, inner] = HL.rings(x + x0, y + y0, x + x1, y + y1, r, inset);
+        HL.put(HL.solid(g), HL.prism(P, front, ring, inner, a, b));
+    };
+    box(-8.8, -5.2, -7.4, -3.8, 4, 15, 0.7, 0.3);
+    box(7.4, -5.2, 8.8, -3.8, 4, 15, 0.7, 0.3);
+    box(-11, -6, 11, 6, 0, 4, 1.8, 0.9);
+    for (const dx of [-5, -2, 1]) HL.mk('path', { d: HL.open([P(x + dx, y + 6, 2), P(x + dx + 1, y + 6, 2)]), class: 'sil nf' }, g);
+    // The radio: three arcs over the router.
+    for (const r of [5, 9, 13]) {
+        const arc = [];
+        for (let a = -50; a <= 50; a += 10) arc.push(P(x + Math.sin(HL.rad(a)) * r, y - 4.5, 17 + Math.cos(HL.rad(a)) * r * 0.55));
+        HL.mk('path', { d: HL.open(arc), class: 'lo nf' }, g);
+    }
+    return { top: [x, y - 4.5, 15], port: [x, y + 6, 1], points: [[-11, -6, 0], [11, 6, 0], [-11, -6, 15], [11, -6, 15], [11, 6, 4], [-11, 6, 4]].map(([a, b, c]) => [x + a, y + b, c]) };
+};
+
+// A cable on the floor between two ports, sagging toward the front, and a wire through the air for Wi-Fi.
+const cablePoints = (a, b, dip) => {
+    const points = [];
+    for (let i = 0; i <= 16; i += 1) {
+        const t = i / 16;
+        const lift = i === 0 ? a[2] : i === 16 ? b[2] : 0;
+        points.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t + Math.sin(Math.PI * t) * dip, lift]);
+    }
+    return points;
+};
+const airPoints = (a, b) => {
+    const points = [];
+    for (let i = 0; i <= 16; i += 1) {
+        const t = i / 16;
+        points.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t + Math.sin(Math.PI * t) * 14]);
+    }
+    return points;
+};
+
+const PoolDrawing = ({ HL, pools, onPick, onWarn, picked }) => {
+    const stage = React.useRef(null);
+    useEffect(() => {
+        const host = stage.current;
+        if (!HL || !host) return undefined;
+        host.replaceChildren();
+        const computers = pools.computers || [];
+        const svg = HL.mk('svg', { role: 'group', 'aria-label': 'Your computers and how they are joined' }, host);
+        const C = HL.Cam(45, 0.5, 1);
+        const { cables, homes } = poolLinks(pools);
+        const order = poolOrder(computers, cables);
+        const { onComputer, onLink } = poolIssues(pools, cables);
+        const raised = (one) => (one.role === 'main' ? 3 : 0);
+        // Places along the floor, each computer by its width, with a gap before the ones left out.
+        const places = new Map();
+        let cursor = 0;
+        order.forEach((one, index) => {
+            const [x0, x1] = footOf(one.form);
+            if (index > 0 && one.reason && !order[index - 1].reason) cursor += 26;
+            places.set(one.id, cursor - x0);
+            cursor += x1 - x0 + 26;
+        });
+        const spots = new Map(order.map((one) => [one.id, anchorsOf(one.form, places.get(one.id), raised(one))]));
+        const routers = homes.map((home, index) => {
+            const xs = home.members.map((member) => spots.get(member.id)?.top[0]).filter((value) => value !== undefined);
+            return { ...home, x: xs.reduce((sum, value) => sum + value, 0) / Math.max(1, xs.length), y: -72 - index * 34 };
+        });
+        HL.fit(C, [...[...spots.values()].flatMap((spot) => spot.corners), ...routers.flatMap((router) => [[router.x - 14, router.y - 8, 0], [router.x + 14, router.y + 8, 30]])], 0, 0);
+        const P = HL.proj(C);
+        const front = HL.facing(C);
+        const [back, floor, air, machines, names, marks] = [0, 1, 2, 3, 4, 5].map(() => HL.mk('g', {}, svg));
+        const links = [];
+        const anchors = new Map();
+        const routerAt = new Map(routers.map((router) => [router.id, drawRouter(HL, P, front, back, router.x, router.y)]));
+        const addLink = (points, cls, ends, layer) => {
+            const el = HL.mk('path', { d: HL.open(points.map((point) => P(...point))), class: cls }, layer);
+            links.push({ el, ends, points });
+        };
+        // Direct cables, with the plugs their computers have: Thunderbolt when both ends are, else network plugs.
+        for (const cable of cables) {
+            const [left, right] = places.get(cable.a) < places.get(cable.b) ? [cable.a, cable.b] : [cable.b, cable.a];
+            const adjacent = Math.abs(order.findIndex((one) => one.id === left) - order.findIndex((one) => one.id === right)) === 1;
+            const points = cablePoints(spots.get(left).right, spots.get(right).left, adjacent ? 4 : 30);
+            const kinds = (id) => computers.find((one) => one.id === id)?.cables || [];
+            const bolt = kinds(left).includes('thunderbolt') && kinds(right).includes('thunderbolt');
+            addLink(points, 'sil nf', [left, right], floor);
+            for (const [end, toward] of [[points[0], points[1]], [points.at(-1), points.at(-2)]]) {
+                const reach = Math.sign(toward[0] - end[0]) * (bolt ? 3 : 4);
+                const half = bolt ? 1 : 1.6;
+                const [ring, inner] = HL.rings(Math.min(end[0], end[0] + reach), end[1] - half, Math.max(end[0], end[0] + reach), end[1] + half, bolt ? 0.9 : 0.4, 0.3);
+                HL.put(HL.solid(floor), HL.prism(P, front, ring, inner, 0, bolt ? 1.8 : 2.4));
+            }
+            anchors.set(`${cable.a}|${cable.b}`, points[8]);
+        }
+        // Each home network: a cable on the floor to the router, or a dashed radio line through the air for Wi-Fi.
+        for (const router of routers) {
+            const at = routerAt.get(router.id);
+            for (const member of router.members) {
+                const spot = spots.get(member.id);
+                if (!spot) continue;
+                const wired = member.way === 'wired';
+                const points = wired ? cablePoints(at.port, spot.left, 0) : airPoints(at.top, spot.top);
+                addLink(points, wired ? 'sil nf' : 'sil nf dash', [router.id, member.id], wired ? floor : air);
+                anchors.set(member.id, points[10]);
+            }
+        }
+        // The computers, back to front: the primary one on a plinth, the ones not pooled dimmed, each with its name.
+        const groups = new Map();
+        for (const one of order) {
+            const tone = one.reason || one.role === 'off' ? 'pool-dim' : one.role === 'main' ? 'pool-main' : '';
+            const g = HL.mk('g', { class: `pool-pc ${tone}`.trim() }, machines);
+            const x = places.get(one.id);
+            const [x0, x1, y0, y1] = footOf(one.form);
+            if (one.role === 'main') {
+                const [ring, inner] = HL.rings(x + x0 - 4, y0 - 4, x + x1 + 4, y1 + 4, 2.4, 1.2);
+                HL.put(HL.solid(g), HL.prism(P, front, ring, inner, 0, 3));
+            }
+            drawComputer(HL, P, front, g, one.form, x, raised(one));
+            const spot = spots.get(one.id);
+            const [lx, ly] = P(...spot.label);
+            const state = one.reason ? REASON_SHORT[one.reason] || 'Not available' : one.role === 'main' ? 'Primary' : one.role === 'lend' ? 'Secondary' : 'Not pooled';
+            // Names sit above everything, so no cable or plinth drawn later covers them.
+            HL.mk('text', { x: HL.r2(lx), y: HL.r2(ly + 4), 'text-anchor': 'middle', 'font-size': 6, 'font-weight': 600 }, names).textContent = one.name;
+            HL.mk('text', { x: HL.r2(lx), y: HL.r2(ly + 11), 'text-anchor': 'middle', 'font-size': 4.6, class: 'muted' }, names).textContent = state;
+            const hull = HL.hull([...spot.corners.map((corner) => P(...corner)), [lx - 22, ly + 13], [lx + 22, ly + 13]]);
+            const hit = HL.mk('polygon', { points: hull.map((point) => point.map(HL.r2).join(',')).join(' '), class: 'pool-hit', tabindex: 0, role: 'button', 'aria-label': `${one.name}, ${state}. Choose its part.` }, g);
+            groups.set(one.id, { g, hit, top: spot.top });
+        }
+        // What a computer reaches, lit while it is pointed at or chosen: every link on any path from it.
+        const light = (id) => {
+            const seen = new Set(id ? [id] : []);
+            const lit = new Set();
+            for (let grew = true; grew;) {
+                grew = false;
+                for (const link of links) {
+                    if (lit.has(link) || !link.ends.some((end) => seen.has(end))) continue;
+                    lit.add(link);
+                    for (const end of link.ends) if (!seen.has(end)) { seen.add(end); grew = true; }
+                }
+            }
+            for (const link of links) link.el.classList.toggle('pool-on', lit.has(link));
+            for (const [key, entry] of groups) entry.g.classList.toggle('up', key === id);
+        };
+        const bag = HL.disposer();
+        for (const one of order) {
+            const { hit } = groups.get(one.id);
+            const choose = () => {
+                picked.current = one.id;
+                light(one.id);
+                onPick(one.id, hit);
+            };
+            bag.on(hit, 'pointerenter', () => light(one.id));
+            bag.on(hit, 'pointerleave', () => light(picked.current));
+            bag.on(hit, 'focus', () => light(one.id));
+            bag.on(hit, 'blur', () => light(picked.current));
+            bag.on(hit, 'click', choose);
+            bag.on(hit, 'keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                choose();
+            });
+        }
+        light(picked.current);
+        // Warning marks: over a computer's top, on a cable's middle, on a Wi-Fi line. Pointing at one says what is wrong.
+        const warn = (point, texts) => {
+            const [wx, wy] = P(...point);
+            const tri = HL.mk('path', { d: `M${HL.r2(wx)},${HL.r2(wy - 5)}L${HL.r2(wx + 4.6)},${HL.r2(wy + 3)}L${HL.r2(wx - 4.6)},${HL.r2(wy + 3)}Z`, class: 'pool-warn', tabindex: 0, role: 'img', 'aria-label': texts.join(' ') }, marks);
+            HL.mk('path', { d: `M${HL.r2(wx - 0.5)},${HL.r2(wy - 2.4)}h1v2.9h-1zM${HL.r2(wx - 0.5)},${HL.r2(wy + 1.1)}h1v1h-1z`, class: 'pool-warn-mark' }, marks);
+            for (const type of ['pointerenter', 'focus']) bag.on(tri, type, () => onWarn(texts, tri));
+            for (const type of ['pointerleave', 'blur']) bag.on(tri, type, () => onWarn(null));
+        };
+        for (const [id, texts] of onComputer) {
+            const top = groups.get(id)?.top;
+            if (top) warn([top[0] + 14, top[1], top[2] + 4], texts);
+        }
+        for (const [key, texts] of onLink) {
+            const point = anchors.get(key);
+            if (point) warn([point[0], point[1], point[2] + 3], texts);
+        }
+        // Memory on its way: dots run from each secondary computer the primary reaches, along its link, to the primary.
+        const main = computers.find((one) => one.role === 'main');
+        const flows = [];
+        for (const one of computers) {
+            if (!main || one.role !== 'lend' || !one.lending || one.reachable !== true) continue;
+            const direct = links.find((link) => link.ends.includes(one.id) && link.ends.includes(main.id));
+            let path = direct ? (direct.ends[0] === one.id ? direct.points : [...direct.points].reverse()) : null;
+            const router = routers.find((home) => home.members.some((m) => m.id === one.id) && home.members.some((m) => m.id === main.id));
+            if (!path && router) {
+                const out = links.find((link) => link.ends[0] === router.id && link.ends[1] === one.id);
+                const into = links.find((link) => link.ends[0] === router.id && link.ends[1] === main.id);
+                if (out && into) path = [...[...out.points].reverse(), ...into.points];
+            }
+            if (!path) continue;
+            const screen = path.map((point) => P(...point));
+            for (let k = 0; k < 3; k += 1) flows.push({ screen, offset: k / 3, dot: HL.mk('circle', { r: 1.1, class: 'pool-flow' }, marks) });
+        }
+        const along = (screen, t) => {
+            const spot = t * (screen.length - 1);
+            const i = Math.min(screen.length - 2, Math.floor(spot));
+            const f = spot - i;
+            return [screen[i][0] + (screen[i + 1][0] - screen[i][0]) * f, screen[i][1] + (screen[i + 1][1] - screen[i][1]) * f];
+        };
+        const still = HL.reducedMotion();
+        const ticking = flows.length > 0 ? HL.register(host, (dt, now) => {
+            for (const flow of flows) {
+                const [fx, fy] = along(flow.screen, still ? flow.offset : (now / 2600 + flow.offset) % 1);
+                flow.dot.setAttribute('cx', HL.r2(fx));
+                flow.dot.setAttribute('cy', HL.r2(fy));
+            }
+            return !still;
+        }) : null;
+        ticking?.wake?.();
+        // The drawing's own size: what it drew, never more than about two and a half screen pixels a unit.
+        const box = svg.getBBox();
+        svg.setAttribute('viewBox', `${HL.r2(box.x - 8)} ${HL.r2(box.y - 8)} ${HL.r2(box.width + 16)} ${HL.r2(box.height + 16)}`);
+        host.style.setProperty('--pool-max', `${Math.round((box.width + 16) * 2.6)}px`);
+        return () => {
+            bag.dispose();
+            ticking?.unregister();
+            host.replaceChildren();
+        };
+    }, [HL, pools, onPick, onWarn, picked]);
+    return <div ref={stage} data-hairline="pool" />;
+};
+
+// The card a computer opens when clicked: what it is, what is wrong, and its part in the pool.
+const PART_SHORT = { main: 'Primary', lend: 'Secondary', off: 'Not pooled' };
+const ComputerCard = ({ one, main, issues, onPart }) => {
+    const status = poolStatus(one, Boolean(main));
+    const part = POOL_PARTS.find((entry) => entry.role === one.role) || POOL_PARTS[2];
+    const unused = (one.cards || []).filter((card) => !card.usable);
+    const facts = [FORM_NAMES[one.form], one.gpuMemoryMb ? `${formatGb(one.gpuMemoryMb)} graphics` : null, `${formatGb(one.memoryMb)} memory`].filter(Boolean).join(' · ');
+    const row = (icon, tone, text) => (
+        <Container key={text} layout="flex" align="baseline" gap="xs" padding="none" width="100%" wrap={false}>
+            <Icon name={icon} size="xs" color={tone} />
+            <Typography size="xs" color={tone === 'warning' ? 'warning' : 'muted'}>{text}</Typography>
+        </Container>
+    );
+    return (
+        <Container layout="flex-column" gap="sm" padding="none" width="100%">
+            <Container layout="flex-column" gap="none" padding="none" width="100%">
+                <Typography size="sm" weight="semibold">{one.name}</Typography>
+                <Typography size="xs" color="muted">{facts}</Typography>
+                {unused.length > 0 && <Typography size="xxs" color="muted">{cardsNote(unused)}</Typography>}
+            </Container>
+            {status && !issues.includes(status[0]) && row(STATUS_ICONS[status[1]] || 'FiInfo', STATUS_TONES.includes(status[1]) ? status[1] : 'primary', status[0])}
+            {issues.map((text) => row('FiAlertTriangle', 'warning', text))}
+            {one.reason === 'public' && (
+                <Button size="xs" genieTrigger="click" genie={{ trigger: 'click', width: '460px', padding: 'md', content: <MakePrivate name={one.name} networks={one.publicNetworks} /> }}>
+                    <Icon name="FiShield" />How to make it Private
+                </Button>
+            )}
+            {one.reachable === false && (
+                <Button size="xs" variant="ghost" genieTrigger="click" genie={{ trigger: 'click', width: '440px', padding: 'md', content: <WhyUnreachable /> }}>
+                    <Icon name="FiHelpCircle" />Why can't it be reached?
+                </Button>
+            )}
+            {one.reason === 'alone' && row('FiInfo', 'primary', one.message)}
+            {!one.reason && (
+                <Container layout="flex-column" gap="xs" padding="none" width="100%">
+                    <ButtonGroup size="sm" justify="start" selectable={false}>
+                        {POOL_PARTS.map((entry) => (
+                            <Button key={entry.role} size="sm" selected={one.role === entry.role} onClick={() => one.role !== entry.role && onPart(one, entry.role)}>{PART_SHORT[entry.role]}</Button>
+                        ))}
+                    </ButtonGroup>
+                    <Typography size="xs" color="muted">{part.hint}</Typography>
+                    {main && main.id !== one.id && <Typography size="xxs" color="muted">{`Making it primary turns ${main.name} into a secondary computer.`}</Typography>}
+                </Container>
+            )}
+        </Container>
+    );
+};
+
+const PoolSection = ({ pools, onPart, onCheck, checking, children }) => {
+    const HL = useHairline();
+    const [open, setOpen] = useState(null);
+    const [tip, setTip] = useState(null);
+    const picked = React.useRef(null);
+    const asked = React.useRef(false);
+    const pick = useCallback((id, el) => setOpen({ id, ref: { current: el } }), []);
+    const hint = useCallback((texts, el) => setTip(texts ? { texts, ref: { current: el } } : null), []);
+    // The cables are known only from a check, so one runs when the section opens.
+    useEffect(() => {
+        if (pools && !pools.checks && !asked.current) {
+            asked.current = true;
+            onCheck();
+        }
+    }, [pools, onCheck]);
+    const computers = pools?.computers || [];
+    const main = computers.find((one) => one.role === 'main') || null;
+    const lenders = computers.filter((one) => one.role === 'lend' && !one.reason);
+    const ready = Boolean(main) && lenders.length > 0 && lenders.every((one) => one.reachable === true);
+    const together = [main, ...lenders].filter(Boolean);
+    const issues = pools ? poolIssues(pools, poolLinks(pools).cables) : { onComputer: new Map(), onLink: new Map() };
+    const issuesOf = (id) => [...(issues.onComputer.get(id) || []), ...[...issues.onLink].filter(([key]) => key === id || key.split('|').includes(id)).flatMap(([, texts]) => texts)];
+    const chosen = computers.find((one) => one.id === open?.id) || null;
+    const close = () => {
+        setOpen(null);
+        picked.current = null;
+    };
     return (
         <Container as="section" layout="flex-column" gap="lg" padding="none" width="100%" minWidth="0">
             <Container layout="flex-column" gap="sm" padding="none" width="100%">
                 <Heading title="Pooling computers" badge={<Badge size="xs" title="Needs the Mollama desktop app 1.0.8 or later on every pooled computer">Preview</Badge>}>
                     <Container layout="flex" align="center" gap="sm" padding="none" wrap={false}>
-                        {checkedAt && <Typography size="xxs" color="muted">Checked {checkedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</Typography>}
-                        <Button size="sm" disabled={checking} title="Read every connected computer's network again and check who can pool" onClick={onCheck}>
+                        {pools?.checks?.at && <Typography size="xxs" color="muted">Checked {new Date(pools.checks.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</Typography>}
+                        <Button size="sm" disabled={checking} title="Read every connected computer's network again and check how they are joined" onClick={onCheck}>
                             <Icon name="FiRefreshCw" />{checking ? 'Checking…' : 'Check again'}
                         </Button>
                     </Container>
                 </Heading>
                 <Typography as="p" size="sm" maxWidth="760px">
-                    Several of your computers can share one model that none of them could hold alone: a primary computer holds the model and runs it, and the secondary computers lend it their memory.
+                    Several of your computers can share one model that none of them could hold alone: a primary computer holds the model and runs it, and the secondary computers lend it their memory. Click a computer to choose its part.
                 </Typography>
             </Container>
-            {!pools && <Typography size="xs" color="muted">Checking your computers…</Typography>}
-            {pools && groups.length === 0 && <Typography size="sm" weight="semibold">None of your computers can pool right now.</Typography>}
-            {groups.map((group) => {
-                const ready = group.computers.some((one) => one.role === 'main') && group.computers.some((one) => one.role === 'lend') && group.computers.filter((one) => one.role === 'lend').every((one) => one.reachable === true);
-                const main = group.computers.find((one) => one.role === 'main');
-                return (
-                    <Container key={group.network} layout="flex-column" gap="md" padding="none" width="100%">
-                        <Divider />
-                        <Container layout="flex-column" gap="xs" padding="none" width="100%">
-                            <Container layout="flex" align="center" gap="sm" padding="none" width="100%">
-                                <Icon name={group.via === 'cable' || group.wired ? 'FiLink' : 'FiWifi'} size="sm" color="primary" />
-                                <Typography as="h3" size="sm" weight="semibold">{joinedBy(group)}</Typography>
-                                {ready
-                                    ? <Badge size="xs" color="success" title="The primary computer reached every secondary computer.">Ready to pool</Badge>
-                                    : <Badge size="xs" color="warning" title="Ready once the primary computer reaches a secondary computer.">Not ready yet</Badge>}
-                            </Container>
-                            <Typography as="p" size="xs" color="muted">
-                                {main ? `${main.name} is the primary computer. ` : 'No primary computer is chosen yet. '}
-                                {ready ? 'It reached every secondary computer, so the pool appears in a chat\'s computer picker. ' : 'Ready once the primary computer reaches a secondary computer. '}
-                                {`Together: ${formatGb(group.combined.gpuMemoryMb)} of graphics memory and ${formatGb(group.combined.memoryMb)} of system memory.`}
-                            </Typography>
-                        </Container>
-                        {group.computers.map((one) => {
-                            const status = poolStatus(one, group.computers.some((other) => other.id === pools.main));
-                            const part = POOL_PARTS.find((entry) => entry.role === one.role) || POOL_PARTS[0];
-                            return (
-                                <Container key={one.id} layout="flex" justify="between" align="center" gap="md" padding="none" width="100%">
-                                    <Container layout="flex-column" gap="xs" padding="none" flexFill minWidth="16rem">
-                                        <Container layout="flex" align="baseline" gap="sm" padding="none" width="100%">
-                                            <Typography size="sm" weight="semibold">{one.name}</Typography>
-                                            <Typography size="xxs" color="muted">{[one.gpuMemoryMb ? `${formatGb(one.gpuMemoryMb)} graphics` : null, `${formatGb(one.memoryMb)} memory`].filter(Boolean).join(' · ')}</Typography>
-                                        </Container>
-                                        <Container layout="flex" align="baseline" gap="xs" padding="none" width="100%" wrap={false}>
-                                            <Icon name={status ? STATUS_ICONS[status[1]] : 'FiInfo'} size="xs" color={status && STATUS_TONES.includes(status[1]) ? status[1] : 'primary'} />
-                                            <Typography size="xs" color="muted">{status ? status[0] : part.hint}</Typography>
-                                        </Container>
-                                        <ConnectionProblems problems={one.problems} />
-                                        {one.reachable === false && (
-                                            <Button size="xs" variant="ghost" genieTrigger="click" genie={{ trigger: 'click', width: '440px', padding: 'md', content: <WhyUnreachable /> }}>
-                                                <Icon name="FiHelpCircle" />Why can't it be reached?
-                                            </Button>
-                                        )}
-                                    </Container>
-                                    <Container layout="flex" align="center" gap="xs" padding="none" wrap={false}>
-                                        <Select
-                                            size="sm"
-                                            variant="outline"
-                                            width="18rem"
-                                            aria-label={`${one.name}'s part in the pool`}
-                                            value={one.role}
-                                            options={POOL_PARTS.map((entry) => {
-                                                const taken = entry.role === 'main' && pools.main && pools.main !== one.id;
-                                                return { value: entry.role, label: taken ? `${entry.label} (another computer is)` : entry.label, disabled: Boolean(taken) };
-                                            })}
-                                            onChange={(role) => role && role !== one.role && onPart(one, role)}
-                                        />
-                                        <Button size="sm" variant="ghost" disabled={checking} title={checking ? 'Checking the pool…' : 'Try the pool connection again'} onClick={onCheck}>
-                                            <Icon name="FiRefreshCw" />
-                                        </Button>
-                                    </Container>
-                                </Container>
-                            );
-                        })}
-                    </Container>
-                );
-            })}
-            <ConnectionChecks checks={pools?.checks} />
-            {left.length > 0 && (
-                <Container layout="flex-column" gap="sm" padding="none" width="100%">
-                    <Divider />
-                    {left.map((one) => (
-                        <Container key={one.id} layout="flex" justify="between" align="center" gap="sm" padding="none" width="100%">
-                            <Container padding="none" flexFill minWidth="16rem">
-                                <Typography size="sm" weight="semibold">{`${one.name}: `}</Typography>
-                                <Typography size="xs" color="muted">{one.message}</Typography>
-                                <ConnectionProblems problems={one.problems} />
-                            </Container>
-                            {one.reason === 'public' && (
-                                <Button size="xs" genieTrigger="click" genie={{ trigger: 'click', width: '460px', padding: 'md', content: <MakePrivate name={one.name} networks={one.publicNetworks} /> }}>
-                                    <Icon name="FiShield" />How to make it Private
-                                </Button>
-                            )}
-                        </Container>
-                    ))}
+            {!pools && <Typography size="xs" color="muted">Reading your computers…</Typography>}
+            {pools && computers.length === 0 && <Typography size="sm">Install the Mollama desktop app on your computers and sign in on each; they appear here.</Typography>}
+            {pools && computers.length > 0 && HL === false && <Typography size="xs" color="muted">The drawing could not be loaded. Reload the page to try again.</Typography>}
+            {pools && computers.length > 0 && HL && <PoolDrawing HL={HL} pools={pools} onPick={pick} onWarn={hint} picked={picked} />}
+            {pools && computers.length > 0 && (
+                <Container layout="flex" align="baseline" gap="xs" padding="none" width="100%" wrap={false}>
+                    <Icon name={ready ? 'FiCheckCircle' : 'FiInfo'} size="xs" color={ready ? 'success' : 'primary'} />
+                    <Typography size="xs" color="muted">
+                        {!main ? 'No primary computer yet: click the one with the largest graphics card and make it the primary computer. ' : `${main.name} is the primary computer${lenders.length ? `, with ${lenders.length} secondary` : ''}. `}
+                        {ready ? 'The pool is ready: choose it in a chat\'s computer picker. ' : main && lenders.length > 0 ? 'Ready once the primary computer reaches every secondary one. ' : ''}
+                        {together.length > 1 ? `Together: ${formatGb(together.reduce((sum, one) => sum + one.gpuMemoryMb, 0))} of graphics memory and ${formatGb(together.reduce((sum, one) => sum + one.memoryMb, 0))} of system memory.` : ''}
+                        {checking ? ' Checking how your computers are joined…' : ''}
+                    </Typography>
                 </Container>
             )}
+            <Genie visible={Boolean(chosen && open)} triggerRef={open?.ref} onClose={close} variant="popover" width="380px" padding="md" ariaLabel={chosen ? `${chosen.name}'s part in the pool` : undefined}>
+                {chosen && <ComputerCard one={chosen} main={main} issues={issuesOf(chosen.id)} onPart={(one, role) => { close(); onPart(one, role); }} />}
+            </Genie>
+            <Genie visible={Boolean(tip)} triggerRef={tip?.ref} onClose={() => setTip(null)} variant="tooltip" role="tooltip" closeOnClickOutside={false} width="320px" padding="sm">
+                {tip && (
+                    <Container layout="flex-column" gap="xs" padding="none" width="100%">
+                        {tip.texts.map((text) => <Typography key={text} size="xs">{text}</Typography>)}
+                    </Container>
+                )}
+            </Genie>
             {children}
         </Container>
     );
@@ -953,7 +1310,7 @@ const DevicesPage = () => {
         try {
             const result = await deviceService.listDevices();
             setDevices(result.devices);
-            deviceService.pools().then(setPools, () => setPools({ groups: [], left: [] }));
+            deviceService.pools().then(setPools, () => setPools({ computers: [], networks: [] }));
             rentalService.list().then((answer) => setRentals(answer.rentals || []), () => setRentals([]));
             rentalService.cards().then((answer) => {
                 setOffer(answer.on ? answer : null);
@@ -1111,7 +1468,7 @@ const DevicesPage = () => {
             )}
 
             {view === 'pooling' && (devices?.length > 0
-                ? <PoolSection pools={pools} onPart={setPoolPart} onCheck={checkPools} checking={poolCheck.checking} checkedAt={poolCheck.at}><PoolGuide /></PoolSection>
+                ? <PoolSection pools={pools} onPart={setPoolPart} onCheck={checkPools} checking={poolCheck.checking}><PoolGuide /></PoolSection>
                 : <PoolGuide />)}
 
             {view === 'computers' && devices?.length > 0 && (
