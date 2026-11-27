@@ -100,7 +100,9 @@ export const Page = forwardRef(({
     // Rails at the very edges of the screen, outside the page's column, centred top to bottom. Where the screen is too
     // narrow for them, each becomes one floating button that opens it: the left one at the top left, the right one at
     // the bottom right. Each is { content, icon, label } or, for a rail of buttons, { actions, icon, label } with each
-    // action { icon, label, onClick, selected }: a column of round buttons, or the floating button's own helper buttons.
+    // action { icon, label, onClick, selected, children }: a column of round buttons, or the floating button's own helper
+    // buttons. The chosen section's `children` (its subsections, the same shape) make a second column beside it, which
+    // shares the space; under the floating button they unfold beside their section, every section staying in place.
     left = null,
     right = null,
     // Layout props (same as Container)
@@ -289,15 +291,15 @@ export const Page = forwardRef(({
             {[['left', left, 'top-left'], ['right', right, 'bottom-right']].filter(([, rail]) => rail?.content || rail?.actions?.length).map(([side, rail, corner]) => (
                 <React.Fragment key={side}>
                     <aside className={`page-rail page-rail-${side}`} aria-label={rail.label}>
-                        {rail.actions ? (
-                            <ButtonGroup size="lg" vertical spaced selectable={false}>
-                                {rail.actions.map((action) => (
+                        {rail.actions ? [rail.actions, rail.actions.find((action) => action.selected && action.children?.length)?.children].filter(Boolean).map((column, depth) => (
+                            <ButtonGroup key={depth} size="lg" vertical spaced selectable={false}>
+                                {column.map((action) => (
                                     <Button key={action.label} size="lg" round selected={Boolean(action.selected)} title={action.label} aria-label={action.label} onClick={action.onClick} {...(action.tip || {})}>
                                         <Icon name={action.icon} size="md" />
                                     </Button>
                                 ))}
                             </ButtonGroup>
-                        ) : rail.content}
+                        )) : rail.content}
                     </aside>
                     <div className={`page-rail-fab page-rail-fab-${side}`}>
                         <FloatingActionButton parentType="page" position={corner} size="lg" icon={rail.icon || 'FiMenu'} aria-label={rail.label} title={rail.label}

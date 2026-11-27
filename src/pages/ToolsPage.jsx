@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useSearchParams } from 'react-router-dom';
-import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Divider, Icon, Input, Select, Genie, Pagination, CircularProgress } from '@components/Components';
+import { Page, Container, Card, Typography, Button, Badge, Divider, Icon, Input, Select, Genie, Pagination, CircularProgress } from '@components/Components';
 import { useNotification } from '@contexts/NotificationContext';
 import { toolService, skillService, deviceService, describeError, onReturn } from '../client/ai.client';
 
@@ -726,13 +726,26 @@ const ToolsPage = () => {
             ? <Button size="sm" color="secondary" variant="solid" genieTrigger="click" genie={{ trigger: 'click', width: '380px', padding: 'sm', content: <LocalOwn adding={adding === 'own'} onAdd={(form) => addLocal(form)} /> }}><Icon name="FiPlus" />Add your own</Button>
             : null;
 
+    // The sections, down the left edge of the screen as on the Models page.
+    const sections = [
+        ['remote', `Remote${remotes.length > 0 ? ` (${remotes.length})` : ''}`, 'FiGlobe', 'Apps that live online'],
+        ['local', `Local${locals.length > 0 ? ` (${locals.length})` : ''}`, 'FiMonitor', 'Apps on your own computer'],
+        ['skills', 'Skills', 'FiZap', 'Instructions that teach a model a kind of work']
+    ];
+    const current = sections.find(([id]) => id === view) || sections[0];
+
     return (
-        <Page title="Tools" lead={lead} actions={mainAction} layout="flex-column" gap="xl" background="plus" backgroundFade="bottom">
-            <ButtonGroup size="sm" selectable={false} wrap>
-                <Button size="sm" selected={view === 'remote'} onClick={() => pick('remote')}><Icon name="FiGlobe" />Remote{remotes.length > 0 ? ` (${remotes.length})` : ''}</Button>
-                <Button size="sm" selected={view === 'local'} onClick={() => pick('local')}><Icon name="FiMonitor" />Local{locals.length > 0 ? ` (${locals.length})` : ''}</Button>
-                <Button size="sm" selected={view === 'skills'} onClick={() => pick('skills')}><Icon name="FiZap" />Skills</Button>
-            </ButtonGroup>
+        <Page
+            title="Tools"
+            lead={lead}
+            actions={mainAction}
+            layout="flex-column"
+            gap="xl"
+            background="plus"
+            backgroundFade="bottom"
+            left={{ actions: sections.map(([id, label, icon, about]) => ({ icon, label: `${label}: ${about}`, selected: view === id, onClick: () => pick(id) })), icon: current[2], label: 'Sections of the Tools page' }}
+        >
+            <Typography as="h2" size="md" weight="semibold" font="secondary">{current[1]}</Typography>
 
             {view === 'skills' && <SkillsView />}
             {servers === null && !failed && view !== 'skills' && <ListState loading>Loading your tools…</ListState>}

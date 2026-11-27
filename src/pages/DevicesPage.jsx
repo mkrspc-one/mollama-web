@@ -1575,6 +1575,13 @@ const DevicesPage = () => {
 
     const addComputer = { trigger: 'click', variant: 'popover', width: '480px', padding: 'lg', content: <AddComputer /> };
     const showView = (id) => id !== view && setParams(id === 'computers' ? {} : { view: id });
+    // The sections, down the left edge of the screen as on the Models page.
+    const sections = [
+        ['computers', 'Computers', 'FiMonitor', 'The computers that run your models'],
+        ['pooling', 'Pooling', 'FiLayers', 'Share one model across several of your computers'],
+        ...(rentOn ? [['rent', 'Rent a graphics card', 'FiZap', 'A strong graphics card by the hour, paid from credit']] : [])
+    ];
+    const current = sections.find(([id]) => id === view) || sections[0];
 
     return (
         <Page
@@ -1583,6 +1590,7 @@ const DevicesPage = () => {
             gap="xl"
             background="hex"
             backgroundFade="bottom"
+            left={{ actions: sections.map(([id, label, icon, about]) => ({ icon, label: `${label}: ${about}`, selected: view === id, onClick: () => showView(id) })), icon: current[2], label: 'Sections of the Devices page' }}
             actions={(
                 <Container layout="flex" align="center" gap="sm" padding="none" wrap={false}>
                     <Button size="sm" onClick={load}><Icon name="FiRefreshCw" />Refresh</Button>
@@ -1590,11 +1598,7 @@ const DevicesPage = () => {
                 </Container>
             )}
         >
-            <ButtonGroup size="sm" justify="start" selectable={false}>
-                {[['computers', 'Computers', 'FiMonitor'], ['pooling', 'Pooling', 'FiLayers'], ...(rentOn ? [['rent', 'Rent a graphics card', 'FiZap']] : [])].map(([id, label, icon]) => (
-                    <Button key={id} size="sm" selected={view === id} onClick={() => showView(id)}><Icon name={icon} />{label}</Button>
-                ))}
-            </ButtonGroup>
+            {view !== 'pooling' && <Typography as="h2" size="md" weight="semibold" font="secondary">{current[1]}</Typography>}
 
             {view === 'rent' && <RentView offer={offer} problem={rentProblem} open={openRentals} onRented={() => { load(); showView('computers'); }} onShowComputers={() => showView('computers')} />}
 
