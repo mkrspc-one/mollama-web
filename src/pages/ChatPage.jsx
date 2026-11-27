@@ -1750,6 +1750,9 @@ const ChatPage = () => {
     // The model picker shows a page of models at a time, opening on the page that holds the chat's model.
     const [pickerPage, setPickerPage] = useState(1);
     const [machinePage, setMachinePage] = useState(1);
+    // Past a page of either, a search box narrows the list by name.
+    const [modelFind, setModelFind] = useState('');
+    const [machineFind, setMachineFind] = useState('');
     const modelsAsk = useRef(0);
     const [webSearch, setWebSearch] = useState(false);
     const [skills, setSkills] = useState([]);
@@ -1854,6 +1857,9 @@ const ChatPage = () => {
         const at = devices.findIndex((device) => device.id === currentDevice);
         setMachinePage(at >= 0 ? Math.floor(at / PICKER_PAGE) + 1 : 1);
     }, [currentDevice, devices.length]);
+    const matches = (words, ...names) => !words.trim() || names.some((name) => String(name || '').toLowerCase().includes(words.trim().toLowerCase()));
+    const shownMachines = devices.filter((device) => matches(machineFind, device.name));
+    const shownModels = models.filter((model) => matches(modelFind, model.displayName, model.name));
     const modelsLoaded = modelState.device === currentDevice ? modelState.loaded : Boolean(pickerMemory.models(currentDevice));
 
     const loadDevices = useCallback(() => {
@@ -3190,7 +3196,10 @@ const ChatPage = () => {
                                         {devices.length > 1 && (
                                             <Container layout="flex-column" gap="none" padding="none" width="42%" minWidth="0">
                                                 <Typography size="xxs" color="muted" weight="semibold">Run on</Typography>
-                                                {devices.slice((Math.min(machinePage, Math.ceil(devices.length / PICKER_PAGE) || 1) - 1) * PICKER_PAGE, Math.min(machinePage, Math.ceil(devices.length / PICKER_PAGE) || 1) * PICKER_PAGE).map((device) => (
+                                                {devices.length > PICKER_PAGE && (
+                                                    <Input size="xs" type="search" placeholder="Find a computer" value={machineFind} onChange={(event) => { setMachineFind(event.target.value); setMachinePage(1); }} width="100%" />
+                                                )}
+                                                {shownMachines.slice((Math.min(machinePage, Math.ceil(shownMachines.length / PICKER_PAGE) || 1) - 1) * PICKER_PAGE, Math.min(machinePage, Math.ceil(shownMachines.length / PICKER_PAGE) || 1) * PICKER_PAGE).map((device) => (
                                                     <Row key={device.id} icon={DEVICE_ICONS[device.kind] || 'FiMonitor'} label={device.name} size="xs" selected={device.id === currentDevice} disabled={!device.online || device.paused} onClick={() => changeDevice(device.id)}>
                                                         {deviceService.ready(device)
                                                             ? <PickerDot color="success" title="Ready to use right now" />
@@ -3199,17 +3208,26 @@ const ChatPage = () => {
                                                                 : device.paused ? <PickerDot color="warning" title="Paused" /> : device.online ? <PickerDot color="success" title="Online" /> : <PickerDot color="tertiary" title="Offline" />}
                                                     </Row>
                                                 ))}
-                                                {devices.length > PICKER_PAGE && (
+                                                {shownMachines.length === 0 && <Typography size="xs" color="muted">No computer is called that.</Typography>}
+                                                {shownMachines.length > PICKER_PAGE && (
                                                     <>
                                                         <Container padding="none" flexFill />
-                                                        <Pagination size="xs" padding="none" page={Math.min(machinePage, Math.ceil(devices.length / PICKER_PAGE))} pages={Math.ceil(devices.length / PICKER_PAGE)} onPage={setMachinePage} />
+                                                        <Pagination size="xs" padding="none" page={Math.min(machinePage, Math.ceil(shownMachines.length / PICKER_PAGE))} pages={Math.ceil(shownMachines.length / PICKER_PAGE)} onPage={setMachinePage} />
                                                     </>
                                                 )}
                                             </Container>
                                         )}
                                         {devices.length > 1 && <Divider orientation="vertical" />}
                                         <Container layout="flex-column" gap="none" padding="none" flexFill minWidth="0">
-                                            {devices.length > 1 && <Typography size="xxs" color="muted" weight="semibold">Models</Typography>}
+                                            {(devices.length > 1 || models.some((model) => model.price)) && (
+                                                <Container layout="flex" justify="between" align="center" gap="sm" padding="none" width="100%" wrap={false}>
+                                                    <Typography size="xxs" color="muted" weight="semibold">Model</Typography>
+                                                    {models.some((model) => model.price) && <Typography size="xxs" color="muted" weight="semibold">Read · write, per million tokens</Typography>}
+                                                </Container>
+                                            )}
+                                            {models.length > PICKER_PAGE && (
+                                                <Input size="xs" type="search" placeholder="Find a model" value={modelFind} onChange={(event) => { setModelFind(event.target.value); setPickerPage(1); }} width="100%" />
+                                            )}
                                             {models.length === 0 && (
                                                 <Typography size="xs" color="muted">
                                                     {!modelsLoaded ? 'Loading the models on this computer…'
@@ -3222,7 +3240,8 @@ const ChatPage = () => {
                                                         : 'No model is installed yet.'}
                                                 </Typography>
                                             )}
-                                            {models.slice((Math.min(pickerPage, Math.ceil(models.length / PICKER_PAGE) || 1) - 1) * PICKER_PAGE, Math.min(pickerPage, Math.ceil(models.length / PICKER_PAGE) || 1) * PICKER_PAGE).map((model) => (
+                                            {models.length > 0 && shownModels.length === 0 && <Typography size="xs" color="muted">No model is called that.</Typography>}
+                                            {shownModels.slice((Math.min(pickerPage, Math.ceil(shownModels.length / PICKER_PAGE) || 1) - 1) * PICKER_PAGE, Math.min(pickerPage, Math.ceil(shownModels.length / PICKER_PAGE) || 1) * PICKER_PAGE).map((model) => (
                                                 <Row key={model.name} label={model.displayName} size="xs" selected={model.name === currentModel} onClick={() => changeModel(model.name)}>
                                                     {model.capabilities?.length > 0 && !model.capabilities.includes('tools') && (usesTools(model)
                                                         ? <Icon name="FiMessageSquare" size="xs" color="tertiary" title="Tools in words: this model was not made for tools, so it is told of them in words and may use them less well." aria-label="Tools in words" />
@@ -3230,16 +3249,16 @@ const ChatPage = () => {
                                                     {model.ready && <Icon name="FiCheckCircle" size="xs" color="success" title="Loaded and ready to use right now" aria-label="Loaded and ready to use right now" />}
                                                     {model.price && (
                                                         <Typography size="xxs" color="muted" title={`Paid from your credit: $${model.price.input} per million tokens read, $${model.price.output} per million written`}>
-                                                            {`$${model.price.input} · $${model.price.output} /M`}
+                                                            {`$${model.price.input} · $${model.price.output}`}
                                                         </Typography>
                                                     )}
                                                     <PickerDot color={FIT_COLORS[model.fit?.verdict] || 'tertiary'} title={model.fit?.label || 'Fit unknown'} />
                                                 </Row>
                                             ))}
-                                            {models.length > PICKER_PAGE && (
+                                            {shownModels.length > PICKER_PAGE && (
                                                 <>
                                                     <Container padding="none" flexFill />
-                                                    <Pagination size="xs" padding="none" page={Math.min(pickerPage, Math.ceil(models.length / PICKER_PAGE))} pages={Math.ceil(models.length / PICKER_PAGE)} onPage={setPickerPage} />
+                                                    <Pagination size="xs" padding="none" page={Math.min(pickerPage, Math.ceil(shownModels.length / PICKER_PAGE))} pages={Math.ceil(shownModels.length / PICKER_PAGE)} onPage={setPickerPage} />
                                                 </>
                                             )}
                                         </Container>
