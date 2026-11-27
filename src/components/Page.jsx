@@ -97,7 +97,7 @@ export const Page = forwardRef(({
     actions = null, // The page's own actions, shown at the right of the title
     brand = null, // Shown at the left of the title row in place of a title, for a page whose heading is in its content
     frame = false, // true keeps the content in the app's one column; a page with a title is always framed
-    // Rails at the very edges of the screen, outside the page's column, centred top to bottom. Where the screen is too
+    // Rails in the spaces beside the page's column, centred in them both ways. Where the screen is too
     // narrow for them, each becomes one floating button that opens it: the left one at the top left, the right one at
     // the bottom right. Each is { content, icon, label } or, for a rail of buttons, { actions, icon, label } with each
     // action { icon, label, onClick, selected, children }: a column of round buttons, or the floating button's own helper

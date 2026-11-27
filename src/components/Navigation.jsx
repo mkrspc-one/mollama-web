@@ -275,7 +275,8 @@ export const Navigation = ({
     };
 
     const genieContent = (
-        <Container layout="flex-column" gap="sm" padding="sm" width="100%" maxHeight="78vh" overflow="auto" wrap={false}>
+        // The pages at the top left; the theme and signing out at the bottom right, however big the menu is made.
+        <Container layout="flex-column" gap="sm" padding="sm" width="100%" height="100%" overflow="auto" wrap={false}>
             {user && (
                 <Container layout="flex" justify="between" align="center" gap="sm" padding="none" width="100%" wrap={false}>
                     <Container layout="flex" align="center" gap="sm" padding="none" flexFill minWidth="0" wrap={false}>
@@ -300,10 +301,12 @@ export const Navigation = ({
 
             {user && <Divider margin="none" />}
 
-            <Container layout="flex-column" gap="xs" padding="none" width="100%">
-                {menuItems.map((item) => {
+            {/* The pages in as many columns as fit: two at the menu's usual width, one when it is made narrow. */}
+            <Container layout="grid" columns="auto-xs" gap="xs" padding="none" width="100%">
+                {menuItems.map((item, index) => {
                     const hint = guide.tip(`nav.${item.id}`, { label: `Open ${item.label}`, run: () => handleNavigation(item.path) });
                     return (
+                        <Container key={item.id} padding="none" width="100%" minWidth="0">
                         <Button
                             key={item.id}
                             size="xs"
@@ -322,6 +325,7 @@ export const Navigation = ({
                                 </Badge>
                             )}
                         </Button>
+                        </Container>
                     );
                 })}
             </Container>
@@ -379,10 +383,11 @@ export const Navigation = ({
 
             <NotificationsMenu />
 
+            <Container padding="none" flexFill />
             <Divider margin="none" />
-            <Container layout="flex-column" gap="xs" padding="none" width="100%">
+            <Container layout="flex-column" gap="xs" padding="none" width="100%" align="end">
                 <Typography as="p" size="xxs" color="muted">Theme</Typography>
-                <ButtonGroup size="xs" spaced justify="start" width="100%" maxWidth="440px">
+                <ButtonGroup size="xs" spaced justify="end" width="100%">
                     {availableThemes.map(themeName => (
                         <Button
                             key={themeName}
@@ -403,7 +408,7 @@ export const Navigation = ({
                     <Button
                         variant="ghost"
                         size="xs"
-                        align="start"
+                        align="end"
                         width="100%"
                         onClick={handleLogout}
                     >
@@ -431,7 +436,7 @@ export const Navigation = ({
                 trigger: 'click',
                 content: genieContent,
                 variant: 'menu',
-                width: '300px',
+                width: '380px',
                 maxHeight: '80vh'
             }}
             title="Navigation Menu"
