@@ -237,6 +237,7 @@ export const providerService = {
     add: (kind, key) => api.post('/providers', { kind, key }),
     check: (id) => api.post(`/providers/${id}/check`, {}),
     replaceKey: (id, key) => api.patch(`/providers/${id}`, { key }),
+    switchCloud: (id, on) => api.put(`/providers/${id}/cloud`, { on }),
     remove: (id) => api.delete(`/providers/${id}`)
 };
 

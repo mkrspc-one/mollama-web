@@ -7,7 +7,7 @@ import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github-dark.css';
 import {
     Page, Container, Card, Typography, Button, ButtonGroup, FloatingActionButton, Badge, Divider, Input, Select, Switch, Icon, Genie,
-    ProgressBar, CircularProgress, Data, Flow, TreeView, Image, Video, Audio, PdfViewer, Slides, Sheet, Model3D, Editor, Frame
+    ProgressBar, CircularProgress, Data, Pagination, Flow, TreeView, Image, Video, Audio, PdfViewer, Slides, Sheet, Model3D, Editor, Frame
 } from '@components/Components';
 import { parseFlow } from '@components/Flow';
 import { readAppTheme } from '@components/Frame';
@@ -20,6 +20,7 @@ import { MemoryManager, MemoryRow } from './ModelsPage';
 const FIT_COLORS = { gpu: 'success', mixed: 'warning', cpu: 'warning', too_large: 'error', cloud: 'primary' };
 // The model picker marks each computer and model with a coloured dot, said in words in its title and in the key under it.
 const PickerDot = ({ color, title }) => <Icon name="FaCircle" size="xs" color={color} title={title} aria-label={title} />;
+const PICKER_PAGE = 12;
 const PICKER_KEY = [
     ['success', 'Ready, or runs fully on the graphics card'],
     ['warning', 'Runs with the processor\'s help (slower), or needs attention'],
@@ -1746,6 +1747,9 @@ const ChatPage = () => {
     // The list of models is kept together with the computer it belongs to, so the two can never be out of step.
     const keptModels = (deviceId) => (pickerMemory.models(deviceId) || []).filter((model) => model.canChat !== false);
     const [modelState, setModelState] = useState(() => ({ device: draftDevice, list: keptModels(draftDevice), loaded: Boolean(pickerMemory.models(draftDevice)) }));
+    // The model picker shows a page of models at a time, opening on the page that holds the chat's model.
+    const [pickerPage, setPickerPage] = useState(1);
+    const [machinePage, setMachinePage] = useState(1);
     const modelsAsk = useRef(0);
     const [webSearch, setWebSearch] = useState(false);
     const [skills, setSkills] = useState([]);
@@ -1842,6 +1846,14 @@ const ChatPage = () => {
     const currentDevice = chat?.device || draftDevice || null;
     // While the list for the computer in use is on its way, what was last seen on that same computer is shown.
     const models = useMemo(() => (modelState.device === currentDevice ? modelState.list : keptModels(currentDevice)), [modelState, currentDevice]);
+    useEffect(() => {
+        const at = models.findIndex((model) => model.name === currentModel);
+        setPickerPage(at >= 0 ? Math.floor(at / PICKER_PAGE) + 1 : 1);
+    }, [currentDevice, models.length]);
+    useEffect(() => {
+        const at = devices.findIndex((device) => device.id === currentDevice);
+        setMachinePage(at >= 0 ? Math.floor(at / PICKER_PAGE) + 1 : 1);
+    }, [currentDevice, devices.length]);
     const modelsLoaded = modelState.device === currentDevice ? modelState.loaded : Boolean(pickerMemory.models(currentDevice));
 
     const loadDevices = useCallback(() => {
@@ -3178,7 +3190,7 @@ const ChatPage = () => {
                                         {devices.length > 1 && (
                                             <Container layout="flex-column" gap="none" padding="none" width="42%" minWidth="0">
                                                 <Typography size="xxs" color="muted" weight="semibold">Run on</Typography>
-                                                {devices.map((device) => (
+                                                {devices.slice((Math.min(machinePage, Math.ceil(devices.length / PICKER_PAGE) || 1) - 1) * PICKER_PAGE, Math.min(machinePage, Math.ceil(devices.length / PICKER_PAGE) || 1) * PICKER_PAGE).map((device) => (
                                                     <Row key={device.id} icon={DEVICE_ICONS[device.kind] || 'FiMonitor'} label={device.name} size="xs" selected={device.id === currentDevice} disabled={!device.online || device.paused} onClick={() => changeDevice(device.id)}>
                                                         {deviceService.ready(device)
                                                             ? <PickerDot color="success" title="Ready to use right now" />
@@ -3187,6 +3199,12 @@ const ChatPage = () => {
                                                                 : device.paused ? <PickerDot color="warning" title="Paused" /> : device.online ? <PickerDot color="success" title="Online" /> : <PickerDot color="tertiary" title="Offline" />}
                                                     </Row>
                                                 ))}
+                                                {devices.length > PICKER_PAGE && (
+                                                    <>
+                                                        <Container padding="none" flexFill />
+                                                        <Pagination size="xs" padding="none" page={Math.min(machinePage, Math.ceil(devices.length / PICKER_PAGE))} pages={Math.ceil(devices.length / PICKER_PAGE)} onPage={setMachinePage} />
+                                                    </>
+                                                )}
                                             </Container>
                                         )}
                                         {devices.length > 1 && <Divider orientation="vertical" />}
@@ -3204,15 +3222,26 @@ const ChatPage = () => {
                                                         : 'No model is installed yet.'}
                                                 </Typography>
                                             )}
-                                            {models.map((model) => (
+                                            {models.slice((Math.min(pickerPage, Math.ceil(models.length / PICKER_PAGE) || 1) - 1) * PICKER_PAGE, Math.min(pickerPage, Math.ceil(models.length / PICKER_PAGE) || 1) * PICKER_PAGE).map((model) => (
                                                 <Row key={model.name} label={model.displayName} size="xs" selected={model.name === currentModel} onClick={() => changeModel(model.name)}>
                                                     {model.capabilities?.length > 0 && !model.capabilities.includes('tools') && (usesTools(model)
                                                         ? <Icon name="FiMessageSquare" size="xs" color="tertiary" title="Tools in words: this model was not made for tools, so it is told of them in words and may use them less well." aria-label="Tools in words" />
                                                         : <Icon name="FiSlash" size="xs" color="warning" title="No tools: this model has too little room to use tools or search the web. It answers only from what it already knows." aria-label="No tools" />)}
                                                     {model.ready && <Icon name="FiCheckCircle" size="xs" color="success" title="Loaded and ready to use right now" aria-label="Loaded and ready to use right now" />}
+                                                    {model.price && (
+                                                        <Typography size="xxs" color="muted" title={`Paid from your credit: $${model.price.input} per million tokens read, $${model.price.output} per million written`}>
+                                                            {`$${model.price.input} · $${model.price.output} /M`}
+                                                        </Typography>
+                                                    )}
                                                     <PickerDot color={FIT_COLORS[model.fit?.verdict] || 'tertiary'} title={model.fit?.label || 'Fit unknown'} />
                                                 </Row>
                                             ))}
+                                            {models.length > PICKER_PAGE && (
+                                                <>
+                                                    <Container padding="none" flexFill />
+                                                    <Pagination size="xs" padding="none" page={Math.min(pickerPage, Math.ceil(models.length / PICKER_PAGE))} pages={Math.ceil(models.length / PICKER_PAGE)} onPage={setPickerPage} />
+                                                </>
+                                            )}
                                         </Container>
                                     </Container>
                                     <Divider />

@@ -862,18 +862,30 @@ export const OnlineTab = () => {
             {cloud && (
                 <Container as="section" layout="flex-column" gap="md" padding="none" width="100%">
                     <SectionTitle title="Cloud" count={cloud.priced?.length ?? cloud.modelCount}>
-                        <Badge size="xs" color={PROVIDER_COLORS[cloud.health.state] || 'error'}>{cloud.health.label}</Badge>
+                        <Container layout="flex" align="center" gap="sm" padding="none" wrap={false}>
+                            <Badge size="xs" color={PROVIDER_COLORS[cloud.health.state] || 'error'}>{cloud.health.label}</Badge>
+                            <Switch size="sm" label="Use Cloud models" checked={cloud.on !== false} disabled={busy === cloud.id}
+                                onChange={() => run(cloud.id, async () => replace((await providerService.switchCloud(cloud.id, cloud.on === false)).provider), 'Cloud could not be switched.')} />
+                        </Container>
                     </SectionTitle>
                     <Typography as="p" size="xs" maxWidth="760px">
                         Large open models that run online, paid from your Mollama credit by what each reply reads and writes, with no key of your own. They are in the model picker of every chat; a reply stops when your credit runs low.
                     </Typography>
                     {cloud.health.needs.map((need) => <Typography key={need} as="p" size="xs" color="warning">{need}</Typography>)}
+                    {cloud.credit === false && (
+                        <Container layout="flex" align="center" gap="sm" padding="none" width="100%">
+                            <Typography as="p" size="xs" color="warning">You need credit to use these models. Until you add some, they stay out of the model picker.</Typography>
+                            <Typography as="p" size="xs" href="/billing">Add credit</Typography>
+                        </Container>
+                    )}
                     {cloud.priced?.length > 0 && (
                         <Data
                             data={cloud.priced.map((model) => ({ id: model.name, model: model.title || model.name, context: model.contextLength ? `${Math.round(model.contextLength / 1024)}K` : '', reads: perMillion(model.input), writes: perMillion(model.output), can: [model.tools ? 'Tools' : null, model.vision ? 'Pictures' : null].filter(Boolean).join(', ') }))}
                             size="xs"
                             exclude={['id']}
                             fieldConfig={{ model: { label: 'Model' }, context: { label: 'Reads up to' }, reads: { label: 'Reading, per million tokens' }, writes: { label: 'Writing, per million tokens' }, can: { label: 'Can use' } }}
+                            paginated
+                            pageSize={10}
                             sortable
                             flat
                             width="100%"
