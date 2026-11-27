@@ -278,14 +278,20 @@ const POOL_STYLE = `
 [data-hairline="pool"] .pool-pc{transition:transform 260ms cubic-bezier(.32,.72,0,1)}
 [data-hairline="pool"] .pool-pc.up{transform:translateY(-2.5px)}
 [data-hairline="pool"] .pool-dim path{stroke:var(--border-color)}
-[data-hairline="pool"] .pool-main .sil{stroke:var(--hl-hi)}
-[data-hairline="pool"] path.pool-on{stroke:var(--primary-color)}
-[data-hairline="pool"] path.pool-off{stroke:var(--hl-lo)}
+[data-hairline="pool"] .pool-main path{stroke:var(--primary-color)}
+[data-hairline="pool"] .pool-lend path{stroke:var(--secondary-color)}
+[data-hairline="pool"] path.pool-works{stroke:var(--success-color)}
+[data-hairline="pool"] path.pool-warning{stroke:var(--warning-color)}
+[data-hairline="pool"] path.pool-error{stroke:var(--error-color)}
+[data-hairline="pool"] path.pool-on{stroke-width:1.8px}
+[data-hairline="pool"] path.pool-on.pool-plain{stroke:var(--hl-hi)}
 [data-hairline="pool"] .pool-hit{fill:transparent;stroke:none;cursor:pointer;outline:none}
 [data-hairline="pool"] .pool-hit:focus-visible{stroke:var(--primary-color);stroke-dasharray:2 2}
 [data-hairline="pool"] text{fill:var(--text-color);stroke:none;font-family:var(--font-family);pointer-events:none}
 [data-hairline="pool"] text.muted{fill:var(--text-muted)}
 [data-hairline="pool"] .pool-warn{fill:var(--warning-color);stroke:var(--background-color);stroke-width:1.2px;cursor:pointer;outline:none}
+[data-hairline="pool"] .pool-warn.error{fill:var(--error-color)}
+[data-hairline="pool"] .pool-warn-mark.error{fill:var(--error-contrast-color)}
 [data-hairline="pool"] .pool-warn-mark{fill:var(--warning-contrast-color);stroke:none;pointer-events:none}
 [data-hairline="pool"] .pool-flow{fill:var(--primary-color);stroke:none;pointer-events:none}
 @media (prefers-reduced-motion:reduce){[data-hairline="pool"] .pool-pc{transition:none}}
@@ -329,7 +335,58 @@ const FORM_NAMES = { laptop: 'Laptop', tablet: 'Tablet', allinone: 'All-in-one',
 
 // Where a warning sits: its computer, its cable or its line to a router, as the server's scene names it.
 const issueKey = (on) => (on.computer ? on.computer : on.cable ? [...on.cable].sort().join('|') : on.line.join('|'));
-const issuesFor = (scene, id) => (scene?.issues || []).filter(({ on }) => on.computer === id || on.cable?.includes(id) || on.line?.[1] === id).flatMap((issue) => issue.texts);
+// The scene as the server sent it, read so that anything missing or of an older shape (a server not yet updated sends
+// a warning's sentences as `texts`) is taken as empty or plain instead of breaking the drawing.
+const list = (value) => (Array.isArray(value) ? value : []);
+const readScene = (pools) => {
+    const scene = pools?.scene || {};
+    const known = new Set(list(pools?.computers).map((one) => one.id));
+    const level = (value) => (value === 'error' ? 'error' : 'warning');
+    const noteOf = (note) => (typeof note === 'string'
+        ? { level: 'warning', title: 'Warning', text: note, steps: [] }
+        : { level: level(note?.level), title: String(note?.title || 'Warning'), text: String(note?.text || ''), steps: list(note?.steps).map(String) });
+    return {
+        cables: list(scene.cables).filter((cable) => known.has(cable?.a) && known.has(cable?.b)),
+        homes: list(scene.homes).filter((home) => home?.id).map((home) => ({ ...home, members: list(home.members).filter((member) => known.has(member?.id)) })),
+        issues: list(scene.issues).filter((issue) => issue?.on && (issue.on.computer || list(issue.on.cable).length === 2 || list(issue.on.line).length === 2)).map((issue) => {
+            const notes = (Array.isArray(issue.notes) ? issue.notes : list(issue.texts)).map(noteOf).filter((note) => note.text);
+            return { on: issue.on, level: notes.some((note) => note.level === 'error') || issue.level === 'error' ? 'error' : 'warning', notes, fix: issue.fix || null };
+        }).filter((issue) => issue.notes.length > 0),
+        flows: list(scene.flows).filter((flow) => known.has(flow?.from) && known.has(flow?.to))
+    };
+};
+const issuesFor = (scene, id) => scene.issues.filter(({ on }) => on.computer === id || on.cable?.includes(id) || on.line?.[1] === id).flatMap((issue) => issue.notes);
+// A drawing that fails says so in a line instead of taking the page down with it.
+class DrawingGuard extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = { failed: false };
+    }
+    static getDerivedStateFromError() {
+        return { failed: true };
+    }
+    componentDidUpdate(before) {
+        if (this.state.failed && before.pools !== this.props.pools) this.setState({ failed: false });
+    }
+    render() {
+        return this.state.failed ? <Typography size="xs" color="muted">The drawing could not be shown. Press Check again, or reload the page.</Typography> : this.props.children;
+    }
+}
+// A warning's notes: a short title and one sentence each, in the warning or error colour, and the steps when asked for.
+const PoolNotes = ({ notes, steps = false }) => (
+    <Container layout="flex-column" gap="sm" padding="none" width="100%">
+        {notes.map((note) => (
+            <Container key={`${note.title}-${note.text}`} layout="flex" align="baseline" gap="xs" padding="none" width="100%" wrap={false}>
+                <Icon name={note.level === 'error' ? 'FiXCircle' : 'FiAlertTriangle'} size="xs" color={note.level === 'error' ? 'error' : 'warning'} />
+                <Container layout="flex-column" gap="xxs" padding="none" minWidth="0">
+                    <Typography size="xs" weight="semibold" color={note.level === 'error' ? 'error' : 'warning'}>{note.title}</Typography>
+                    <Typography size="xs">{note.text}</Typography>
+                    {steps && note.steps?.length > 0 && <GuideRows items={note.steps} size="xs" />}
+                </Container>
+            </Container>
+        ))}
+    </Container>
+);
 
 // One computer, drawn at (x, 0) standing on z0: its parts back to front.
 const drawComputer = (HL, P, front, g, form, x, y, z0) => {
@@ -456,7 +513,7 @@ const PoolDrawing = ({ HL, pools, onPick, onWarn, picked }) => {
         const computers = pools.computers || [];
         const svg = HL.mk('svg', { role: 'group', 'aria-label': 'Your computers and how they are joined' }, host);
         const C = HL.Cam(45, 0.5, 1);
-        const scene = pools.scene || { cables: [], homes: [], issues: [], flows: [] };
+        const scene = readScene(pools);
         const { cables, homes } = scene;
         const raised = (one) => (one.role === 'main' ? 3 : 0);
         const places = poolPlaces(computers, cables, homes);
@@ -469,13 +526,15 @@ const PoolDrawing = ({ HL, pools, onPick, onWarn, picked }) => {
         const links = [];
         const anchors = new Map();
         // A link the pool cannot use (a Public network) is drawn dim and lights nothing.
-        const addLink = (points, cls, ends, layer, open = true) => links.push({ el: HL.mk('path', { d: HL.open(points.map((point) => P(...point))), class: open ? cls : `${cls} pool-off` }, layer), ends, points, open });
+        // Each link is coloured by what the server found: works, warning, error, or plain when nothing was checked. A link the
+        // pool cannot use (a Public network) lights nothing when a computer is pointed at.
+        const addLink = (points, cls, ends, layer, state, open = true) => links.push({ el: HL.mk('path', { d: HL.open(points.map((point) => P(...point))), class: `${cls} pool-${state || 'plain'}` }, layer), ends, points, open });
         // Direct cables, with the plugs their computers have: Thunderbolt when both ends are, else network plugs.
         for (const cable of cables) {
             const [a, b] = [spots.get(cable.a), spots.get(cable.b)];
             const points = cablePoints(edgeToward(a.foot, b.middle), edgeToward(b.foot, a.middle), 6);
             const bolt = cable.plug === 'thunderbolt';
-            addLink(points, 'sil nf', [cable.a, cable.b], floor);
+            addLink(points, 'sil nf', [cable.a, cable.b], floor, cable.state);
             for (const end of [points[0], points.at(-1)]) {
                 const half = bolt ? 1.2 : 1.8;
                 const [ring, inner] = HL.rings(end[0] - half, end[1] - half, end[0] + half, end[1] + half, bolt ? 0.9 : 0.4, 0.3);
@@ -494,7 +553,7 @@ const PoolDrawing = ({ HL, pools, onPick, onWarn, picked }) => {
                 if (!spot) continue;
                 const wired = member.way === 'wired';
                 const points = wired ? cablePoints(edgeToward(part.foot, spot.middle), edgeToward(spot.foot, part.middle), 4) : airPoints(part.top, spot.top);
-                addLink(points, wired ? 'sil nf' : 'sil nf dash', [router.id, member.id], wired ? floor : air, member.open);
+                addLink(points, wired ? 'sil nf' : 'sil nf dash', [router.id, member.id], wired ? floor : air, member.state, member.open);
                 anchors.set(`${router.id}|${member.id}`, points[member.open ? 10 : 7]);
             }
         }
@@ -510,7 +569,7 @@ const PoolDrawing = ({ HL, pools, onPick, onWarn, picked }) => {
             const { one } = entry;
             const [x, y] = entry.at;
             const spot = spots.get(one.id);
-            const tone = one.reason || one.role === 'off' ? 'pool-dim' : one.role === 'main' ? 'pool-main' : '';
+            const tone = one.reason || one.role === 'off' ? 'pool-dim' : one.role === 'main' ? 'pool-main' : 'pool-lend';
             const g = HL.mk('g', { class: `pool-pc ${tone}`.trim() }, machines);
             if (one.role === 'main') {
                 const [ring, inner] = HL.rings(spot.foot[0] - 4, spot.foot[2] - 4, spot.foot[1] + 4, spot.foot[3] + 4, 2.4, 1.2);
@@ -561,14 +620,15 @@ const PoolDrawing = ({ HL, pools, onPick, onWarn, picked }) => {
         }
         light(picked.current);
         // Warning marks: over a computer's top, on a cable's middle, on a Wi-Fi line. Pointing at one says what is wrong.
-        const warn = (point, texts, fix = null) => {
+        const warn = (point, issue) => {
             const [wx, wy] = P(...point);
-            const tri = HL.mk('path', { d: `M${HL.r2(wx)},${HL.r2(wy - 5)}L${HL.r2(wx + 4.6)},${HL.r2(wy + 3)}L${HL.r2(wx - 4.6)},${HL.r2(wy + 3)}Z`, class: 'pool-warn', tabindex: 0, role: 'img', 'aria-label': texts.join(' ') }, marks);
-            HL.mk('path', { d: `M${HL.r2(wx - 0.5)},${HL.r2(wy - 2.4)}h1v2.9h-1zM${HL.r2(wx - 0.5)},${HL.r2(wy + 1.1)}h1v1h-1z`, class: 'pool-warn-mark' }, marks);
-            for (const type of ['pointerenter', 'focus']) bag.on(tri, type, () => onWarn(texts, tri));
+            const level = issue.level === 'error' ? ' error' : '';
+            const tri = HL.mk('path', { d: `M${HL.r2(wx)},${HL.r2(wy - 5)}L${HL.r2(wx + 4.6)},${HL.r2(wy + 3)}L${HL.r2(wx - 4.6)},${HL.r2(wy + 3)}Z`, class: `pool-warn${level}`, tabindex: 0, role: 'img', 'aria-label': issue.notes.map((note) => `${note.title}. ${note.text}`).join(' ') }, marks);
+            HL.mk('path', { d: `M${HL.r2(wx - 0.5)},${HL.r2(wy - 2.4)}h1v2.9h-1zM${HL.r2(wx - 0.5)},${HL.r2(wy + 1.1)}h1v1h-1z`, class: `pool-warn-mark${level}` }, marks);
+            for (const type of ['pointerenter', 'focus']) bag.on(tri, type, () => onWarn(issue.notes, tri));
             for (const type of ['pointerleave', 'blur']) bag.on(tri, type, () => onWarn(null));
-            // A click keeps what it says open, with the steps to fix it when there are some.
-            const keep = () => onWarn(texts, tri, { fix, kept: true });
+            // A click keeps what it says open, with the steps to fix it.
+            const keep = () => onWarn(issue.notes, tri, { fix: issue.fix, kept: true });
             bag.on(tri, 'click', keep);
             bag.on(tri, 'keydown', (event) => {
                 if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -580,7 +640,7 @@ const PoolDrawing = ({ HL, pools, onPick, onWarn, picked }) => {
             const key = issueKey(issue.on);
             const top = issue.on.computer ? groups.get(issue.on.computer)?.top : null;
             const point = top ? [top[0] + 14, top[1], top[2] + 4] : anchors.get(key);
-            if (point) warn(issue.on.computer ? point : [point[0], point[1], point[2] + 3], issue.texts, issue.fix);
+            if (point) warn(issue.on.computer ? point : [point[0], point[1], point[2] + 3], issue);
         }
         // Memory on its way: dots run along each link the server says memory is lent over, toward the primary computer.
         const flows = [];
@@ -661,8 +721,8 @@ const ComputerCard = ({ one, main, issues, onPart }) => {
                 <Typography size="xs" color="muted">{facts}</Typography>
                 {unused.length > 0 && <Typography size="xxs" color="muted">{cardsNote(unused)}</Typography>}
             </Container>
-            {status && !issues.includes(status[0]) && row(STATUS_ICONS[status[1]] || 'FiInfo', STATUS_TONES.includes(status[1]) ? status[1] : 'primary', status[0])}
-            {issues.map((text) => row('FiAlertTriangle', 'warning', text))}
+            {status && issues.length === 0 && row(STATUS_ICONS[status[1]] || 'FiInfo', STATUS_TONES.includes(status[1]) ? status[1] : 'primary', status[0])}
+            {issues.length > 0 && <PoolNotes notes={issues} steps />}
             {(one.reason === 'public' || (one.homes || []).some((home) => home.public)) && (
                 <Button size="xs" genieTrigger="click" genie={{ trigger: 'click', width: '460px', padding: 'md', content: <MakePrivate name={one.name} networks={[...new Set([...(one.publicNetworks || []), ...(one.homes || []).filter((home) => home.public && home.name).map((home) => home.name)])]} /> }}>
                     <Icon name="FiShield" />How to make it Private
@@ -737,7 +797,7 @@ const PoolSection = ({ pools, onPart, onCheck, checking, children }) => {
             {!pools && <Typography size="xs" color="muted">Reading your computers…</Typography>}
             {pools && computers.length === 0 && <Typography size="sm">Install the Mollama desktop app on your computers and sign in on each; they appear here.</Typography>}
             {pools && computers.length > 0 && HL === false && <Typography size="xs" color="muted">The drawing could not be loaded. Reload the page to try again.</Typography>}
-            {pools && computers.length > 0 && HL && <PoolDrawing HL={HL} pools={pools} onPick={pick} onWarn={hint} picked={picked} />}
+            {pools && computers.length > 0 && HL && <DrawingGuard pools={pools}><PoolDrawing HL={HL} pools={pools} onPick={pick} onWarn={hint} picked={picked} /></DrawingGuard>}
             {pools && computers.length > 0 && (
                 <Container layout="flex" align="baseline" gap="xs" padding="none" width="100%" wrap={false}>
                     <Icon name={ready ? 'FiCheckCircle' : 'FiInfo'} size="xs" color={ready ? 'success' : 'primary'} />
@@ -750,12 +810,12 @@ const PoolSection = ({ pools, onPart, onCheck, checking, children }) => {
                 </Container>
             )}
             <Genie visible={Boolean(chosen && open)} triggerRef={open?.ref} onClose={close} variant="popover" width="380px" padding="md" ariaLabel={chosen ? `${chosen.name}'s part in the pool` : undefined}>
-                {chosen && <ComputerCard one={chosen} main={main} issues={issuesFor(pools?.scene, chosen.id)} onPart={(one, role) => { close(); onPart(one, role); }} />}
+                {chosen && <ComputerCard one={chosen} main={main} issues={issuesFor(readScene(pools), chosen.id)} onPart={(one, role) => { close(); onPart(one, role); }} />}
             </Genie>
             <Genie visible={Boolean(tip)} triggerRef={tip?.ref} onClose={() => setTip(null)} variant={tip?.kept ? 'popover' : 'tooltip'} role={tip?.kept ? 'dialog' : 'tooltip'} closeOnClickOutside={Boolean(tip?.kept)} width={tip?.fix ? '460px' : '320px'} padding={tip?.kept ? 'md' : 'sm'}>
                 {tip && (
                     <Container layout="flex-column" gap="sm" padding="none" width="100%">
-                        {tip.texts.map((text) => <Typography key={text} size="xs">{text}</Typography>)}
+                        <PoolNotes notes={tip.texts} steps={tip.kept} />
                         {tip.kept && tip.fix?.kind === 'private' && <MakePrivate name={tip.fix.name} networks={tip.fix.networks} />}
                     </Container>
                 )}
