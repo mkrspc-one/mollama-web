@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Frame, Select, Divider } from '@components/Components';
+import { Page, Container, Card, Typography, Button, ButtonGroup, Badge, Icon, Input, Frame, Select, Divider, Switch, Data } from '@components/Components';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useNotification } from '@contexts/NotificationContext';
 import { deviceService, desktopService, rentalService, skillService, describeError, formatGb, useGuide } from '../client/ai.client';
@@ -504,10 +504,83 @@ const minutesText = (minutes) => {
 };
 
 // Renting a graphics card: the card, how long, and the most it may cost. The whole limit is set aside at once.
-const RentCard = ({ offer, onRented }) => {
+// The Rent view: every kind of card, free or not, with filters and sorting; choosing a free one opens its rent form.
+const MEMORY_FLOORS = [['0', 'Any graphics memory'], ['16', '16 GB or more'], ['24', '24 GB or more'], ['48', '48 GB or more'], ['80', '80 GB or more']];
+const RENT_SORTS = [['price', 'Price: lowest first'], ['price-down', 'Price: highest first'], ['memory', 'Graphics memory: most first'], ['name', 'Name']];
+const RENT_ORDER = {
+    price: (a, b) => a.price - b.price,
+    'price-down': (a, b) => b.price - a.price,
+    memory: (a, b) => (b.memoryMb || 0) - (a.memoryMb || 0) || a.price - b.price,
+    name: (a, b) => a.name.localeCompare(b.name)
+};
+const RENT_FIELDS = {
+    card: { label: 'Card' },
+    // Kept as numbers so the table sorts them as numbers, and written out only for display.
+    memory: { label: 'Graphics memory', component: Typography, props: { size: 'xs' }, transform: (value) => ({ children: value ? formatGb(value) : 'Not stated' }) },
+    price: { label: 'Price an hour', component: Typography, props: { size: 'xs' }, transform: (value) => ({ children: formatMoney(value) }) },
+    now: { label: 'Now', component: Badge, props: { size: 'xs' }, transform: (value) => ({ color: value === 'Free now' ? 'success' : 'default', children: value }) },
+    source: { label: 'Supplied by (admins and owners only)' }
+};
+
+const RentView = ({ offer, problem, renting, onRented, onShowComputers }) => {
+    const [freeOnly, setFreeOnly] = useState(false);
+    const [floor, setFloor] = useState('0');
+    const [sort, setSort] = useState('price');
+    const [find, setFind] = useState('');
+    if (problem) return <Notice title="The cards for rent could not be read" text={problem} />;
+    if (!offer) return <Notice title="Reading the cards for rent…" />;
+
+    const all = [...offer.cards.map((card) => ({ ...card, free: true })), ...(offer.unavailable || []).map((card) => ({ ...card, free: false }))];
+    const words = find.trim().toLowerCase();
+    const shown = all
+        .filter((card) => (!freeOnly || card.free) && (card.memoryMb || 0) >= Number(floor) * 1024 && (!words || card.name.toLowerCase().includes(words)))
+        .sort(RENT_ORDER[sort]);
+    const rows = shown.map((card) => ({
+        id: card.flavor,
+        card: `${card.name}${card.spot ? ' (spot)' : ''}`,
+        memory: card.memoryMb || 0,
+        price: card.price,
+        now: card.free ? 'Free now' : card.why || 'Out of stock right now',
+        ...(card.source ? { source: card.source } : {}),
+        held: card
+    }));
+    const rentRow = {
+        trigger: 'click', variant: 'popover', width: '480px', padding: 'lg',
+        content: (row) => (row.held.free
+            ? <RentCard offer={offer} onRented={onRented} start={row.id} />
+            : <Typography as="p" size="xs" color="muted">{`${row.card} is out of stock right now. Try again later, or choose a card that is free now.`}</Typography>)
+    };
+
+    return (
+        <Container layout="flex-column" gap="md" padding="none" width="100%">
+            <Typography as="p" size="xs" color="muted">
+                A computer with a strong graphics card, yours by the minute. It appears under Computers as one of your computers: you download models onto it and choose it in a chat. Choose a card that is free now to rent it.
+            </Typography>
+            {renting && (
+                <Notice title="You already have a rented computer" text="End it before renting another. It is under Computers.">
+                    <Button size="sm" onClick={onShowComputers}><Icon name="FiMonitor" />Show it</Button>
+                </Notice>
+            )}
+            <Container layout="flex" align="end" gap="sm" padding="none" width="100%">
+                <Input size="sm" label="Find a card" value={find} onChange={(event) => setFind(event.target.value)} width="220px" />
+                <Select size="sm" label="Graphics memory" value={floor} onChange={(value) => setFloor(String(value))} width="200px"
+                    options={MEMORY_FLOORS.map(([value, label]) => ({ value, label }))} />
+                <Select size="sm" label="Sort by" value={sort} onChange={setSort} width="230px"
+                    options={RENT_SORTS.map(([value, label]) => ({ value, label }))} />
+                <Switch size="sm" label="Only cards free now" checked={freeOnly} onChange={() => setFreeOnly(!freeOnly)} />
+            </Container>
+            <Typography as="p" size="xxs" color="muted">{`${shown.filter((card) => card.free).length} free now, ${shown.filter((card) => !card.free).length} out of stock right now. You have ${formatMoney(offer.balance)} of credit.`}</Typography>
+            {rows.length > 0
+                ? <Data data={rows} size="xs" fieldConfig={RENT_FIELDS} exclude={['id', 'held']} sortable flat width="100%" genie={rentRow} />
+                : <Notice title="No card matches" text="Change the filters to see more cards." />}
+        </Container>
+    );
+};
+
+const RentCard = ({ offer, onRented, start = null }) => {
     const { success, error: notifyError } = useNotification();
     const navigate = useNavigate();
-    const [flavor, setFlavor] = useState(offer.cards[0]?.flavor || '');
+    const [flavor, setFlavor] = useState(start || offer.cards[0]?.flavor || '');
     const [hours, setHours] = useState(String(offer.rules.hours));
     const [limit, setLimit] = useState(String(offer.rules.limit / 100));
     const [busy, setBusy] = useState(false);
@@ -753,9 +826,10 @@ const DevicesPage = () => {
     const [rentals, setRentals] = useState([]);
     const [offer, setOffer] = useState(null);
     const [rentProblem, setRentProblem] = useState(null);
-    // Two views: the computers themselves, and pooling them. The address says which, so other pages can link to pooling.
+    // Three views: the computers themselves, pooling them, and renting one. The address says which, so other pages can link.
     const [params, setParams] = useSearchParams();
-    const view = params.get('view') === 'pooling' ? 'pooling' : 'computers';
+    const view = ['pooling', 'rent'].includes(params.get('view')) ? params.get('view') : 'computers';
+    const [rentOn, setRentOn] = useState(false);
 
     const load = useCallback(async () => {
         try {
@@ -765,10 +839,12 @@ const DevicesPage = () => {
             rentalService.list().then((answer) => setRentals(answer.rentals || []), () => setRentals([]));
             rentalService.cards().then((answer) => {
                 setOffer(answer.on ? answer : null);
+                setRentOn(Boolean(answer.on));
                 setRentProblem(null);
             }, (error) => {
                 setOffer(null);
                 const answer = error.response?.data;
+                setRentOn(answer?.code === 'PROVIDER_DOWN');
                 setRentProblem(answer?.code === 'PROVIDER_DOWN' ? `${answer.message}${answer.detail ? ` The provider says: ${answer.detail}` : ''}` : null);
             });
             setCanManage(Boolean(result.permissions?.manage));
@@ -874,7 +950,7 @@ const DevicesPage = () => {
     };
 
     const addComputer = { trigger: 'click', variant: 'popover', width: '480px', padding: 'lg', content: <AddComputer /> };
-    const rentCard = offer && { trigger: 'click', variant: 'popover', width: '480px', padding: 'lg', content: <RentCard offer={offer} onRented={load} /> };
+    const showView = (id) => id !== view && setParams(id === 'computers' ? {} : { view: id });
 
     return (
         <Page
@@ -886,17 +962,17 @@ const DevicesPage = () => {
             actions={(
                 <Container layout="flex" align="center" gap="sm" padding="none" wrap={false}>
                     <Button size="sm" onClick={load}><Icon name="FiRefreshCw" />Refresh</Button>
-                    {rentCard && !renting && <Button size="sm" genie={rentCard}><Icon name="FiZap" />Rent a graphics card</Button>}
                     <Button size="sm" color="secondary" variant="solid" genie={addComputer}><Icon name="FiPlus" />Add a computer</Button>
                 </Container>
             )}
         >
-            {rentProblem && <Typography as="p" size="xs" color="warning">{`Renting a graphics card: ${rentProblem}`}</Typography>}
             <ButtonGroup size="sm" justify="start" selectable={false}>
-                {[['computers', 'Computers', 'FiMonitor'], ['pooling', 'Pooling', 'FiLayers']].map(([id, label, icon]) => (
-                    <Button key={id} size="sm" selected={view === id} onClick={() => id !== view && setParams(id === 'pooling' ? { view: id } : {})}><Icon name={icon} />{label}</Button>
+                {[['computers', 'Computers', 'FiMonitor'], ['pooling', 'Pooling', 'FiLayers'], ...(rentOn ? [['rent', 'Rent a graphics card', 'FiZap']] : [])].map(([id, label, icon]) => (
+                    <Button key={id} size="sm" selected={view === id} onClick={() => showView(id)}><Icon name={icon} />{label}</Button>
                 ))}
             </ButtonGroup>
+
+            {view === 'rent' && <RentView offer={offer} problem={rentProblem} renting={renting} onRented={() => { load(); showView('computers'); }} onShowComputers={() => showView('computers')} />}
 
             {devices === null && !failed && <Notice title="Reading this computer…" />}
 
@@ -906,11 +982,11 @@ const DevicesPage = () => {
                 </Notice>
             )}
 
-            {devices?.length === 0 && (
+            {view !== 'rent' && devices?.length === 0 && (
                 <Notice title="No device is connected to your account yet." text="Install the Mollama desktop app on a computer and sign in. That computer appears here by itself, and its models can then be used from any of your Mollama apps.">
                     <Container layout="flex" gap="xs" padding="none">
                         <Button size="sm" genie={addComputer}><Icon name="FiPlus" />Add a computer</Button>
-                        {rentCard && <Button size="sm" variant="ghost" genie={rentCard}><Icon name="FiZap" />Rent a graphics card</Button>}
+                        {rentOn && <Button size="sm" variant="ghost" onClick={() => showView('rent')}><Icon name="FiZap" />Rent a graphics card</Button>}
                     </Container>
                 </Notice>
             )}
