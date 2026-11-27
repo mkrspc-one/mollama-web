@@ -946,10 +946,51 @@ const thisSystem = () => {
     return desktopService.systems.find((system) => system.id === id) || null;
 };
 
+// A desktop app that updates itself (1.0.27 on): it checks for new versions, downloads the installer with progress and
+// opens it, so no browser tab is left behind. The card only shows what it says and passes the presses on.
+const SelfUpdate = ({ updater, current }) => {
+    const [state, setState] = useState(null);
+    const [busy, setBusy] = useState(false);
+    useEffect(() => {
+        let live = true;
+        updater.state().then((now) => { if (live) setState(now); });
+        const stop = updater.onChange((now) => { if (live) setState(now); });
+        return () => { live = false; stop?.(); };
+    }, [updater]);
+    const act = async (step) => {
+        setBusy(true);
+        try { setState(await updater[step]()); } finally { setBusy(false); }
+    };
+    const version = state?.version;
+    const percent = Math.round((state?.progress || 0) * 100);
+    const button = state?.state === 'downloading'
+        ? <Button size="xs" disabled><Icon name="FiLoader" />{`Downloading ${version}… ${percent}%`}</Button>
+        : state?.state === 'downloaded'
+            ? <Button size="xs" title="Opens the installer. On Windows the app closes and updates in place; your sign-in and settings stay." onClick={() => act('install')}><Icon name="FiPackage" />{`Install ${version}`}</Button>
+            : state?.state === 'available'
+                ? <Button size="xs" disabled={busy} title={state.size ? `Downloads ${Math.round(state.size / 1048576)} MB into your Downloads folder.` : undefined} onClick={() => act('download')}><Icon name="FiDownload" />{`Update to ${version}`}</Button>
+                : <Button size="xs" disabled={busy} title="Looks for a newer version now. The app also looks by itself every six hours." onClick={() => act('check')}><Icon name={busy ? 'FiLoader' : 'FiRefreshCw'} />{busy ? 'Checking…' : 'Up to date'}</Button>;
+    return (
+        <Container layout="flex-column" gap="xxs" padding="none" width="100%">
+            <Container layout="flex" align="center" gap="sm" padding="none" width="100%">
+                <Typography as="p" size="xs" color="muted" width="8rem" minWidth="8rem">Mollama app</Typography>
+                <Badge size="xs" color={['available', 'downloading', 'downloaded'].includes(state?.state) ? 'warning' : 'default'}>Version {current}</Badge>
+                {button}
+            </Container>
+            {state?.error && <Typography size="xxs" color="warning">{state.error}</Typography>}
+        </Container>
+    );
+};
+
 // Inside the desktop app, the card for this computer says which version of the app it runs and offers a newer one.
-// The installer downloads in the browser and updates the app in place when it is run; sign-in and settings are kept.
+// An app that updates itself does it all (SelfUpdate); for an older one the installer downloads in the browser and
+// updates the app in place when it is run; sign-in and settings are kept.
 const AppUpdate = () => {
     const current = window.desktop?.version || null;
+    if (current && window.desktop?.update) return <SelfUpdate updater={window.desktop.update} current={current} />;
+    return <BrowserUpdate current={current} />;
+};
+const BrowserUpdate = ({ current }) => {
     const [published, setPublished] = useState(null);
     const [checking, setChecking] = useState(false);
     const check = useCallback(() => {
