@@ -1185,9 +1185,41 @@ const ComponentBlock = ({ source }) => {
     );
 };
 
+// A whole page a model wrote out as code (instead of through its skill's render) is shown as the page, with its code a
+// click away. A Visual Explainer source page gets the kit's styles and script from the skill's own files, as a rendered
+// one does, and the app's theme; it has not been through the render's checks.
+const WHOLE_PAGE = /^\s*(<!doctype html|<html\b)/i;
+const VE_PALETTE = 'bg:background, surface:surface, node-top:surface, border:border, border-bright:text 45%, text:text, text-dim:text 65%, accent:primary, accent-dim:primary 14%, ok:success, warn:warning, risk:error, info:secondary';
+const VE_KIT = 'explainer-visual-explainer/kit';
+const pageOf = (code) => {
+    if (!/<link\b[^>]*data-ve-kit[^>]*>/i.test(code)) return { content: code, palette: null };
+    let page = code.replace(/<link\b[^>]*data-ve-kit[^>]*>/i, '<style data-ve-kit>/*VE_CSS_1*/</style>').replace(/<link\b[^>]*data-ve-kit[^>]*>/gi, '');
+    const script = '<script data-ve-kit>/*VE_JS_1*/\n/*VE_JS_2*/</script>';
+    page = /<\/body>/i.test(page) ? page.replace(/<\/body>/i, () => `${script}</body>`) : `${page}${script}`;
+    const parts = [`<Part name="VE_CSS_1" file="${VE_KIT}/kit.css" />`, `<Part name="VE_JS_1" file="${VE_KIT}/reply.js" />`, `<Part name="VE_JS_2" file="${VE_KIT}/kit.js" />`];
+    return { content: `${page}\n${parts.join('\n')}`, palette: VE_PALETTE };
+};
+const PageBlock = ({ code }) => {
+    const context = React.useContext(BlockContext);
+    const [showCode, setShowCode] = useState(false);
+    const { content, palette } = useMemo(() => pageOf(code), [code]);
+    const title = code.match(/<title[^>]*>([^<]{1,80})<\/title>/i)?.[1]?.trim() || 'Page';
+    return (
+        <Container layout="flex-column" gap="xs" padding="none" width="100%">
+            <Container layout="flex" justify="end" padding="none" width="100%">
+                <Button size="xs" variant="ghost" onClick={() => setShowCode((now) => !now)} title={showCode ? 'Show the page' : 'Show the code'}>
+                    <Icon name={showCode ? 'FiEye' : 'FiCode'} size="xs" />{showCode ? 'Page' : 'Code'}
+                </Button>
+            </Container>
+            {showCode ? <CodeView code={code} language="html" /> : <ChatFrame content={content} height="720px" title={title} palette={palette} live={context.live} />}
+        </Container>
+    );
+};
+
 const PreBlock = ({ children }) => {
     const language = String(children?.props?.className || '');
     const code = textOf(children);
+    if (/language-html?\b/.test(language) && WHOLE_PAGE.test(code)) return <PageBlock code={code} />;
     // Components in a fence with another name, such as xml, are drawn all the same, unless it is program code.
     const meant = /language-component\b/.test(language) || (TAG_START.test(code) && !/=>|className=|onClick=|\bimport\s/.test(code));
     if (!meant) return <CodeBlock>{children}</CodeBlock>;
