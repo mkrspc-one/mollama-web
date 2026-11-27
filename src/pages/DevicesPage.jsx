@@ -809,7 +809,10 @@ const PoolSection = ({ pools, onPart, onCheck, checking, children }) => {
         <Container as="section" layout="flex-column" gap="lg" padding="none" width="100%" minWidth="0">
             <Container layout="flex-column" gap="sm" padding="none" width="100%">
                 <Heading title="Pooling computers" badge={<Badge size="xs" title="Needs the Mollama desktop app 1.0.8 or later on every pooled computer">Preview</Badge>}>
-                    <Typography size="xxs" color="muted">{checking ? 'Checking your connections…' : pools?.checks?.at ? `Up to date · ${new Date(pools.checks.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}</Typography>
+                    <Container layout="flex" align="center" gap="sm" padding="none">
+                        <Typography size="xxs" color="muted">{checking ? 'Checking your connections…' : pools?.checks?.at ? `Checked ${new Date(pools.checks.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}</Typography>
+                        <Button size="xs" disabled={checking} title="Reads every connected computer again and checks who can reach whom. This also happens by itself whenever a computer comes online, goes offline or changes its part." onClick={onCheck}><Icon name={checking ? 'FiLoader' : 'FiRefreshCw'} />{checking ? 'Checking…' : 'Check again'}</Button>
+                    </Container>
                 </Heading>
                 <Typography as="p" size="sm" maxWidth="760px">
                     Several of your computers can share one model that none of them could hold alone: a primary computer holds the model and runs it, and the secondary computers lend it their memory. Click a computer to choose its part.
