@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useNotification } from '@contexts/NotificationContext';
 import { deviceService, desktopService, rentalService, skillService, describeError, formatGb, useGuide } from '../client/ai.client';
 import { formatMoney } from '../client/billing.client';
+import { layoutItems } from '@components/Flow';
 
 
 const ADD_STEPS = [
@@ -272,20 +273,21 @@ const loadHairline = () => {
     return hairlineKernel;
 };
 const POOL_STYLE = `
-[data-hairline="pool"]{--hairline-plate:var(--app-background);--hairline-hi:var(--app-text);--hairline-edge:color-mix(in srgb,var(--app-text) 58%,transparent);--hairline-mid:color-mix(in srgb,var(--app-text) 34%,transparent);--hairline-lo:color-mix(in srgb,var(--app-text) 16%,transparent);aspect-ratio:auto;width:100%;max-width:var(--pool-max,100%);margin:0 auto;color:var(--app-text)}
-[data-hairline="pool"]>svg{position:static;width:100%;height:auto;overflow:visible}
+[data-hairline="pool"]{--hairline-plate:var(--background-color);--hairline-hi:var(--text-color);--hairline-edge:var(--text-muted);--hairline-mid:var(--border-color);--hairline-lo:var(--border-light);aspect-ratio:auto;width:100%;margin:0 auto;color:var(--text-color)}
+[data-hairline="pool"]>svg{position:static;width:100%;height:auto;max-height:78vh;overflow:visible}
 [data-hairline="pool"] .pool-pc{transition:transform 260ms cubic-bezier(.32,.72,0,1)}
 [data-hairline="pool"] .pool-pc.up{transform:translateY(-2.5px)}
-[data-hairline="pool"] .pool-dim path{stroke:var(--hl-lo)}
+[data-hairline="pool"] .pool-dim path{stroke:var(--border-color)}
 [data-hairline="pool"] .pool-main .sil{stroke:var(--hl-hi)}
-[data-hairline="pool"] path.pool-on{stroke:var(--hl-hi)}
+[data-hairline="pool"] path.pool-on{stroke:var(--primary-color)}
+[data-hairline="pool"] path.pool-off{stroke:var(--hl-lo)}
 [data-hairline="pool"] .pool-hit{fill:transparent;stroke:none;cursor:pointer;outline:none}
-[data-hairline="pool"] .pool-hit:focus-visible{stroke:var(--app-primary);stroke-dasharray:2 2}
-[data-hairline="pool"] text{fill:currentColor;stroke:none;font-family:inherit;pointer-events:none}
-[data-hairline="pool"] text.muted{opacity:.6}
-[data-hairline="pool"] .pool-warn{fill:var(--warning-color,#d9a400);stroke:var(--app-background);stroke-width:1.2px;cursor:help;outline:none}
-[data-hairline="pool"] .pool-warn-mark{fill:var(--app-background);stroke:none;pointer-events:none}
-[data-hairline="pool"] .pool-flow{fill:var(--app-primary);stroke:none;pointer-events:none}
+[data-hairline="pool"] .pool-hit:focus-visible{stroke:var(--primary-color);stroke-dasharray:2 2}
+[data-hairline="pool"] text{fill:var(--text-color);stroke:none;font-family:var(--font-family);pointer-events:none}
+[data-hairline="pool"] text.muted{fill:var(--text-muted)}
+[data-hairline="pool"] .pool-warn{fill:var(--warning-color);stroke:var(--background-color);stroke-width:1.2px;cursor:pointer;outline:none}
+[data-hairline="pool"] .pool-warn-mark{fill:var(--warning-contrast-color);stroke:none;pointer-events:none}
+[data-hairline="pool"] .pool-flow{fill:var(--primary-color);stroke:none;pointer-events:none}
 @media (prefers-reduced-motion:reduce){[data-hairline="pool"] .pool-pc{transition:none}}
 `;
 const useHairline = () => {
@@ -312,86 +314,31 @@ const useHairline = () => {
 // sides and its top, and the box is its hit area.
 const FOOT = { laptop: [-17, 17, -12, 12, 24], tablet: [-15, 15, -13, 10, 22], allinone: [-21, 21, -6.2, 13, 36], mini: [-21, 32, -6.2, 14, 33], desktop: [-19, 37, -12, 13, 33] };
 const footOf = (form) => FOOT[form] || FOOT.laptop;
-const anchorsOf = (form, x, z0) => {
+const anchorsOf = (form, x, y, z0) => {
     const [x0, x1, y0, y1, h] = footOf(form);
-    return { top: [x, (y0 + Math.min(y1, -2)) / 2, z0 + h], left: [x + x0, -5, z0 + 0.9], right: [x + x1, -5, z0 + 0.9], label: [x + (x0 + x1) / 2, y1 + 7, 0],
-        corners: [x0, x1].flatMap((cx) => [y0, y1].flatMap((cy) => [[x + cx, cy, 0], [x + cx, cy, z0 + h]])) };
+    return {
+        top: [x, y + (y0 + Math.min(y1, -2)) / 2, z0 + h],
+        foot: [x + x0, x + x1, y + y0, y + y1],
+        middle: [x + (x0 + x1) / 2, y + (y0 + y1) / 2],
+        label: [x + (x0 + x1) / 2, y + y1 + 6, 0],
+        corners: [x0, x1].flatMap((cx) => [y0, y1].flatMap((cy) => [[x + cx, y + cy, 0], [x + cx, y + cy, z0 + h]]))
+    };
 };
 const REASON_SHORT = { offline: 'Offline', paused: 'Paused', update: 'Needs an update', public: 'Public network', nonetwork: 'No network', alone: 'Not joined' };
 const FORM_NAMES = { laptop: 'Laptop', tablet: 'Tablet', allinone: 'All-in-one', mini: 'Small desktop', desktop: 'Desktop' };
 
-// Who is joined to whom: the direct cables the checks found (a pair that reached the other at least one way), and each
-// home network as a router its computers reach by Wi-Fi or by cable.
-const poolLinks = (pools) => {
-    const byId = new Map((pools?.computers || []).map((one) => [one.id, one]));
-    const cables = (pools?.checks?.pairs || []).filter((pair) => pair.via === 'cable' && pair.verdict !== 'unknown' && byId.has(pair.a) && byId.has(pair.b));
-    const homes = (pools?.networks || []).filter((network) => network.via === 'home').map((network) => ({
-        id: `home:${network.network}`,
-        members: network.computers.filter((one) => byId.has(one.id)).map((one) => ({ id: one.id, way: one.wired ? 'wired' : 'wifi' }))
-    }));
-    return { cables, homes };
-};
-
-// The order computers stand in: each chain of cables kept together, pooled ones first, the ones left out at the end.
-const poolOrder = (computers, cables) => {
-    const next = new Map(computers.map((one) => [one.id, []]));
-    for (const cable of cables) {
-        next.get(cable.a)?.push(cable.b);
-        next.get(cable.b)?.push(cable.a);
-    }
-    const rank = (one) => (one.reason ? 2 : one.role === 'off' ? 1 : 0);
-    const sorted = [...computers].sort((a, b) => rank(a) - rank(b) || (b.role === 'main') - (a.role === 'main') || a.name.localeCompare(b.name));
-    const seen = new Set();
-    const order = [];
-    const walk = (id) => {
-        if (seen.has(id)) return;
-        seen.add(id);
-        order.push(id);
-        for (const other of next.get(id) || []) walk(other);
-    };
-    // A chain is walked from one of its ends, so it stands in line.
-    for (const one of sorted) if (!seen.has(one.id) && (next.get(one.id) || []).length <= 1) walk(one.id);
-    for (const one of sorted) walk(one.id);
-    return order.map((id) => computers.find((one) => one.id === id));
-};
-
-// What is wrong, in words: on each computer, and on each link between two computers.
-const poolIssues = (pools, cables) => {
-    const byId = new Map((pools?.computers || []).map((one) => [one.id, one]));
-    const name = (id) => byId.get(id)?.name || 'that computer';
-    const onComputer = new Map();
-    const onLink = new Map();
-    const add = (map, key, text) => map.set(key, [...(map.get(key) || []), text]);
-    for (const one of pools?.computers || []) {
-        if (one.reason && one.reason !== 'alone') add(onComputer, one.id, one.message);
-        for (const problem of one.problems || []) if (problem.level === 'problem') add(onComputer, one.id, problem.message);
-        const status = poolStatus(one, Boolean(pools.main));
-        if (status && ['error', 'warning'].includes(status[1])) add(onComputer, one.id, status[0]);
-        const cabled = (pools.networks || []).some((network) => network.via === 'cable' && network.computers.some((entry) => entry.id === one.id));
-        if (pools.checks && cabled && !cables.some((cable) => cable.a === one.id || cable.b === one.id)) add(onComputer, one.id, 'Its cable reaches none of your computers. Check that it is plugged in at both ends.');
-    }
-    for (const pair of pools?.checks?.pairs || []) {
-        if (pair.verdict !== 'blocked' || !byId.has(pair.a) || !byId.has(pair.b)) continue;
-        const why = (pair.there.ok ? pair.back.why : pair.there.why) || '';
-        const way = pair.via === 'cable' ? 'the cable' : pair.via === 'wifi' ? 'Wi-Fi' : 'your home network';
-        const text = pair.from
-            ? `${name(pools.main)}, the primary computer, cannot reach ${name(pair.from)} over ${way}; only the other way works. ${why}`
-            : `${name(pair.a)} and ${name(pair.b)} cannot reach each other over ${way}. ${why}`;
-        // On a home network the mark sits on the line of the computer that is not the primary one.
-        const target = pair.via === 'cable' ? `${pair.a}|${pair.b}` : pair.a === pools.main ? pair.b : pair.a === pair.from ? pair.a : pair.b;
-        add(onLink, target, text.trim());
-    }
-    return { onComputer, onLink };
-};
+// Where a warning sits: its computer, its cable or its line to a router, as the server's scene names it.
+const issueKey = (on) => (on.computer ? on.computer : on.cable ? [...on.cable].sort().join('|') : on.line.join('|'));
+const issuesFor = (scene, id) => (scene?.issues || []).filter(({ on }) => on.computer === id || on.cable?.includes(id) || on.line?.[1] === id).flatMap((issue) => issue.texts);
 
 // One computer, drawn at (x, 0) standing on z0: its parts back to front.
-const drawComputer = (HL, P, front, g, form, x, z0) => {
+const drawComputer = (HL, P, front, g, form, x, y, z0) => {
     const box = (x0, y0, x1, y1, a, b, r = 1.4, inset = 0.9) => {
-        const [ring, inner] = HL.rings(x + x0, y0, x + x1, y1, r, inset);
+        const [ring, inner] = HL.rings(x + x0, y + y0, x + x1, y + y1, r, inset);
         HL.put(HL.solid(g), HL.prism(P, front, ring, inner, z0 + a, z0 + b));
     };
-    const line = (points, cls = 'lo nf') => HL.mk('path', { d: HL.open(points.map(([px, py, pz]) => P(x + px, py, z0 + pz))), class: cls }, g);
-    const face = (x0, x1, y, a, b, cls = 'lo nf') => HL.mk('path', { d: HL.poly([[x0, y, a], [x1, y, a], [x1, y, b], [x0, y, b]].map(([px, py, pz]) => P(x + px, py, z0 + pz))), class: cls }, g);
+    const line = (points, cls = 'lo nf') => HL.mk('path', { d: HL.open(points.map(([px, py, pz]) => P(x + px, y + py, z0 + pz))), class: cls }, g);
+    const face = (x0, x1, at, a, b, cls = 'lo nf') => HL.mk('path', { d: HL.poly([[x0, at, a], [x1, at, a], [x1, at, b], [x0, at, b]].map(([px, py, pz]) => P(x + px, y + py, z0 + pz))), class: cls }, g);
     const monitor = (half, a, b) => {
         box(-7, -6, 7, 2, 0, 1, 1.6, 0.8);
         box(-1.6, -4.6, 1.6, -3, 1, a + 1, 0.8, 0.4);
@@ -403,7 +350,7 @@ const drawComputer = (HL, P, front, g, form, x, z0) => {
         box(-17, -12, 17, -10.4, 1.8, 24, 1.4, 0.5);
         face(-14.5, 14.5, -10.4, 4.4, 21.6);
         line([[-13, -8, 1.8], [13, -8, 1.8], [13, 1.5, 1.8], [-13, 1.5, 1.8], [-13, -8, 1.8]]);
-        for (const y of [-5.6, -3.2, -0.8]) line([[-13, y, 1.8], [13, y, 1.8]]);
+        for (const row of [-5.6, -3.2, -0.8]) line([[-13, row, 1.8], [13, row, 1.8]]);
         line([[-5, 4, 1.8], [5, 4, 1.8], [5, 10, 1.8], [-5, 10, 1.8], [-5, 4, 1.8]]);
         return;
     }
@@ -411,7 +358,7 @@ const drawComputer = (HL, P, front, g, form, x, z0) => {
         line([[-11, -4, 15], [-11, -13, 0]], 'sil nf');
         line([[11, -4, 15], [11, -13, 0]], 'sil nf');
         box(-15, -2, 15, 10, 0, 1, 1.4, 0.6);
-        for (const y of [1, 3.4, 5.8]) line([[-12, y, 1], [12, y, 1]]);
+        for (const row of [1, 3.4, 5.8]) line([[-12, row, 1], [12, row, 1]]);
         box(-15, -4, 15, -2.4, 1, 22, 1.6, 0.5);
         face(-13, 13, -2.4, 3, 20);
         return;
@@ -428,7 +375,7 @@ const drawComputer = (HL, P, front, g, form, x, z0) => {
         line([[19, 14, 2.2], [21, 14, 2.2]], 'sil nf');
     }
     box(-14, 7, 10, 13, 0, 1, 1, 0.5);
-    for (const y of [9, 11]) line([[-12, y, 1], [8, y, 1]]);
+    for (const row of [9, 11]) line([[-12, row, 1], [8, row, 1]]);
 };
 
 const drawRouter = (HL, P, front, g, x, y) => {
@@ -449,13 +396,45 @@ const drawRouter = (HL, P, front, g, x, y) => {
     return { top: [x, y - 4.5, 15], port: [x, y + 6, 1], points: [[-11, -6, 0], [11, 6, 0], [-11, -6, 15], [11, -6, 15], [11, 6, 4], [-11, 6, 4]].map(([a, b, c]) => [x + a, y + b, c]) };
 };
 
-// A cable on the floor between two ports, sagging toward the front, and a wire through the air for Wi-Fi.
+// Flow's grid puts linked boxes beside each other; its spots are read as screen space and laid on the floor, so the
+// computers fill the width instead of running down a diagonal. A screen step right is the floor's (1, -1) direction,
+// a step down is (1, 1) at twice the length, since the floor is seen at half height.
+const POOL_CELL = { computer: [62, 66], router: [40, 34] };
+const FLOW_SCALE = 0.3;
+const floorAt = (sx, sy) => [(sx + 2 * sy) / Math.SQRT2, (2 * sy - sx) / Math.SQRT2];
+const poolPlaces = (computers, cables, homes) => {
+    const items = [
+        ...computers.map((one) => ({ id: one.id, wide: POOL_CELL.computer[0] / FLOW_SCALE, tall: POOL_CELL.computer[1] / FLOW_SCALE })),
+        ...homes.map((home) => ({ id: home.id, wide: POOL_CELL.router[0] / FLOW_SCALE, tall: POOL_CELL.router[1] / FLOW_SCALE }))
+    ];
+    const wires = [...cables.map((cable) => ({ source: cable.a, target: cable.b })), ...homes.flatMap((home) => home.members.map((member) => ({ source: home.id, target: member.id })))];
+    // A computer joined to nothing (offline, or alone on its network) is tied to the first one for the layout only, so
+    // it takes a spot in the same grid instead of being set apart round the others.
+    const tied = new Set(wires.flatMap((wire) => [wire.source, wire.target]));
+    const anchor = items.find((item) => tied.has(item.id))?.id || items[0]?.id;
+    for (const item of items) if (!tied.has(item.id) && item.id !== anchor) wires.push({ source: anchor, target: item.id });
+    const laid = layoutItems(items, wires, 'grid');
+    const places = new Map();
+    for (const item of items) {
+        const at = laid.get(item.id) || { x: 0, y: 0 };
+        // A computer stands in the lower part of its spot, since it rises above where it stands.
+        places.set(item.id, floorAt((at.x + item.wide / 2) * FLOW_SCALE, (at.y + item.tall * 0.62) * FLOW_SCALE));
+    }
+    return places;
+};
+// Where a cable leaves a footprint: the point of its edge nearest the other end, on the floor.
+const edgeToward = (foot, toward) => [Math.min(foot[1], Math.max(foot[0], toward[0])), Math.min(foot[3], Math.max(foot[2], toward[1])), 0.9];
 const cablePoints = (a, b, dip) => {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const length = Math.hypot(dx, dy) || 1;
+    let [nx, ny] = [-dy / length, dx / length];
+    if (nx + ny < 0) [nx, ny] = [-nx, -ny];
     const points = [];
     for (let i = 0; i <= 16; i += 1) {
         const t = i / 16;
-        const lift = i === 0 ? a[2] : i === 16 ? b[2] : 0;
-        points.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t + Math.sin(Math.PI * t) * dip, lift]);
+        const sag = Math.sin(Math.PI * t) * dip;
+        points.push([a[0] + dx * t + nx * sag, a[1] + dy * t + ny * sag, i === 0 ? a[2] : i === 16 ? b[2] : 0]);
     }
     return points;
 };
@@ -477,82 +456,72 @@ const PoolDrawing = ({ HL, pools, onPick, onWarn, picked }) => {
         const computers = pools.computers || [];
         const svg = HL.mk('svg', { role: 'group', 'aria-label': 'Your computers and how they are joined' }, host);
         const C = HL.Cam(45, 0.5, 1);
-        const { cables, homes } = poolLinks(pools);
-        const order = poolOrder(computers, cables);
-        const { onComputer, onLink } = poolIssues(pools, cables);
+        const scene = pools.scene || { cables: [], homes: [], issues: [], flows: [] };
+        const { cables, homes } = scene;
         const raised = (one) => (one.role === 'main' ? 3 : 0);
-        // Places along the floor, each computer by its width, with a gap before the ones left out.
-        const places = new Map();
-        let cursor = 0;
-        order.forEach((one, index) => {
-            const [x0, x1] = footOf(one.form);
-            if (index > 0 && one.reason && !order[index - 1].reason) cursor += 26;
-            places.set(one.id, cursor - x0);
-            cursor += x1 - x0 + 26;
-        });
-        const spots = new Map(order.map((one) => [one.id, anchorsOf(one.form, places.get(one.id), raised(one))]));
-        const routers = homes.map((home, index) => {
-            const xs = home.members.map((member) => spots.get(member.id)?.top[0]).filter((value) => value !== undefined);
-            return { ...home, x: xs.reduce((sum, value) => sum + value, 0) / Math.max(1, xs.length), y: -72 - index * 34 };
-        });
-        HL.fit(C, [...[...spots.values()].flatMap((spot) => spot.corners), ...routers.flatMap((router) => [[router.x - 14, router.y - 8, 0], [router.x + 14, router.y + 8, 30]])], 0, 0);
+        const places = poolPlaces(computers, cables, homes);
+        const spots = new Map(computers.map((one) => [one.id, anchorsOf(one.form, ...places.get(one.id), raised(one))]));
+        const routers = homes.map((home) => ({ ...home, at: places.get(home.id) }));
+        HL.fit(C, [...[...spots.values()].flatMap((spot) => spot.corners), ...routers.flatMap(({ at }) => [[at[0] - 14, at[1] - 8, 0], [at[0] + 14, at[1] + 8, 30]])], 0, 0);
         const P = HL.proj(C);
         const front = HL.facing(C);
-        const [back, floor, air, machines, names, marks] = [0, 1, 2, 3, 4, 5].map(() => HL.mk('g', {}, svg));
+        const [floor, air, machines, names, marks] = [0, 1, 2, 3, 4].map(() => HL.mk('g', {}, svg));
         const links = [];
         const anchors = new Map();
-        const routerAt = new Map(routers.map((router) => [router.id, drawRouter(HL, P, front, back, router.x, router.y)]));
-        const addLink = (points, cls, ends, layer) => {
-            const el = HL.mk('path', { d: HL.open(points.map((point) => P(...point))), class: cls }, layer);
-            links.push({ el, ends, points });
-        };
+        // A link the pool cannot use (a Public network) is drawn dim and lights nothing.
+        const addLink = (points, cls, ends, layer, open = true) => links.push({ el: HL.mk('path', { d: HL.open(points.map((point) => P(...point))), class: open ? cls : `${cls} pool-off` }, layer), ends, points, open });
         // Direct cables, with the plugs their computers have: Thunderbolt when both ends are, else network plugs.
         for (const cable of cables) {
-            const [left, right] = places.get(cable.a) < places.get(cable.b) ? [cable.a, cable.b] : [cable.b, cable.a];
-            const adjacent = Math.abs(order.findIndex((one) => one.id === left) - order.findIndex((one) => one.id === right)) === 1;
-            const points = cablePoints(spots.get(left).right, spots.get(right).left, adjacent ? 4 : 30);
-            const kinds = (id) => computers.find((one) => one.id === id)?.cables || [];
-            const bolt = kinds(left).includes('thunderbolt') && kinds(right).includes('thunderbolt');
-            addLink(points, 'sil nf', [left, right], floor);
-            for (const [end, toward] of [[points[0], points[1]], [points.at(-1), points.at(-2)]]) {
-                const reach = Math.sign(toward[0] - end[0]) * (bolt ? 3 : 4);
-                const half = bolt ? 1 : 1.6;
-                const [ring, inner] = HL.rings(Math.min(end[0], end[0] + reach), end[1] - half, Math.max(end[0], end[0] + reach), end[1] + half, bolt ? 0.9 : 0.4, 0.3);
+            const [a, b] = [spots.get(cable.a), spots.get(cable.b)];
+            const points = cablePoints(edgeToward(a.foot, b.middle), edgeToward(b.foot, a.middle), 6);
+            const bolt = cable.plug === 'thunderbolt';
+            addLink(points, 'sil nf', [cable.a, cable.b], floor);
+            for (const end of [points[0], points.at(-1)]) {
+                const half = bolt ? 1.2 : 1.8;
+                const [ring, inner] = HL.rings(end[0] - half, end[1] - half, end[0] + half, end[1] + half, bolt ? 0.9 : 0.4, 0.3);
                 HL.put(HL.solid(floor), HL.prism(P, front, ring, inner, 0, bolt ? 1.8 : 2.4));
             }
-            anchors.set(`${cable.a}|${cable.b}`, points[8]);
+            anchors.set([cable.a, cable.b].sort().join('|'), points[8]);
         }
-        // Each home network: a cable on the floor to the router, or a dashed radio line through the air for Wi-Fi.
+        // Each home network: a router, reached by a cable on the floor or by a dashed radio line through the air.
+        const routerParts = new Map();
         for (const router of routers) {
-            const at = routerAt.get(router.id);
+            const [rx, ry] = router.at;
+            const part = { top: [rx, ry - 4.5, 15], foot: [rx - 11, rx + 11, ry - 6, ry + 6], middle: [rx, ry] };
+            routerParts.set(router.id, part);
             for (const member of router.members) {
                 const spot = spots.get(member.id);
                 if (!spot) continue;
                 const wired = member.way === 'wired';
-                const points = wired ? cablePoints(at.port, spot.left, 0) : airPoints(at.top, spot.top);
-                addLink(points, wired ? 'sil nf' : 'sil nf dash', [router.id, member.id], wired ? floor : air);
-                anchors.set(member.id, points[10]);
+                const points = wired ? cablePoints(edgeToward(part.foot, spot.middle), edgeToward(spot.foot, part.middle), 4) : airPoints(part.top, spot.top);
+                addLink(points, wired ? 'sil nf' : 'sil nf dash', [router.id, member.id], wired ? floor : air, member.open);
+                anchors.set(`${router.id}|${member.id}`, points[member.open ? 10 : 7]);
             }
         }
-        // The computers, back to front: the primary one on a plinth, the ones not pooled dimmed, each with its name.
+        // Computers and routers back to front (the nearest have the largest x + y): the primary computer on a plinth,
+        // the ones not pooled dimmed, each with its name over everything.
+        const standing = [...computers.map((one) => ({ one, at: places.get(one.id) })), ...routers.map((router) => ({ router, at: router.at }))].sort((p, q) => p.at[0] + p.at[1] - (q.at[0] + q.at[1]));
         const groups = new Map();
-        for (const one of order) {
+        for (const entry of standing) {
+            if (entry.router) {
+                drawRouter(HL, P, front, HL.mk('g', {}, machines), ...entry.at);
+                continue;
+            }
+            const { one } = entry;
+            const [x, y] = entry.at;
+            const spot = spots.get(one.id);
             const tone = one.reason || one.role === 'off' ? 'pool-dim' : one.role === 'main' ? 'pool-main' : '';
             const g = HL.mk('g', { class: `pool-pc ${tone}`.trim() }, machines);
-            const x = places.get(one.id);
-            const [x0, x1, y0, y1] = footOf(one.form);
             if (one.role === 'main') {
-                const [ring, inner] = HL.rings(x + x0 - 4, y0 - 4, x + x1 + 4, y1 + 4, 2.4, 1.2);
+                const [ring, inner] = HL.rings(spot.foot[0] - 4, spot.foot[2] - 4, spot.foot[1] + 4, spot.foot[3] + 4, 2.4, 1.2);
                 HL.put(HL.solid(g), HL.prism(P, front, ring, inner, 0, 3));
             }
-            drawComputer(HL, P, front, g, one.form, x, raised(one));
-            const spot = spots.get(one.id);
+            drawComputer(HL, P, front, g, one.form, x, y, raised(one));
             const [lx, ly] = P(...spot.label);
             const state = one.reason ? REASON_SHORT[one.reason] || 'Not available' : one.role === 'main' ? 'Primary' : one.role === 'lend' ? 'Secondary' : 'Not pooled';
-            // Names sit above everything, so no cable or plinth drawn later covers them.
-            HL.mk('text', { x: HL.r2(lx), y: HL.r2(ly + 4), 'text-anchor': 'middle', 'font-size': 6, 'font-weight': 600 }, names).textContent = one.name;
-            HL.mk('text', { x: HL.r2(lx), y: HL.r2(ly + 11), 'text-anchor': 'middle', 'font-size': 4.6, class: 'muted' }, names).textContent = state;
-            const hull = HL.hull([...spot.corners.map((corner) => P(...corner)), [lx - 22, ly + 13], [lx + 22, ly + 13]]);
+            HL.mk('text', { x: HL.r2(lx), 'data-y': HL.r2(ly), 'text-anchor': 'middle', 'font-weight': 600, 'data-size': 'name' }, names).textContent = one.name;
+            HL.mk('text', { x: HL.r2(lx), 'data-y': HL.r2(ly), 'text-anchor': 'middle', class: 'muted', 'data-size': 'state' }, names).textContent = state;
+            const hull = HL.hull([...spot.corners.map((corner) => P(...corner)), [lx - 22, ly + 12], [lx + 22, ly + 12]]);
             const hit = HL.mk('polygon', { points: hull.map((point) => point.map(HL.r2).join(',')).join(' '), class: 'pool-hit', tabindex: 0, role: 'button', 'aria-label': `${one.name}, ${state}. Choose its part.` }, g);
             groups.set(one.id, { g, hit, top: spot.top });
         }
@@ -563,7 +532,7 @@ const PoolDrawing = ({ HL, pools, onPick, onWarn, picked }) => {
             for (let grew = true; grew;) {
                 grew = false;
                 for (const link of links) {
-                    if (lit.has(link) || !link.ends.some((end) => seen.has(end))) continue;
+                    if (!link.open || lit.has(link) || !link.ends.some((end) => seen.has(end))) continue;
                     lit.add(link);
                     for (const end of link.ends) if (!seen.has(end)) { seen.add(end); grew = true; }
                 }
@@ -572,7 +541,7 @@ const PoolDrawing = ({ HL, pools, onPick, onWarn, picked }) => {
             for (const [key, entry] of groups) entry.g.classList.toggle('up', key === id);
         };
         const bag = HL.disposer();
-        for (const one of order) {
+        for (const one of computers) {
             const { hit } = groups.get(one.id);
             const choose = () => {
                 picked.current = one.id;
@@ -592,37 +561,43 @@ const PoolDrawing = ({ HL, pools, onPick, onWarn, picked }) => {
         }
         light(picked.current);
         // Warning marks: over a computer's top, on a cable's middle, on a Wi-Fi line. Pointing at one says what is wrong.
-        const warn = (point, texts) => {
+        const warn = (point, texts, fix = null) => {
             const [wx, wy] = P(...point);
             const tri = HL.mk('path', { d: `M${HL.r2(wx)},${HL.r2(wy - 5)}L${HL.r2(wx + 4.6)},${HL.r2(wy + 3)}L${HL.r2(wx - 4.6)},${HL.r2(wy + 3)}Z`, class: 'pool-warn', tabindex: 0, role: 'img', 'aria-label': texts.join(' ') }, marks);
             HL.mk('path', { d: `M${HL.r2(wx - 0.5)},${HL.r2(wy - 2.4)}h1v2.9h-1zM${HL.r2(wx - 0.5)},${HL.r2(wy + 1.1)}h1v1h-1z`, class: 'pool-warn-mark' }, marks);
             for (const type of ['pointerenter', 'focus']) bag.on(tri, type, () => onWarn(texts, tri));
             for (const type of ['pointerleave', 'blur']) bag.on(tri, type, () => onWarn(null));
+            // A click keeps what it says open, with the steps to fix it when there are some.
+            const keep = () => onWarn(texts, tri, { fix, kept: true });
+            bag.on(tri, 'click', keep);
+            bag.on(tri, 'keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                keep();
+            });
         };
-        for (const [id, texts] of onComputer) {
-            const top = groups.get(id)?.top;
-            if (top) warn([top[0] + 14, top[1], top[2] + 4], texts);
+        for (const issue of scene.issues) {
+            const key = issueKey(issue.on);
+            const top = issue.on.computer ? groups.get(issue.on.computer)?.top : null;
+            const point = top ? [top[0] + 14, top[1], top[2] + 4] : anchors.get(key);
+            if (point) warn(issue.on.computer ? point : [point[0], point[1], point[2] + 3], issue.texts, issue.fix);
         }
-        for (const [key, texts] of onLink) {
-            const point = anchors.get(key);
-            if (point) warn([point[0], point[1], point[2] + 3], texts);
-        }
-        // Memory on its way: dots run from each secondary computer the primary reaches, along its link, to the primary.
-        const main = computers.find((one) => one.role === 'main');
+        // Memory on its way: dots run along each link the server says memory is lent over, toward the primary computer.
         const flows = [];
-        for (const one of computers) {
-            if (!main || one.role !== 'lend' || !one.lending || one.reachable !== true) continue;
-            const direct = links.find((link) => link.ends.includes(one.id) && link.ends.includes(main.id));
-            let path = direct ? (direct.ends[0] === one.id ? direct.points : [...direct.points].reverse()) : null;
-            const router = routers.find((home) => home.members.some((m) => m.id === one.id) && home.members.some((m) => m.id === main.id));
-            if (!path && router) {
-                const out = links.find((link) => link.ends[0] === router.id && link.ends[1] === one.id);
-                const into = links.find((link) => link.ends[0] === router.id && link.ends[1] === main.id);
+        for (const flow of scene.flows) {
+            let path = null;
+            if (flow.cable) {
+                const link = links.find((entry) => entry.ends.includes(flow.cable[0]) && entry.ends.includes(flow.cable[1]));
+                if (link) path = link.ends[0] === flow.from ? link.points : [...link.points].reverse();
+            } else {
+                const out = links.find((entry) => entry.ends[0] === flow.home && entry.ends[1] === flow.from);
+                const into = links.find((entry) => entry.ends[0] === flow.home && entry.ends[1] === flow.to);
                 if (out && into) path = [...[...out.points].reverse(), ...into.points];
             }
             if (!path) continue;
             const screen = path.map((point) => P(...point));
-            for (let k = 0; k < 3; k += 1) flows.push({ screen, offset: k / 3, dot: HL.mk('circle', { r: 1.1, class: 'pool-flow' }, marks) });
+            // The dots ride on their own link's layer, so a computer standing in front of the link hides them as it hides the link.
+            for (let k = 0; k < 3; k += 1) flows.push({ screen, offset: k / 3, dot: HL.mk('circle', { r: 1.1, class: 'pool-flow' }, flow.cable ? floor : air) });
         }
         const along = (screen, t) => {
             const spot = t * (screen.length - 1);
@@ -640,11 +615,24 @@ const PoolDrawing = ({ HL, pools, onPick, onWarn, picked }) => {
             return !still;
         }) : null;
         ticking?.wake?.();
-        // The drawing's own size: what it drew, never more than about two and a half screen pixels a unit.
+        // The drawing's own size is what it drew. Names keep one size on screen however large the drawing is shown.
         const box = svg.getBBox();
-        svg.setAttribute('viewBox', `${HL.r2(box.x - 8)} ${HL.r2(box.y - 8)} ${HL.r2(box.width + 16)} ${HL.r2(box.height + 16)}`);
-        host.style.setProperty('--pool-max', `${Math.round((box.width + 16) * 2.6)}px`);
+        const width = box.width + 24;
+        svg.setAttribute('viewBox', `${HL.r2(box.x - 12)} ${HL.r2(box.y - 12)} ${HL.r2(width)} ${HL.r2(box.height + 24)}`);
+        const sizeNames = () => {
+            const scale = Math.max(0.5, host.clientWidth / width);
+            const [name, state] = [13 / scale, 11 / scale];
+            for (const text of names.querySelectorAll('text')) {
+                const named = text.dataset.size === 'name';
+                text.setAttribute('font-size', HL.r2(named ? name : state));
+                text.setAttribute('y', HL.r2(Number(text.dataset.y) + name + (named ? 0 : state * 1.35)));
+            }
+        };
+        sizeNames();
+        const watch = new ResizeObserver(sizeNames);
+        watch.observe(host);
         return () => {
+            watch.disconnect();
             bag.dispose();
             ticking?.unregister();
             host.replaceChildren();
@@ -675,8 +663,8 @@ const ComputerCard = ({ one, main, issues, onPart }) => {
             </Container>
             {status && !issues.includes(status[0]) && row(STATUS_ICONS[status[1]] || 'FiInfo', STATUS_TONES.includes(status[1]) ? status[1] : 'primary', status[0])}
             {issues.map((text) => row('FiAlertTriangle', 'warning', text))}
-            {one.reason === 'public' && (
-                <Button size="xs" genieTrigger="click" genie={{ trigger: 'click', width: '460px', padding: 'md', content: <MakePrivate name={one.name} networks={one.publicNetworks} /> }}>
+            {(one.reason === 'public' || (one.homes || []).some((home) => home.public)) && (
+                <Button size="xs" genieTrigger="click" genie={{ trigger: 'click', width: '460px', padding: 'md', content: <MakePrivate name={one.name} networks={[...new Set([...(one.publicNetworks || []), ...(one.homes || []).filter((home) => home.public && home.name).map((home) => home.name)])]} /> }}>
                     <Icon name="FiShield" />How to make it Private
                 </Button>
             )}
@@ -706,23 +694,26 @@ const PoolSection = ({ pools, onPart, onCheck, checking, children }) => {
     const [open, setOpen] = useState(null);
     const [tip, setTip] = useState(null);
     const picked = React.useRef(null);
-    const asked = React.useRef(false);
+    const checkedFor = React.useRef(null);
     const pick = useCallback((id, el) => setOpen({ id, ref: { current: el } }), []);
-    const hint = useCallback((texts, el) => setTip(texts ? { texts, ref: { current: el } } : null), []);
-    // The cables are known only from a check, so one runs when the section opens.
+    const hint = useCallback((texts, el, how = {}) => setTip((now) => {
+        if (!texts) return now?.kept ? now : null;
+        return { texts, ref: { current: el }, fix: how.fix || null, kept: Boolean(how.kept) };
+    }), []);
+    // The cables are known only from a check, so one runs when the section opens and again whenever another computer
+    // comes online or its network arrives (the server says so as it happens), with no button pressed.
     useEffect(() => {
-        if (pools && !pools.checks && !asked.current) {
-            asked.current = true;
-            onCheck();
-        }
-    }, [pools, onCheck]);
+        if (!pools || checking) return;
+        const online = (pools.computers || []).filter((one) => one.online && one.reason !== 'update').map((one) => `${one.id}:${(one.homes || []).length}`).sort().join();
+        if (checkedFor.current === online) return;
+        checkedFor.current = online;
+        if (online.includes(',')) onCheck();
+    }, [pools, checking, onCheck]);
     const computers = pools?.computers || [];
     const main = computers.find((one) => one.role === 'main') || null;
     const lenders = computers.filter((one) => one.role === 'lend' && !one.reason);
     const ready = Boolean(main) && lenders.length > 0 && lenders.every((one) => one.reachable === true);
     const together = [main, ...lenders].filter(Boolean);
-    const issues = pools ? poolIssues(pools, poolLinks(pools).cables) : { onComputer: new Map(), onLink: new Map() };
-    const issuesOf = (id) => [...(issues.onComputer.get(id) || []), ...[...issues.onLink].filter(([key]) => key === id || key.split('|').includes(id)).flatMap(([, texts]) => texts)];
     const chosen = computers.find((one) => one.id === open?.id) || null;
     const close = () => {
         setOpen(null);
@@ -759,12 +750,13 @@ const PoolSection = ({ pools, onPart, onCheck, checking, children }) => {
                 </Container>
             )}
             <Genie visible={Boolean(chosen && open)} triggerRef={open?.ref} onClose={close} variant="popover" width="380px" padding="md" ariaLabel={chosen ? `${chosen.name}'s part in the pool` : undefined}>
-                {chosen && <ComputerCard one={chosen} main={main} issues={issuesOf(chosen.id)} onPart={(one, role) => { close(); onPart(one, role); }} />}
+                {chosen && <ComputerCard one={chosen} main={main} issues={issuesFor(pools?.scene, chosen.id)} onPart={(one, role) => { close(); onPart(one, role); }} />}
             </Genie>
-            <Genie visible={Boolean(tip)} triggerRef={tip?.ref} onClose={() => setTip(null)} variant="tooltip" role="tooltip" closeOnClickOutside={false} width="320px" padding="sm">
+            <Genie visible={Boolean(tip)} triggerRef={tip?.ref} onClose={() => setTip(null)} variant={tip?.kept ? 'popover' : 'tooltip'} role={tip?.kept ? 'dialog' : 'tooltip'} closeOnClickOutside={Boolean(tip?.kept)} width={tip?.fix ? '460px' : '320px'} padding={tip?.kept ? 'md' : 'sm'}>
                 {tip && (
-                    <Container layout="flex-column" gap="xs" padding="none" width="100%">
+                    <Container layout="flex-column" gap="sm" padding="none" width="100%">
                         {tip.texts.map((text) => <Typography key={text} size="xs">{text}</Typography>)}
+                        {tip.kept && tip.fix?.kind === 'private' && <MakePrivate name={tip.fix.name} networks={tip.fix.networks} />}
                     </Container>
                 )}
             </Genie>
