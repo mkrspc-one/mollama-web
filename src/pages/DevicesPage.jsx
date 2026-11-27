@@ -5,6 +5,13 @@ import { useNotification } from '@contexts/NotificationContext';
 import { deviceService, desktopService, rentalService, skillService, describeError, formatGb, useGuide } from '../client/ai.client';
 import { formatMoney } from '../client/billing.client';
 
+
+// How a pool's computers are joined: one way or several (two Macs on a cable and on Wi-Fi), the fastest first.
+const WAY_NAMES = { cable: 'a direct cable', wired: 'your home network by cable', wifi: 'your home Wi-Fi' };
+const joinedBy = (group) => {
+    const ways = (group.ways || [group.via === 'cable' ? 'cable' : group.wired ? 'wired' : 'wifi']).map((way) => WAY_NAMES[way]).filter(Boolean);
+    return group.via === 'cable' || ways.length > 1 ? `Joined by ${ways.join(' and ')}` : group.wired ? 'On your home network, by cable' : 'On your home network, by Wi-Fi';
+};
 const ADD_STEPS = [
     'Download the Mollama desktop app on the computer you want to add.',
     'Install it, open it and sign in with this account.',
@@ -286,7 +293,7 @@ const PoolSection = ({ pools, onPart, onCheck, checking, checkedAt, children }) 
                         <Container layout="flex-column" gap="xs" padding="none" width="100%">
                             <Container layout="flex" align="center" gap="sm" padding="none" width="100%">
                                 <Icon name={group.via === 'cable' || group.wired ? 'FiLink' : 'FiWifi'} size="sm" color="primary" />
-                                <Typography as="h3" size="sm" weight="semibold">{group.via === 'cable' ? 'Joined by a direct cable' : group.wired ? 'On your home network, by cable' : 'On your home network, by Wi-Fi'}</Typography>
+                                <Typography as="h3" size="sm" weight="semibold">{joinedBy(group)}</Typography>
                                 {ready
                                     ? <Badge size="xs" color="success" title="The primary computer reached every secondary computer.">Ready to pool</Badge>
                                     : <Badge size="xs" color="warning" title="Ready once the primary computer reaches a secondary computer.">Not ready yet</Badge>}
