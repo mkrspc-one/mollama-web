@@ -188,7 +188,7 @@ const PRIVATE_STEPS = [
     'On that computer, open Settings, then Network & internet.',
     'Choose Wi-Fi (or Ethernet, for a cable), then the network it is connected to.',
     'Under Network profile type, choose Private network.',
-    'Come back here and press Check again.'
+    'Come back here: the drawing updates by itself.'
 ];
 // One line for an ordinary PowerShell window: it opens an administrator one (Windows asks first) to make that connection Private.
 const privateCommand = (network) => `Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -Command Set-NetConnectionProfile -InterfaceAlias ''${network.replace(/'/g, "''''")}'' -NetworkCategory Private'`;
@@ -227,7 +227,7 @@ const MakePrivate = ({ name, networks = [] }) => {
                     <Typography size="xs">{step}</Typography>
                 </Container>
             ))}
-            <Typography size="xxs" color="muted">Then press Check again in the pooling section.</Typography>
+            <Typography size="xxs" color="muted">The pooling drawing updates by itself once it is Private.</Typography>
         </Container>
     );
 };
@@ -238,7 +238,7 @@ const UNREACHABLE_CHECKS = [
     ['FiLock', 'A firewall on the secondary computer', 'On Windows, allow Mollama when Windows asks, or in Windows Security, Firewall & network protection, Allow an app through firewall, tick Mollama for the network you are on. On a Mac, System Settings, Network, Firewall, Options, allow Mollama.'],
     ['FiLink', 'The cable or the Wi-Fi', 'Both computers must be on the same network: the same Wi-Fi, or the cable plugged in at both ends with its lights on. A guest Wi-Fi often keeps devices apart.'],
     ['FiPower', 'Both apps open and awake', 'The Mollama app must be open on both computers, and neither asleep. Reopening the app on the secondary computer opens its gate again.'],
-    ['FiRefreshCw', 'Then check again', 'Press Check again at the top of the pooling section. The line under the computer says what was found.']
+    ['FiRefreshCw', 'Then look again', 'The pooling drawing checks again by itself when anything changes, and the computer\'s mark says what was found.']
 ];
 const WhyUnreachable = () => (
     <Container layout="flex-column" gap="sm" padding="none" width="100%">
@@ -278,8 +278,11 @@ const POOL_STYLE = `
 [data-hairline="pool"] .pool-pc{transition:transform 260ms cubic-bezier(.32,.72,0,1)}
 [data-hairline="pool"] .pool-pc.up{transform:translateY(-2.5px)}
 [data-hairline="pool"] .pool-dim path{stroke:var(--border-color)}
-[data-hairline="pool"] .pool-main path{stroke:var(--primary-color)}
-[data-hairline="pool"] .pool-lend path{stroke:var(--secondary-color)}
+[data-hairline="pool"] .pool-dim path.sil{stroke:var(--text-muted)}
+[data-hairline="pool"] .pool-main path{stroke:var(--primary-accent-color)}
+[data-hairline="pool"] .pool-main path.sil{stroke:var(--primary-color)}
+[data-hairline="pool"] .pool-lend path{stroke:var(--text-muted)}
+[data-hairline="pool"] .pool-lend path.sil{stroke:var(--text-color);stroke-width:1.3px}
 [data-hairline="pool"] path.pool-works{stroke:var(--success-color)}
 [data-hairline="pool"] path.pool-warning{stroke:var(--warning-color)}
 [data-hairline="pool"] path.pool-error{stroke:var(--error-color)}
@@ -369,7 +372,7 @@ class DrawingGuard extends React.Component {
         if (this.state.failed && before.pools !== this.props.pools) this.setState({ failed: false });
     }
     render() {
-        return this.state.failed ? <Typography size="xs" color="muted">The drawing could not be shown. Press Check again, or reload the page.</Typography> : this.props.children;
+        return this.state.failed ? <Typography size="xs" color="muted">The drawing could not be shown. Reload the page to try again.</Typography> : this.props.children;
     }
 }
 // A warning's notes: a short title and one sentence each, in the warning or error colour, and the steps when asked for.
@@ -569,7 +572,10 @@ const PoolDrawing = ({ HL, pools, onPick, onWarn, picked }) => {
             const { one } = entry;
             const [x, y] = entry.at;
             const spot = spots.get(one.id);
-            const tone = one.reason || one.role === 'off' ? 'pool-dim' : one.role === 'main' ? 'pool-main' : 'pool-lend';
+            // Coloured by its part as soon as it is chosen, its outline in one colour and its inner lines and details in a
+            // second for depth: primary in the primary colour and its accent, secondary in text colour (bold) and muted
+            // text, and a computer not pooled or offline in muted text and the border colour.
+            const tone = one.reason || !one.online ? 'pool-dim' : one.role === 'main' ? 'pool-main' : one.role === 'lend' ? 'pool-lend' : 'pool-dim';
             const g = HL.mk('g', { class: `pool-pc ${tone}`.trim() }, machines);
             if (one.role === 'main') {
                 const [ring, inner] = HL.rings(spot.foot[0] - 4, spot.foot[2] - 4, spot.foot[1] + 4, spot.foot[3] + 4, 2.4, 1.2);
@@ -760,14 +766,13 @@ const PoolSection = ({ pools, onPart, onCheck, checking, children }) => {
         if (!texts) return now?.kept ? now : null;
         return { texts, ref: { current: el }, fix: how.fix || null, kept: Boolean(how.kept) };
     }), []);
-    // The cables are known only from a check, so one runs when the section opens and again whenever another computer
-    // comes online or its network arrives (the server says so as it happens), with no button pressed.
+    // The server checks again by itself whenever a connection changes; the page asks once only when it opens on a server
+    // that has not checked since it started.
     useEffect(() => {
-        if (!pools || checking) return;
-        const online = (pools.computers || []).filter((one) => one.online && one.reason !== 'update').map((one) => `${one.id}:${(one.homes || []).length}`).sort().join();
-        if (checkedFor.current === online) return;
-        checkedFor.current = online;
-        if (online.includes(',')) onCheck();
+        if (!pools || checking || pools.checks || checkedFor.current) return;
+        if ((pools.computers || []).filter((one) => one.online).length < 2) return;
+        checkedFor.current = true;
+        onCheck();
     }, [pools, checking, onCheck]);
     const computers = pools?.computers || [];
     const main = computers.find((one) => one.role === 'main') || null;
@@ -783,12 +788,7 @@ const PoolSection = ({ pools, onPart, onCheck, checking, children }) => {
         <Container as="section" layout="flex-column" gap="lg" padding="none" width="100%" minWidth="0">
             <Container layout="flex-column" gap="sm" padding="none" width="100%">
                 <Heading title="Pooling computers" badge={<Badge size="xs" title="Needs the Mollama desktop app 1.0.8 or later on every pooled computer">Preview</Badge>}>
-                    <Container layout="flex" align="center" gap="sm" padding="none" wrap={false}>
-                        {pools?.checks?.at && <Typography size="xxs" color="muted">Checked {new Date(pools.checks.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</Typography>}
-                        <Button size="sm" disabled={checking} title="Read every connected computer's network again and check how they are joined" onClick={onCheck}>
-                            <Icon name="FiRefreshCw" />{checking ? 'Checking…' : 'Check again'}
-                        </Button>
-                    </Container>
+                    <Typography size="xxs" color="muted">{checking ? 'Checking your connections…' : pools?.checks?.at ? `Up to date · ${new Date(pools.checks.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}</Typography>
                 </Heading>
                 <Typography as="p" size="sm" maxWidth="760px">
                     Several of your computers can share one model that none of them could hold alone: a primary computer holds the model and runs it, and the secondary computers lend it their memory. Click a computer to choose its part.
@@ -1385,7 +1385,13 @@ const DevicesPage = () => {
     useEffect(() => {
         load();
         window.addEventListener('ollama-availability-changed', load);
-        return () => window.removeEventListener('ollama-availability-changed', load);
+        // When the server has checked the computers again by itself, only the pools are read again.
+        const pooled = () => deviceService.pools().then(setPools, () => {});
+        window.addEventListener('mollama-pools-changed', pooled);
+        return () => {
+            window.removeEventListener('ollama-availability-changed', load);
+            window.removeEventListener('mollama-pools-changed', pooled);
+        };
     }, [load]);
 
     // A computer's part in a pool: secondary (lends its memory) or primary (runs the model with the others' memory).
