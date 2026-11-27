@@ -1158,7 +1158,7 @@ const RentCard = ({ offer, onRented, start = null, open = 0 }) => {
                 <Input size="sm" label="Spending limit (US dollars)" value={limit} onChange={(event) => setLimit(event.target.value)} width="100%" />
             </Container>
             <Typography as="p" size="xxs" color={problem ? 'error' : 'muted'}>
-                {problem || `${formatMoney(cents)} of your ${formatMoney(offer.balance)} credit is set aside now. You pay by the minute, and what is not used comes back. It ends, and the machine is deleted with everything on it, after ${hours === '1' ? '1 hour' : `${hours} hours`}, when ${formatMoney(cents)} is spent, or after ${offer.rules.idleMinutes} minutes with nothing running, whichever comes first.`}
+                {problem || `${formatMoney(cents)} of your ${formatMoney(offer.balance)} credit is set aside now. You pay by the minute, and what is not used comes back. It ends, and the machine is deleted with everything on it, after ${hours === '1' ? '1 hour' : `${hours} hours`}, when ${formatMoney(cents)} is spent, or after ${offer.rules.idleMinutes} minutes with nothing running, whichever comes first. If Mollama itself is unreachable for that long, it ends too, so you never pay for a machine you cannot use.`}
             </Typography>
             <Container layout="flex" gap="xs" padding="none">
                 <Button size="sm" disabled={busy || Boolean(problem)} onClick={rent}><Icon name="FiZap" />{busy ? 'Starting…' : 'Rent'}</Button>
