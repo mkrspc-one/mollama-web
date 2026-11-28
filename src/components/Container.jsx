@@ -16,6 +16,8 @@ const EDGE_INSIDE = 2;
 const EDGE_OUTSIDE = 7;
 const TOUCH_INSIDE = 8;
 const TOUCH_OUTSIDE = 20;
+// Two taps on the same border this close in time and place are a double tap (a finger's double click).
+const DOUBLE_TAP = { ms: 400, px: 32, still: 10 };
 const LEAST = { x: 48, y: 32 };
 const EDGE_CURSORS = { e: 'ew', w: 'ew', n: 'ns', s: 'ns', ne: 'nesw', sw: 'nesw', nw: 'nwse', se: 'nwse' };
 let edgeOwner = null;
@@ -260,6 +262,7 @@ export const useResizable = (resizable, elementRef, onResize = null) => {
         const move = (event) => {
             if (!drag) return;
             if (drag.touch) event.preventDefault();
+            drag.moved = Math.max(drag.moved || 0, Math.hypot(event.clientX - drag.x, event.clientY - drag.y));
             pending = { clientX: event.clientX, clientY: event.clientY };
             if (!frameId) frameId = requestAnimationFrame(flush);
         };
@@ -298,8 +301,12 @@ export const useResizable = (resizable, elementRef, onResize = null) => {
             window.removeEventListener('pointercancel', stop, true);
             window.removeEventListener('keydown', escape, true);
             document.body.removeAttribute('data-resizing');
-            // A finger leaves no hover behind: once it lifts, nothing is held as the border under the pointer.
-            if (ended?.touch) show(null);
+            // A finger leaves no hover behind: once it lifts, nothing is held as the border under the pointer. A press that
+            // did not move is a tap, remembered for a double tap.
+            if (ended?.touch) {
+                lastTap = event?.type === 'pointerup' && (ended.moved || 0) < DOUBLE_TAP.still ? { at: performance.now(), x: ended.x, y: ended.y, edge: ended.edge } : null;
+                show(null);
+            }
             if (event?.type === 'keydown' && ended) {
                 setSize(ended.saved);
                 if (!ended.saved) putBack();
@@ -341,6 +348,8 @@ export const useResizable = (resizable, elementRef, onResize = null) => {
         // The border is worked out where the press lands, never taken from an earlier hover, so a press anywhere else
         // is left alone. The innermost resizable part claims a press first; the others see it taken.
         let lastTouch = false;
+        let lastTap = null;
+        let tapHeld = false;
         const start = (event) => {
             if (event.defaultPrevented || (event.button !== undefined && event.button !== 0)) return;
             const touch = event.pointerType === 'touch' || event.pointerType === 'pen';
@@ -353,6 +362,15 @@ export const useResizable = (resizable, elementRef, onResize = null) => {
             show(found);
             event.preventDefault();
             event.stopPropagation();
+            const tap = lastTap;
+            lastTap = null;
+            if (touch && tap && tap.edge === found && performance.now() - tap.at < DOUBLE_TAP.ms && Math.hypot(event.clientX - tap.x, event.clientY - tap.y) < DOUBLE_TAP.px) {
+                // The second tap is held from the page (no zoom, no click) until the finger lifts.
+                tapHeld = true;
+                window.addEventListener('pointerup', () => { tapHeld = false; show(null); }, { capture: true, once: true });
+                toggle(event.clientX, event.clientY, touch);
+                return;
+            }
             prepare(event.clientX, event.clientY, touch);
             document.body.setAttribute('data-resizing', EDGE_CURSORS[found]);
             window.addEventListener('pointermove', move, true);
@@ -361,19 +379,14 @@ export const useResizable = (resizable, elementRef, onResize = null) => {
             window.addEventListener('keydown', escape, true);
         };
         // A touch that starts a drag is not also a scroll or a zoom of the page (which would cancel the drag).
-        const holdTouch = (event) => { if (drag?.touch) event.preventDefault(); };
-        // A double click on a border: at its own size the part goes as far as that edge can (the same limits as a
-        // drag); resized, it gives the size back.
-        const giveBack = (event) => {
-            const found = edgeAt(event.clientX, event.clientY, lastTouch);
-            if (!found) return;
-            show(found);
-            event.preventDefault();
-            event.stopPropagation();
+        const holdTouch = (event) => { if (drag?.touch || tapHeld) event.preventDefault(); };
+        // A double click or double tap on a border: at its own size the part goes as far as that edge can (the same
+        // limits as a drag); resized, it gives the size back.
+        const toggle = (x, y, touch) => {
             if (!sizeRef.current) {
-                prepare(event.clientX, event.clientY, lastTouch);
+                prepare(x, y, touch);
                 const far = 1e6;
-                apply({ clientX: edge.includes('e') ? far : edge.includes('w') ? -far : event.clientX, clientY: edge.includes('s') ? far : edge.includes('n') ? -far : event.clientY });
+                apply({ clientX: edge.includes('e') ? far : edge.includes('w') ? -far : x, clientY: edge.includes('s') ? far : edge.includes('n') ? -far : y });
                 drag = null;
                 setTimeout(() => reportRef.current?.(sizeRef.current), 0);
                 return;
@@ -381,6 +394,14 @@ export const useResizable = (resizable, elementRef, onResize = null) => {
             putBack();
             setSize(null);
             reportRef.current?.(null);
+        };
+        const giveBack = (event) => {
+            const found = edgeAt(event.clientX, event.clientY, lastTouch);
+            if (!found) return;
+            show(found);
+            event.preventDefault();
+            event.stopPropagation();
+            toggle(event.clientX, event.clientY, lastTouch);
         };
         document.addEventListener('pointermove', hover, { passive: true });
         document.addEventListener('pointerdown', start, true);
