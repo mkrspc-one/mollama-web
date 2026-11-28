@@ -11,8 +11,11 @@ import { getBackgroundClass, STATUS_COLORS } from './Page';
 // gives some of its own, then a resizable parent grows to make room (and its parent, and so on); otherwise the drag
 // stops there. Pulled in from the left or top it leaves a gap; pulled out that way it takes the gap back first. In a
 // grid it takes whole columns. A double click on the border, or Escape while dragging, gives the size back.
+// A finger has no hover and covers more than a mouse: a touch is caught in a wider band, decided where it lands.
 const EDGE_INSIDE = 2;
 const EDGE_OUTSIDE = 7;
+const TOUCH_INSIDE = 8;
+const TOUCH_OUTSIDE = 20;
 const LEAST = { x: 48, y: 32 };
 const EDGE_CURSORS = { e: 'ew', w: 'ew', n: 'ns', s: 'ns', ne: 'nesw', sw: 'nesw', nw: 'nwse', se: 'nwse' };
 let edgeOwner = null;
@@ -150,16 +153,18 @@ export const useResizable = (resizable, elementRef, onResize = null) => {
             return granted;
         };
 
-        const edgeAt = (x, y) => {
+        const edgeAt = (x, y, touch = false) => {
             const box = element.getBoundingClientRect();
-            const near = (value, line) => value >= line - EDGE_OUTSIDE && value <= line + EDGE_OUTSIDE;
-            const across = x >= box.left - EDGE_OUTSIDE && x <= box.right + EDGE_OUTSIDE && y >= box.top - EDGE_OUTSIDE && y <= box.bottom + EDGE_OUTSIDE;
+            const outside = touch ? TOUCH_OUTSIDE : EDGE_OUTSIDE;
+            const inside = touch ? TOUCH_INSIDE : EDGE_INSIDE;
+            const near = (value, line) => value >= line - outside && value <= line + outside;
+            const across = x >= box.left - outside && x <= box.right + outside && y >= box.top - outside && y <= box.bottom + outside;
             if (!across) return null;
             // Only on the border and outside it: the strip inside, where a scrollbar lives, is left alone.
-            const w = sideways && near(x, box.left) && x <= box.left + EDGE_INSIDE;
-            const e = sideways && near(x, box.right) && x >= box.right - EDGE_INSIDE;
-            const n = upright && near(y, box.top) && y <= box.top + EDGE_INSIDE;
-            const s = upright && near(y, box.bottom) && y >= box.bottom - EDGE_INSIDE;
+            const w = sideways && near(x, box.left) && x <= box.left + inside;
+            const e = sideways && near(x, box.right) && x >= box.right - inside;
+            const n = upright && near(y, box.top) && y <= box.top + inside;
+            const s = upright && near(y, box.bottom) && y >= box.bottom - inside;
             return `${n ? 'n' : s ? 's' : ''}${w ? 'w' : e ? 'e' : ''}` || null;
         };
         const show = (next) => {
@@ -178,7 +183,7 @@ export const useResizable = (resizable, elementRef, onResize = null) => {
             }
         };
         const hover = (event) => {
-            if (drag || (edgeOwner && edgeOwner !== element && edgeOwner.isConnected)) return;
+            if (event.pointerType === 'touch' || drag || (edgeOwner && edgeOwner !== element && edgeOwner.isConnected)) return;
             show(edgeAt(event.clientX, event.clientY));
         };
 
@@ -244,8 +249,21 @@ export const useResizable = (resizable, elementRef, onResize = null) => {
             }
             setSize(next);
         };
+        let pending = null;
+        let frameId = 0;
+        const flush = () => {
+            frameId = 0;
+            const event = pending;
+            pending = null;
+            if (event && drag) apply(event);
+        };
         const move = (event) => {
             if (!drag) return;
+            if (drag.touch) event.preventDefault();
+            pending = { clientX: event.clientX, clientY: event.clientY };
+            if (!frameId) frameId = requestAnimationFrame(flush);
+        };
+        const apply = (event) => {
             if (drag.floating) return floatingMove(event);
             let next = { ...drag.from };
             if (drag.edge.includes('e') || drag.edge.includes('w')) {
@@ -269,12 +287,19 @@ export const useResizable = (resizable, elementRef, onResize = null) => {
             setSize(next);
         };
         const stop = (event) => {
+            if (frameId) cancelAnimationFrame(frameId);
+            if (event?.type !== 'keydown') flush();
+            frameId = 0;
+            pending = null;
             const ended = drag;
             drag = null;
             window.removeEventListener('pointermove', move, true);
             window.removeEventListener('pointerup', stop, true);
+            window.removeEventListener('pointercancel', stop, true);
             window.removeEventListener('keydown', escape, true);
             document.body.removeAttribute('data-resizing');
+            // A finger leaves no hover behind: once it lifts, nothing is held as the border under the pointer.
+            if (ended?.touch) show(null);
             if (event?.type === 'keydown' && ended) {
                 setSize(ended.saved);
                 if (!ended.saved) putBack();
@@ -287,7 +312,7 @@ export const useResizable = (resizable, elementRef, onResize = null) => {
         };
         const escape = (key) => { if (key.key === 'Escape') { key.stopPropagation(); stop(key); } };
         // What a drag starts from: the part's size and place, what is beside it and what holds it.
-        const prepare = (x, y) => {
+        const prepare = (x, y, touch = false) => {
             const box = element.getBoundingClientRect();
             const style = window.getComputedStyle(element);
             const layout = layoutOf(element);
@@ -296,7 +321,7 @@ export const useResizable = (resizable, elementRef, onResize = null) => {
             const grows = (axis) => (resizableOn(element.parentElement, axis) ? (axis === 'x' ? parentBox.width : parentBox.height) : null);
             const frame = frameOf(element);
             drag = {
-                edge, layout, x, y, saved: sizeRef.current, from: now, box,
+                edge, layout, x, y, touch, saved: sizeRef.current, from: now, box,
                 frame,
                 floating: Boolean(frame) || ['absolute', 'fixed'].includes(style.position),
                 edgeMargin: {
@@ -313,26 +338,42 @@ export const useResizable = (resizable, elementRef, onResize = null) => {
                 span: layout.kind === 'grid' ? Math.max(1, Math.round((box.width + layout.gap) / (layout.column + layout.gap))) : 1
             };
         };
+        // The border is worked out where the press lands, never taken from an earlier hover, so a press anywhere else
+        // is left alone. The innermost resizable part claims a press first; the others see it taken.
+        let lastTouch = false;
         const start = (event) => {
-            if (!edge || (event.button !== undefined && event.button !== 0)) return;
+            if (event.defaultPrevented || (event.button !== undefined && event.button !== 0)) return;
+            const touch = event.pointerType === 'touch' || event.pointerType === 'pen';
+            lastTouch = touch;
+            const found = edgeAt(event.clientX, event.clientY, touch);
+            if (!found) {
+                if (touch) show(null);
+                return;
+            }
+            show(found);
             event.preventDefault();
             event.stopPropagation();
-            prepare(event.clientX, event.clientY);
-            document.body.setAttribute('data-resizing', EDGE_CURSORS[edge]);
+            prepare(event.clientX, event.clientY, touch);
+            document.body.setAttribute('data-resizing', EDGE_CURSORS[found]);
             window.addEventListener('pointermove', move, true);
             window.addEventListener('pointerup', stop, true);
+            window.addEventListener('pointercancel', stop, true);
             window.addEventListener('keydown', escape, true);
         };
+        // A touch that starts a drag is not also a scroll or a zoom of the page (which would cancel the drag).
+        const holdTouch = (event) => { if (drag?.touch) event.preventDefault(); };
         // A double click on a border: at its own size the part goes as far as that edge can (the same limits as a
         // drag); resized, it gives the size back.
         const giveBack = (event) => {
-            if (!edge) return;
+            const found = edgeAt(event.clientX, event.clientY, lastTouch);
+            if (!found) return;
+            show(found);
             event.preventDefault();
             event.stopPropagation();
             if (!sizeRef.current) {
-                prepare(event.clientX, event.clientY);
+                prepare(event.clientX, event.clientY, lastTouch);
                 const far = 1e6;
-                move({ clientX: edge.includes('e') ? far : edge.includes('w') ? -far : event.clientX, clientY: edge.includes('s') ? far : edge.includes('n') ? -far : event.clientY });
+                apply({ clientX: edge.includes('e') ? far : edge.includes('w') ? -far : event.clientX, clientY: edge.includes('s') ? far : edge.includes('n') ? -far : event.clientY });
                 drag = null;
                 setTimeout(() => reportRef.current?.(sizeRef.current), 0);
                 return;
@@ -344,9 +385,15 @@ export const useResizable = (resizable, elementRef, onResize = null) => {
         document.addEventListener('pointermove', hover, { passive: true });
         document.addEventListener('pointerdown', start, true);
         document.addEventListener('dblclick', giveBack, true);
+        document.addEventListener('touchstart', holdTouch, { capture: true, passive: false });
+        document.addEventListener('touchmove', holdTouch, { capture: true, passive: false });
         return () => {
             show(null);
+            if (frameId) cancelAnimationFrame(frameId);
             delete element.resizeTo;
+            document.removeEventListener('touchstart', holdTouch, true);
+            document.removeEventListener('touchmove', holdTouch, true);
+            window.removeEventListener('pointercancel', stop, true);
             document.removeEventListener('pointermove', hover);
             document.removeEventListener('pointerdown', start, true);
             document.removeEventListener('dblclick', giveBack, true);
